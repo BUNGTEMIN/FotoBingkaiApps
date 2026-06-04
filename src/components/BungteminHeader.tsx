@@ -3,14 +3,16 @@ import { Menu, X, ShieldAlert, Sparkles, Laptop, Disc, Cpu, Award, Sun, Moon, Lo
 import { motion, AnimatePresence } from 'motion/react';
 
 interface BungteminHeaderProps {
-  currentPage: 'beranda' | 'bingkai' | 'galeri' | 'album';
-  onNavigate: (page: 'beranda' | 'bingkai' | 'galeri' | 'album') => void;
+  currentPage: 'beranda' | 'bingkai' | 'misi' | 'galeri' | 'album';
+  onNavigate: (page: 'beranda' | 'bingkai' | 'misi' | 'galeri' | 'album') => void;
   theme: 'dark' | 'light';
   onToggleTheme: () => void;
   user: any;
   isAuthLoading: boolean;
   onGoogleLogin: () => void;
   onLogout: () => void;
+  completedQuests?: number;
+  totalQuests?: number;
 }
 
 export default function BungteminHeader({ 
@@ -21,7 +23,9 @@ export default function BungteminHeader({
   user,
   isAuthLoading,
   onGoogleLogin,
-  onLogout
+  onLogout,
+  completedQuests = 0,
+  totalQuests = 6
 }: BungteminHeaderProps) {
   const [isOpen, setIsOpen] = useState(false);
 
@@ -65,6 +69,20 @@ export default function BungteminHeader({
             >
               BINGKAI
               <span className={`absolute bottom-0 left-0 w-full h-0.5 bg-neon-cyan origin-left transition-transform duration-300 ${currentPage === 'bingkai' ? 'scale-x-100' : 'scale-x-0 group-hover:scale-x-100'}`} />
+            </button>
+            <button 
+              onClick={() => onNavigate('misi')}
+              className={`${currentPage === 'misi' ? 'text-neon-pink font-extrabold' : (theme === 'dark' ? 'text-zinc-400 hover:text-neon-pink' : 'text-zinc-600 hover:text-neon-pink')} transition-colors relative py-1 group flex items-center gap-1`}
+            >
+              🚀 MISI KREATIF
+              <span className={`px-1 py-0.5 text-[7px] font-mono rounded ${
+                completedQuests === totalQuests 
+                  ? 'bg-emerald-500/20 text-emerald-400 border border-emerald-500/30' 
+                  : 'bg-neon-pink/15 text-neon-pink border border-neon-pink/30 animate-pulse'
+              }`}>
+                {completedQuests}/{totalQuests}
+              </span>
+              <span className={`absolute bottom-0 left-0 w-full h-0.5 bg-neon-pink origin-left transition-transform duration-300 ${currentPage === 'misi' ? 'scale-x-100' : 'scale-x-0 group-hover:scale-x-100'}`} />
             </button>
             <button 
               onClick={() => onNavigate('galeri')}
@@ -158,6 +176,29 @@ export default function BungteminHeader({
           >
             <div className="px-4 pt-3 pb-6 space-y-4 font-mono text-xs max-w-lg mx-auto">
               <div className="grid grid-cols-2 gap-2 pb-2">
+                <button 
+                  onClick={() => { onNavigate('misi'); setIsOpen(false); }}
+                  className={`col-span-2 p-3 rounded border text-center transition-all flex items-center justify-between px-4 ${
+                    currentPage === 'misi' 
+                      ? 'border-neon-pink bg-pink-950/20 text-neon-pink' 
+                      : theme === 'dark' 
+                        ? 'bg-[#150f15]/40 border-white/10 hover:border-neon-pink text-zinc-300' 
+                        : 'bg-pink-50 border-pink-200 text-zinc-800 hover:border-neon-pink hover:bg-pink-100'
+                  }`}
+                >
+                  <div className="text-left">
+                    <span className={`block text-[9px] ${theme === 'dark' ? 'text-zinc-500' : 'text-zinc-450'}`}>Progres Game</span>
+                    <span className="text-xs font-black tracking-widest uppercase">🚀 MISI KREATIF SIBER</span>
+                  </div>
+                  <span className={`px-2 py-0.5 text-[9px] font-mono rounded ${
+                    completedQuests === totalQuests 
+                      ? 'bg-emerald-500/25 text-emerald-400 border border-emerald-500/30' 
+                      : 'bg-neon-pink/20 text-neon-pink border border-neon-pink/30 animate-pulse font-black'
+                  }`}>
+                    {completedQuests}/{totalQuests} SELESAI
+                  </span>
+                </button>
+
                 <button 
                   onClick={() => { onNavigate('beranda'); setIsOpen(false); }}
                   className={`p-3 rounded border text-center transition-all ${

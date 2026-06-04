@@ -18,7 +18,7 @@ service cloud.firestore {
 
     function isValidDownload(data) {
       return data.keys().hasAll(['id', 'fileName', 'imageUrl', 'format', 'size', 'downloadedAt'])
-        && data.keys().size() == 6
+        && data.keys().size() >= 6 && data.keys().size() <= 10
         && data.id is string
         && data.id.size() <= 128
         && data.id.matches('^[a-zA-Z0-9_\\-]+$')
@@ -33,13 +33,17 @@ service cloud.firestore {
         && data.size is int
         && data.size >= 100
         && data.size <= 3000
-        && data.downloadedAt == request.time;
+        && data.downloadedAt == request.time
+        && (!data.keys().hasAny(['userId']) || data.userId is string)
+        && (!data.keys().hasAny(['userName']) || data.userName is string)
+        && (!data.keys().hasAny(['userEmail']) || data.userEmail is string)
+        && (!data.keys().hasAny(['userAvatar']) || data.userAvatar is string);
     }
 
     // Downloads Collection rules
     match /downloads/{downloadId} {
       allow get: if isValidId(downloadId);
-      allow list: if false; // Prevent bulk listing / data scraping
+      allow list: if true; // Allow listing to support "My Gallery" & "Others' Gallery" views from cloud data
       allow create: if isValidId(downloadId) && isValidDownload(incoming());
       allow update, delete: if false; // Immutable history
     }

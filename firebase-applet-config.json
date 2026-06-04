@@ -1,10 +1,9 @@
 {
-  "projectId": "qcc-online",
-  "appId": "1:280833756345:web:8e1ec73703b3a58cd25f68",
-  "apiKey": "AIzaSyDmB60h4rTOGCBwhw3yfFnllY0xrSPqWog",
-  "authDomain": "qcc-online.firebaseapp.com",
-  "firestoreDatabaseId": "ai-studio-3f812613-89fc-4f5b-a7b7-4c5d021ef30b",
-  "storageBucket": "qcc-online.firebasestorage.app",
-  "messagingSenderId": "280833756345",
+  "projectId": "bungtemin-online",
+  "appId": "1:46853481147:web:60f0576661c848ee3ebf9e",
+  "apiKey": "AIzaSyCbxRZ1IXNc6H0b7q18r1vD9lxgzSKpYHU",
+  "authDomain": "bungtemin-online.firebaseapp.com",
+  "storageBucket": "bungtemin-online.appspot.com",
+  "messagingSenderId": "46853481147",
   "measurementId": ""
 }

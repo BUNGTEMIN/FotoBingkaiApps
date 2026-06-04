@@ -2,10 +2,11 @@ export interface Frame {
   id: string;
   name: string;
   src: string;
-  type: 'url' | 'procedural' | 'file';
+  type: 'url' | 'procedural' | 'file' | 'static';
   category: string;
   description?: string;
   renderSvg?: (colorTheme: string) => string; // Procedural SVG generator
+  svgElements?: string; // Serialized SVG elements for AI frames
 }
 
 export interface PlacedSticker {
@@ -13,12 +14,14 @@ export interface PlacedSticker {
   type: 'sticker' | 'text';
   text?: string;
   fontFamily?: string; // e.g. 'Orbitron', 'Space Grotesk'
+  textStyle?: 'neon' | 'chrome' | 'glitch' | 'hologram' | 'plain';
   stickerId?: string; // id from preset stickers
   x: number; // percentage (0 - 100)
   y: number; // percentage (0 - 100)
   scale: number;
   rotation: number; // degrees (0 - 360)
   color?: string;
+  isLocked?: boolean;
 }
 
 export interface PresetSticker {
@@ -42,6 +45,8 @@ export interface ImageSettings {
   hueRotate: number; // 0 to 360
   blur: number; // 0 to 10
   noise: boolean;
+  maskShape?: 'square' | 'circle' | 'hexagon' | 'octagon';
+  scanlines?: boolean;
 }
 
 export interface FilterPreset {

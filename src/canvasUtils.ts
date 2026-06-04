@@ -1,21 +1,59 @@
 import { Frame, ImageSettings, PlacedSticker } from './types';
 
-// Load an image safely with optional CORS support
+// Helper to resolve relative API routes to direct full-stack backend URL if hosted on a static domain (such as web.app / firebaseapp.com)
+export const resolveApiUrl = (apiPath: string): string => {
+  const host = window.location.hostname;
+  if (host.includes('web.app') || host.includes('firebaseapp.com') || host.includes('qcc-online')) {
+    const cloudRunBaseUrl = 'https://ais-pre-h437zomktk5zw36hxyzbwi-844303505958.asia-southeast1.run.app';
+    return `${cloudRunBaseUrl}${apiPath}`;
+  }
+  return apiPath;
+};
+
+// Load an image safely with optimal CORS support and smart fallback options
 export const loadImage = (src: string, isCrossOrigin = true): Promise<HTMLImageElement> => {
   return new Promise((resolve, reject) => {
-    const img = new Image();
-    
-    // Convert external URLs to proxy-image endpoint to avoid any CORS / canvas taint issues
+    // 1. Convert external URLs to proxy-image endpoint to resolve relative paths and bypass CORS
     let finalSrc = src;
+    let isUsingProxy = false;
     if (src.startsWith('http')) {
-      finalSrc = `/api/proxy-image?url=${encodeURIComponent(src)}`;
+      finalSrc = resolveApiUrl(`/api/proxy-image?url=${encodeURIComponent(src)}`);
+      isUsingProxy = true;
     }
 
+    const img = new Image();
+    
     if ((isCrossOrigin || src.startsWith('http')) && !finalSrc.startsWith('data:')) {
       img.crossOrigin = 'anonymous';
     }
+
     img.onload = () => resolve(img);
-    img.onerror = (e) => reject(new Error(`Gagal memuat gambar: ${src}`));
+
+    img.onerror = () => {
+      // Fallback 1: If using the proxy failed (e.g. network/dns or proxy down), retry direct original source with CORS
+      if (isUsingProxy) {
+        console.warn(`[CORS Helper] Proxy failed to load for: ${src}. Retrying with direct URL with CORS...`);
+        const fallbackImg = new Image();
+        fallbackImg.crossOrigin = 'anonymous';
+        fallbackImg.onload = () => resolve(fallbackImg);
+        fallbackImg.onerror = () => {
+          // Fallback 2: Direct load with CORS failed, try loading raw direct URL as last resort (will display but might taint canvas)
+          console.warn(`[CORS Helper] Direct CORS failed for: ${src}. Attempting raw loading as last resort...`);
+          const rawImg = new Image();
+          rawImg.onload = () => resolve(rawImg);
+          rawImg.onerror = (err) => reject(new Error(`Gagal memuat gambar: ${src}`));
+          rawImg.src = src;
+        };
+        fallbackImg.src = src;
+      } else {
+        // Simple direct load failed, try direct raw loading
+        const rawImg = new Image();
+        rawImg.onload = () => resolve(rawImg);
+        rawImg.onerror = (err) => reject(new Error(`Gagal memuat gambar: ${src}`));
+        rawImg.src = src;
+      }
+    };
+
     img.src = finalSrc;
   });
 };
@@ -72,6 +110,37 @@ export const renderToCanvas = async (
       const img = await loadImage(params.userImageSrc, false); // Local upload doesn't need CORS
       ctx.save();
       
+      // Apply absolute centered crop path first based on maskShape
+      if (params.settings.maskShape && params.settings.maskShape !== 'square') {
+        ctx.beginPath();
+        const centerX = size / 2;
+        const centerY = size / 2;
+        const radius = size * 0.44; // standard fit-size crop radius
+
+        if (params.settings.maskShape === 'circle') {
+          ctx.arc(centerX, centerY, radius, 0, Math.PI * 2);
+        } else if (params.settings.maskShape === 'hexagon') {
+          for (let i = 0; i < 6; i++) {
+            const angle = (i * Math.PI) / 3 - Math.PI / 2; // top-centered
+            const x = centerX + radius * Math.cos(angle);
+            const y = centerY + radius * Math.sin(angle);
+            if (i === 0) ctx.moveTo(x, y);
+            else ctx.lineTo(x, y);
+          }
+          ctx.closePath();
+        } else if (params.settings.maskShape === 'octagon') {
+          for (let i = 0; i < 8; i++) {
+            const angle = (i * Math.PI) / 4 - Math.PI / 8;
+            const x = centerX + radius * Math.cos(angle);
+            const y = centerY + radius * Math.sin(angle);
+            if (i === 0) ctx.moveTo(x, y);
+            else ctx.lineTo(x, y);
+          }
+          ctx.closePath();
+        }
+        ctx.clip();
+      }
+
       // Center of canvas for easy panning/rotation
       ctx.translate(size / 2, size / 2);
       
@@ -131,15 +200,51 @@ export const renderToCanvas = async (
     ctx.restore();
   }
 
+  // Draw cyber digital scanlines and vignette overlay if enabled
+  if (params.settings.scanlines) {
+    ctx.save();
+    ctx.fillStyle = 'rgba(0, 240, 255, 0.04)'; // cyber neon cyan soft scanlines
+    for (let y = 0; y < size; y += 8) {
+      ctx.fillRect(0, y, size, 3);
+    }
+    // Add electronic CRT screen vignette gradient
+    const vignette = ctx.createRadialGradient(size/2, size/2, size*0.4, size/2, size/2, size*0.75);
+    vignette.addColorStop(0, 'rgba(0, 0, 0, 0)');
+    vignette.addColorStop(1, 'rgba(0, 0, 0, 0.5)');
+    ctx.fillStyle = vignette;
+    ctx.fillRect(0, 0, size, size);
+    ctx.restore();
+  }
+
   // 3. Draw frame layer on top of user image
   try {
     let frameImg: HTMLImageElement;
     let tempUrl: string | null = null;
 
-    if (params.frame.type === 'procedural' && params.frame.renderSvg) {
-      const svgString = params.frame.renderSvg(params.neonColor);
-      tempUrl = svgToDataUrl(svgString);
-      frameImg = await loadImage(tempUrl, true);
+    if (params.frame.type === 'procedural') {
+      let svgString = '';
+      if (params.frame.renderSvg) {
+        svgString = params.frame.renderSvg(params.neonColor);
+      } else if (params.frame.svgElements) {
+        // Fallback for custom frames retrieved from JSON/localStorage where renderSvg function is lost
+        const rendered = params.frame.svgElements
+          .replace(/HIGHLIGHT_COLOR/g, params.neonColor)
+          .replace(/currentColor/g, params.neonColor);
+        
+        svgString = `<svg width="1000" height="1000" viewBox="0 0 1000 1000" fill="none" xmlns="http://www.w3.org/2000/svg">
+          ${rendered}
+        </svg>`;
+      }
+      
+      if (svgString) {
+        tempUrl = svgToDataUrl(svgString);
+        frameImg = await loadImage(tempUrl, true);
+      } else {
+         // Should not happen, but safe fallback
+         frameImg = new Image();
+         frameImg.src = 'data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciPjwvc3ZnPg=='; // empty svg
+         await new Promise((res) => { frameImg.onload = res; frameImg.onerror = res; });
+      }
     } else {
       frameImg = await loadImage(params.frame.src, true);
     }
@@ -166,61 +271,131 @@ export const renderToCanvas = async (
     ctx.restore();
   }
 
-  // 4. Draw placed stickers and text
-  for (const item of params.stickers) {
-    ctx.save();
-    const xPos = (item.x / 100) * size;
-    const yPos = (item.y / 100) * size;
-    ctx.translate(xPos, yPos);
-    ctx.rotate((item.rotation * Math.PI) / 180);
+  // 4. Draw placed stickers and text (Only during final download to avoid double rendering with HTML interactive layers)
+  if (params.isDownloading) {
+    for (const item of params.stickers) {
+      ctx.save();
+      const xPos = (item.x / 100) * size;
+      const yPos = (item.y / 100) * size;
+      ctx.translate(xPos, yPos);
+      ctx.rotate((item.rotation * Math.PI) / 180);
 
-    const sSize = params.settings.scale * item.scale * 150; // Reference sticker size
+      const sSize = params.settings.scale * item.scale * 150; // Reference sticker size
 
-    if (item.type === 'sticker' && item.stickerId) {
-      const path = params.presetStickerSvgPaths[item.stickerId];
-      if (path) {
-        ctx.strokeStyle = item.color || params.neonColor;
-        ctx.lineWidth = 4;
-        ctx.lineCap = 'round';
-        ctx.lineJoin = 'round';
+      if (item.type === 'sticker' && item.stickerId) {
+        const path = params.presetStickerSvgPaths[item.stickerId];
+        if (path) {
+          ctx.strokeStyle = item.color || params.neonColor;
+          ctx.lineWidth = 4;
+          ctx.lineCap = 'round';
+          ctx.lineJoin = 'round';
+          
+          // Render simple SVG Path beautifully scaled
+          const p = new Path2D(path);
+          ctx.save();
+          ctx.scale(sSize/100, sSize/100);
+          ctx.translate(-50, -50); // center path
+          ctx.stroke(p);
+          
+          // Add double glowing stroke path
+          ctx.shadowColor = item.color || params.neonColor;
+          ctx.shadowBlur = 10;
+          ctx.strokeStyle = '#ffffff';
+          ctx.lineWidth = 1.5;
+          ctx.stroke(p);
+          ctx.restore();
+        }
+      } else if (item.type === 'text' && item.text) {
+        const fFamily = item.fontFamily || 'Orbitron';
+        ctx.font = `bold ${Math.round(sSize)}px "${fFamily}", sans-serif`;
+        ctx.textAlign = 'center';
+        ctx.textBaseline = 'middle';
         
-        // Render simple SVG Path beautifully scaled
-        const p = new Path2D(path);
-        ctx.save();
-        ctx.scale(sSize/100, sSize/100);
-        ctx.translate(-50, -50); // center path
-        ctx.stroke(p);
-        
-        // Add double glowing stroke path
-        ctx.shadowColor = item.color || params.neonColor;
-        ctx.shadowBlur = 10;
-        ctx.strokeStyle = '#ffffff';
-        ctx.lineWidth = 1.5;
-        ctx.stroke(p);
-        ctx.restore();
+        const baseColor = item.color || params.neonColor;
+        const style = item.textStyle || 'plain';
+
+        if (style === 'neon') {
+          // Neon glow effect
+          ctx.shadowColor = baseColor;
+          ctx.shadowBlur = 15;
+          ctx.fillStyle = '#ffffff';
+          ctx.fillText(item.text, 0, 0);
+          
+          ctx.shadowBlur = 30;
+          ctx.fillText(item.text, 0, 0);
+
+          ctx.shadowBlur = 5;
+          ctx.lineWidth = 2;
+          ctx.strokeStyle = baseColor;
+          ctx.strokeText(item.text, 0, 0);
+        } else if (style === 'glitch') {
+          // Glitch split effect
+          ctx.shadowBlur = 0;
+          
+          ctx.globalAlpha = 0.8;
+          ctx.fillStyle = '#0ff'; // cyan
+          ctx.fillText(item.text, -3, 0);
+          
+          ctx.fillStyle = '#f0f'; // magenta
+          ctx.fillText(item.text, 3, 0);
+          
+          ctx.globalAlpha = 1;
+          ctx.fillStyle = '#ffffff';
+          ctx.fillText(item.text, 0, 0);
+        } else if (style === 'hologram') {
+          // Holographic semitransparent effect
+          ctx.shadowColor = '#0ff';
+          ctx.shadowBlur = 10;
+          
+          const gradient = ctx.createLinearGradient(0, -sSize/2, 0, sSize/2);
+          gradient.addColorStop(0, 'rgba(0, 255, 255, 0.9)');
+          gradient.addColorStop(0.5, 'rgba(255, 0, 255, 0.8)');
+          gradient.addColorStop(1, 'rgba(0, 255, 255, 0.9)');
+          
+          ctx.fillStyle = gradient;
+          ctx.fillText(item.text, 0, 0);
+          
+          // Slight white stroke
+          ctx.lineWidth = 1;
+          ctx.strokeStyle = 'rgba(255,255,255,0.8)';
+          ctx.strokeText(item.text, 0, 0);
+        } else if (style === 'chrome') {
+          // Metallic chrome effect
+          const gradient = ctx.createLinearGradient(0, -sSize/2, 0, sSize/2);
+          gradient.addColorStop(0, '#ffffff');
+          gradient.addColorStop(0.48, '#aaaaaa');
+          gradient.addColorStop(0.5, '#222222');
+          gradient.addColorStop(0.52, '#000000');
+          gradient.addColorStop(1, '#666666');
+          
+          ctx.shadowColor = '#000000';
+          ctx.shadowBlur = 10;
+          ctx.fillStyle = gradient;
+          ctx.fillText(item.text, 0, 0);
+          
+          ctx.shadowBlur = 0;
+          ctx.lineWidth = 1;
+          ctx.strokeStyle = '#ffffff';
+          ctx.strokeText(item.text, 0, 0);
+        } else {
+          // Default Plain text with slight shadow and underline
+          ctx.shadowColor = baseColor;
+          ctx.shadowBlur = 8;
+          ctx.fillStyle = '#ffffff';
+          ctx.fillText(item.text, 0, 0);
+  
+          ctx.shadowBlur = 0;
+          ctx.strokeStyle = baseColor;
+          ctx.lineWidth = 2;
+          const textWidth = ctx.measureText(item.text).width;
+          ctx.beginPath();
+          ctx.moveTo(-textWidth/2 - 10, sSize/2 + 6);
+          ctx.lineTo(textWidth/2 + 10, sSize/2 + 6);
+          ctx.stroke();
+        }
       }
-    } else if (item.type === 'text' && item.text) {
-      // Draw high tech indicator texts with neon shadows
-      ctx.shadowColor = item.color || params.neonColor;
-      ctx.shadowBlur = 8;
-      const fFamily = item.fontFamily || 'Orbitron';
-      ctx.font = `bold ${Math.round(sSize)}px "${fFamily}", sans-serif`;
-      ctx.fillStyle = '#ffffff';
-      ctx.textAlign = 'center';
-      ctx.textBaseline = 'middle';
-      ctx.fillText(item.text, 0, 0);
-
-      // Code line indicator under text
-      ctx.shadowBlur = 0;
-      ctx.strokeStyle = item.color || params.neonColor;
-      ctx.lineWidth = 2;
-      const textWidth = ctx.measureText(item.text).width;
-      ctx.beginPath();
-      ctx.moveTo(-textWidth/2 - 10, sSize/2 + 6);
-      ctx.lineTo(textWidth/2 + 10, sSize/2 + 6);
-      ctx.stroke();
+      
+      ctx.restore();
     }
-    
-    ctx.restore();
   }
 };

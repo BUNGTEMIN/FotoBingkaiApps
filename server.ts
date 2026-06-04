@@ -13,6 +13,17 @@ async function startServer() {
 
   app.use(express.json({ limit: "15mb" }));
 
+  // CORS Middleware for any /api request (enables qcc-online.web.app to make backend calls)
+  app.use("/api", (req, res, next) => {
+    res.setHeader("Access-Control-Allow-Origin", "*");
+    res.setHeader("Access-Control-Allow-Methods", "GET, POST, OPTIONS, PUT, PATCH, DELETE");
+    res.setHeader("Access-Control-Allow-Headers", "X-Requested-With,content-type,Authorization");
+    if (req.method === "OPTIONS") {
+      return res.sendStatus(200);
+    }
+    next();
+  });
+
   // Initialize Google GenAI
   const apiKey = process.env.GEMINI_API_KEY;
   let ai: GoogleGenAI | null = null;
@@ -65,6 +76,49 @@ async function startServer() {
     }
   });
 
+  app.post("/api/ai/slogans", async (req, res) => {
+    try {
+      const { prompt } = req.body;
+      if (!prompt) {
+        return res.status(400).json({ error: "Context or theme is required" });
+      }
+
+      if (!ai) {
+        return res.status(503).json({ 
+          error: "Sistem AI belum siap. Silakan pasang GEMINI_API_KEY di Settings > Secrets." 
+        });
+      }
+
+      // Generate 3 ultra-cool futuristic cyber slogans using gemini-3.5-flash
+      const systemPrompt = `You are a creative cyberpunk copywriter and sci-fi aesthetic master.
+Generate 3 short, snappy, incredibly punchy futuristic taglines or slogans in Indonesian or English (matching the user's theme) based on this topic: '${prompt}'.
+Each slogan must be raw UPPERCODE text, perfectly ready to be written as a sticker text layer on a twibbon avatar (No trailing periods, maximum 28 characters).
+Provide a matching suggested neon color code (Hex color code) and font name from: Orbitron, Syncopate, Rajdhani, Share Tech Mono, Press Start 2P, Bebas Neue, Revalia, Space Grotesk.
+You must return a valid JSON array of objects EXACTLY matching this structure:
+[
+  { "text": "SLOGAN_1_IN_CAPS", "color": "#00F0FF", "font": "Orbitron" },
+  { "text": "SLOGAN_2_IN_CAPS", "color": "#FF0555", "font": "Rajdhani" },
+  { "text": "SLOGAN_3_IN_CAPS", "color": "#39FF14", "font": "Space Grotesk" }
+]
+Do NOT return any markdown wrapping or code blocks. Just raw JSON string array.`;
+
+      const response = await ai.models.generateContent({
+        model: "gemini-3.5-flash",
+        contents: "Generate the slogans array.",
+        config: {
+          systemInstruction: systemPrompt,
+          responseMimeType: "application/json",
+        }
+      });
+
+      const parsed = JSON.parse(response.text || "[]");
+      res.json({ slogans: parsed });
+    } catch (error: any) {
+      console.error("Error generating slogans:", error);
+      res.status(500).json({ error: error?.message || "Gagal membuat slogan AI" });
+    }
+  });
+
   app.post("/api/ai/frame", async (req, res) => {
     try {
       const { prompt } = req.body;
@@ -79,12 +133,12 @@ async function startServer() {
       }
 
       // Call Gemini to generate dynamic SVG elements JSON
-      const systemPrompt = `You are a futuristic sci-fi graphic theme designer. Create a custom sci-fi HUD twibbon frame based on this user prompt: '${prompt}'.
+      const systemPrompt = `You are a futuristic sci-fi graphic theme designer. Create a custom sci-fi twibbon frame based on this user prompt: '${prompt}'.
 You must return a valid JSON object matching this structure EXACTLY:
 {
-  "name": "HUD: [A creative name]",
+  "name": "Frame: [A creative name]",
   "neonColor": "[Suggested Hex color code, e.g. #00F0FF, #FF0055, #39FF14, #9D4EDD, etc.]",
-  "svgElements": "[A string containing SVG tags, strictly to fit inside a 500x500 box. These tags will be injected directly inside an SVG. Use stroke='currentColor' or stroke='HIGHLIGHT_COLOR' (which we will dynamically replace) so that the lines glow properly with neonColor. Use rects, thin tech borders, circular HUD dials, tech text logs, decorative brackets, grid dots, and hacker-style telemetry lines. Ensure the center area (around 120 to 380) is mostly empty so the user's avatar face is clearly visible underneath. Make details incredibly intricate. Do NOT start with markdown or wrap this output in a markdown block. Return raw JSON string only.]"
+  "svgElements": "[A string containing SVG tags, strictly to fit inside a 500x500 box. These tags will be injected directly inside an SVG. Use stroke='currentColor' or stroke='HIGHLIGHT_COLOR' (which we will dynamically replace) so that the lines glow properly with neonColor. Use rects, thin tech borders, circular dials, tech text logs, decorative brackets, grid dots, and hacker-style telemetry lines. Ensure the center area (around 120 to 380) is mostly empty so the user's avatar face is clearly visible underneath. Make details incredibly intricate. Do NOT start with markdown or wrap this output in a markdown block. Return raw JSON string only.]"
 }`;
 
       const response = await ai.models.generateContent({

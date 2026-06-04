@@ -202,6 +202,60 @@ export default function ImageAdjuster({
             </button>
           </div>
 
+          {/* Custom Mask Shape selector */}
+          <div className="space-y-1 pt-2.5 border-t border-dashed border-white/10">
+            <span className={`text-[9.5px] font-mono block uppercase tracking-wider ${theme === 'dark' ? 'text-zinc-500' : 'text-zinc-600 font-bold'}`}>
+              🎭 Bentuk Crop Foto (Aperture Shape)
+            </span>
+            <div className="grid grid-cols-4 gap-1">
+              {(['square', 'circle', 'hexagon', 'octagon'] as const).map((shape) => {
+                const isSelected = settings.maskShape === shape;
+                return (
+                  <button
+                    key={shape}
+                    onClick={() => updateSetting('maskShape', shape)}
+                    className={`py-1.5 px-1 rounded text-[8.5px] font-mono border transition-all text-center capitalize ${
+                      isSelected
+                        ? 'bg-[#00F0FF]/15 border-neon-cyan text-neon-cyan shadow-[0_0_8px_rgba(0,240,255,0.15)] font-bold'
+                        : theme === 'dark'
+                          ? 'bg-zinc-950 border-white/5 text-zinc-500 hover:text-zinc-300'
+                          : 'bg-black/5 border-black/5 text-zinc-650 hover:text-zinc-900 font-medium'
+                    }`}
+                  >
+                    {shape === 'square' ? '⏹ Kotak' : shape === 'circle' ? '⏺ Bulat' : shape === 'hexagon' ? '⬢ Heksagon' : '⬣ Oktagon'}
+                  </button>
+                );
+              })}
+            </div>
+          </div>
+
+          {/* CRT Scanline Toggle */}
+          <div className={`p-2 rounded border flex items-center justify-between transition-all duration-300 ${
+            theme === 'dark' ? 'border-[#00F0FF]/15 bg-black/30' : 'border-black/5 bg-black/5'
+          }`}>
+            <div className="flex flex-col select-none pr-3">
+              <span className="text-[9.5px] font-mono text-neon-cyan font-black uppercase tracking-widest flex items-center gap-1.5">
+                📺 LAYAR SCANLINES retro
+              </span>
+              <span className="text-[8px] font-sans text-zinc-500 leading-normal mt-0.5 font-medium">
+                Aktifkan garis grid pemindaian retro monitor cybernetic.
+              </span>
+            </div>
+            <button
+              type="button"
+              onClick={() => updateSetting('scanlines', !settings.scanlines)}
+              className={`flex-none w-8 h-4.5 rounded-full p-0.5 transition-colors duration-200 focus:outline-none relative ${
+                settings.scanlines ? 'bg-neon-cyan' : theme === 'dark' ? 'bg-zinc-800' : 'bg-black/10'
+              }`}
+            >
+              <div className={`w-3.5 h-3.5 rounded-full shadow-md transform duration-200 ${
+                settings.scanlines 
+                  ? 'translate-x-3.5 bg-neutral-950' 
+                  : theme === 'dark' ? 'translate-x-0 bg-white/80' : 'translate-x-0 bg-white'
+              }`} />
+            </button>
+          </div>
+
           {/* 3D Parallax Tilt Toggle Control */}
           {onToggleParallax !== undefined && (
             <div className={`mt-3.5 p-2 rounded border flex items-center justify-between transition-all duration-300 ${

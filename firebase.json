@@ -1,7 +1,14 @@
 {
-  "firestore": {
-    "rules": "firestore.rules"
-  },
+  "firestore": [
+    {
+      "database": "(default)",
+      "rules": "firestore.rules"
+    },
+    {
+      "database": "ai-studio-3f812613-89fc-4f5b-a7b7-4c5d021ef30b",
+      "rules": "firestore.rules"
+    }
+  ],
   "hosting": {
     "public": "dist",
     "ignore": [
@@ -13,6 +20,21 @@
       {
         "source": "**",
         "destination": "/index.html"
+      }
+    ],
+    "headers": [
+      {
+        "source": "**/*.@(png|jpg|jpeg|gif|svg|webp)",
+        "headers": [
+          {
+            "key": "Cache-Control",
+            "value": "public, max-age=86400"
+          },
+          {
+            "key": "Access-Control-Allow-Origin",
+            "value": "*"
+          }
+        ]
       }
     ]
   }

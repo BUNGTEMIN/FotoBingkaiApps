@@ -5,7 +5,7 @@ import firebaseConfig from '../firebase-applet-config.json';
 
 // Initialize Firebase
 const app = initializeApp(firebaseConfig);
-export const db = getFirestore(app, firebaseConfig.firestoreDatabaseId); /* CRITICAL: The app will break without this line */
+export const db = getFirestore(app, (firebaseConfig as any).firestoreDatabaseId); /* CRITICAL: The app will break without this line */
 export const auth = getAuth();
 
 // Error handler interfaces aligned with firebase-integration skill
@@ -58,11 +58,17 @@ export function handleFirestoreError(error: unknown, operationType: OperationTyp
 
 // Validate connection to Firestore on initialization
 async function testConnection() {
+  if (typeof window === 'undefined') return; // Jangan jalankan di server atau saat proses build compile
+  
   try {
-    await getDocFromServer(doc(db, 'test', 'connection'));
+    // Gunakan timeout agar tidak memblokir atau memicu error panjang jika jaringan lambat
+    await Promise.race([
+      getDocFromServer(doc(db, 'test', 'connection')),
+      new Promise((_, reject) => setTimeout(() => reject(new Error('the client is offline (timeout)')), 4000))
+    ]);
   } catch (error) {
     if (error instanceof Error && error.message.includes('the client is offline')) {
-      console.error("Please check your Firebase configuration.");
+      console.warn("Informasi Firebase: Berjalan dalam mode offline atau caching lokal.");
     }
   }
 }

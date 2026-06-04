@@ -29,6 +29,22 @@
           "type": "string",
           "format": "date-time",
           "description": "The timestamp when the image was downloaded"
+        },
+        "userId": {
+          "type": "string",
+          "description": "The UID of the user who downloaded the image"
+        },
+        "userName": {
+          "type": "string",
+          "description": "The display name of the user"
+        },
+        "userEmail": {
+          "type": "string",
+          "description": "The email of the user"
+        },
+        "userAvatar": {
+          "type": "string",
+          "description": "The profile photo URL of the user"
         }
       },
       "required": ["id", "fileName", "imageUrl", "format", "size", "downloadedAt"]
