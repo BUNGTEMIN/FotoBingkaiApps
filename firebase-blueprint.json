@@ -1,0 +1,43 @@
+{
+  "entities": {
+    "download": {
+      "title": "Download",
+      "description": "A record of an image downloaded and saved by a user",
+      "type": "object",
+      "properties": {
+        "id": {
+          "type": "string",
+          "description": "Unique auto-generated ID for the download record"
+        },
+        "fileName": {
+          "type": "string",
+          "description": "The name of the downloaded file"
+        },
+        "imageUrl": {
+          "type": "string",
+          "description": "The base64 encoded data URL representation of the image"
+        },
+        "format": {
+          "type": "string",
+          "description": "The image format used for download"
+        },
+        "size": {
+          "type": "integer",
+          "description": "The size resolution of the downloaded image"
+        },
+        "downloadedAt": {
+          "type": "string",
+          "format": "date-time",
+          "description": "The timestamp when the image was downloaded"
+        }
+      },
+      "required": ["id", "fileName", "imageUrl", "format", "size", "downloadedAt"]
+    }
+  },
+  "firestore": {
+    "downloads/{downloadId}": {
+      "schema": "download",
+      "description": "A collection containing records of downloaded images"
+    }
+  }
+}

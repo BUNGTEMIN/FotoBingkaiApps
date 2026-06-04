@@ -1,0 +1,47 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    // Global Safety Net
+    match /{document=**} {
+      allow read, write: if false;
+    }
+
+    // Common Helper functions
+    function isValidId(id) {
+      return id is string && id.size() <= 128 && id.matches('^[a-zA-Z0-9_\\-]+$');
+    }
+
+    function incoming() {
+      return request.resource.data;
+    }
+
+    function isValidDownload(data) {
+      return data.keys().hasAll(['id', 'fileName', 'imageUrl', 'format', 'size', 'downloadedAt'])
+        && data.keys().size() == 6
+        && data.id is string
+        && data.id.size() <= 128
+        && data.id.matches('^[a-zA-Z0-9_\\-]+$')
+        && data.fileName is string
+        && data.fileName.size() > 0
+        && data.fileName.size() <= 200
+        && data.imageUrl is string
+        && data.imageUrl.size() > 0
+        && data.imageUrl.size() <= 1048576  // Limit to under 1MB to prevent document size exhaustion
+        && data.format is string
+        && (data.format == 'png' || data.format == 'webp' || data.format == 'jpeg')
+        && data.size is int
+        && data.size >= 100
+        && data.size <= 3000
+        && data.downloadedAt == request.time;
+    }
+
+    // Downloads Collection rules
+    match /downloads/{downloadId} {
+      allow get: if isValidId(downloadId);
+      allow list: if false; // Prevent bulk listing / data scraping
+      allow create: if isValidId(downloadId) && isValidDownload(incoming());
+      allow update, delete: if false; // Immutable history
+    }
+  }
+}

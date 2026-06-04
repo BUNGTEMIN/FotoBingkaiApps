@@ -1,0 +1,6 @@
+{
+  "name": "Foto Bingkai",
+  "description": "Pembuat avatar foto bingkai (twibbon) estetik, futuristik, dan modern dengan kustomisasi posisi, ukuran, filter, dan bingkai keren.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
