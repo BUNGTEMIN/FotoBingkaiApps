@@ -2,6 +2,7 @@ import { Frame, ImageSettings, PlacedSticker } from './types';
 
 // Helper to resolve relative API routes to direct full-stack backend URL if hosted on a static domain
 export const resolveApiUrl = (apiPath: string): string => {
+  if (apiPath.startsWith('http://') || apiPath.startsWith('https://')) return apiPath;
   const host = window.location.hostname;
   // Use absolute backend URL ONLY if hosted on an external static domain (like Firebase/web.app)
   // If we are already on localhost or the native Cloud Run url (*.run.app), we can safely use relative paths.

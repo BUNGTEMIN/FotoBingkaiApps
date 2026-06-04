@@ -23,6 +23,7 @@ import { LazyImage } from './components/LazyImage';
 import { Frame, ImageSettings, PlacedSticker } from './types';
 import { FRAMES, FILTER_PRESETS, PRESET_STICKERS } from './presets';
 import { renderToCanvas, resolveApiUrl } from './canvasUtils';
+import { storage, BUCKET_ID } from './appwrite';
 
 const DEFAULT_IMAGE = 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?auto=format&fit=crop&w=600&q=80';
 
@@ -233,7 +234,7 @@ export default function App() {
       }));
       setComGalleryItems(formatted);
     } catch (err: any) {
-      console.error("Error loading Nufat creations:", err);
+      // console.error("Error loading Nufat creations:", err);
       setComGalleryError(err?.message || 'Gagal tersambung ke server Nufat API.');
     } finally {
       setIsLoadingComGallery(false);
@@ -253,6 +254,8 @@ export default function App() {
   const [userImage, setUserImage] = useState<string | null>(DEFAULT_IMAGE);
   const [selectedFrame, setSelectedFrame] = useState<Frame>(FRAMES[0]);
   const [customFrames, setCustomFrames] = useState<Frame[]>([]);
+  const [appwriteFrames, setAppwriteFrames] = useState<Frame[]>([]);
+  const [isLoadingAppwrite, setIsLoadingAppwrite] = useState(false);
   const [neonColor, setNeonColor] = useState('#00f2fe'); // default tech cyan
   const [imageSettings, setImageSettings] = useState<ImageSettings>(DEFAULT_SETTINGS);
   
@@ -470,6 +473,32 @@ export default function App() {
       triggerToast("Sistem: Tidak ada perubahan untuk diurungkan kembali.");
     }
   };
+
+  // Fetch custom frames from Appwrite
+  useEffect(() => {
+    const fetchAppwriteFrames = async () => {
+      if (!BUCKET_ID) return;
+      setIsLoadingAppwrite(true);
+      try {
+        const fileList = await storage.listFiles(BUCKET_ID);
+        const mappedFrames: Frame[] = fileList.files
+          .filter(file => file.mimeType.includes('image'))
+          .map(file => ({
+            id: `aw_${file.$id}`,
+            name: file.name.split('.')[0] || 'Appwrite Frame',
+            src: storage.getFileView(BUCKET_ID, file.$id).toString(),
+            category: 'Appwrite',
+            type: 'url'
+          }));
+        setAppwriteFrames(mappedFrames);
+      } catch (error) {
+        // console.error("Failed to load frames from Appwrite:", error);
+      } finally {
+        setIsLoadingAppwrite(false);
+      }
+    };
+    fetchAppwriteFrames();
+  }, []);
 
   // Load custom frames & my gallery from localstorage on mount
   useEffect(() => {
@@ -1205,6 +1234,7 @@ export default function App() {
   const dateNow = new Date().toISOString().substring(0, 10);
   
   // Quest validation calculations
+  const displayFrames = [...FRAMES, ...appwriteFrames, ...customFrames];
   const quest1Completed = userImage !== null && userImage !== DEFAULT_IMAGE;
   const quest2Completed = selectedFrame !== null && selectedFrame.id !== FRAMES[0].id;
   const quest3Completed = filterPresetId !== 'none';
@@ -1256,7 +1286,7 @@ export default function App() {
               <div className="lg:hidden mb-4 space-y-3 w-full animate-fadeIn">
                 {/* Horizontal Frame Selection Carousel (Slider Bingkai) */}
                 <div className="flex gap-2.5 overflow-x-auto pb-2 scrollbar-thin scrollbar-thumb-white/10 scrollbar-track-transparent w-full">
-                  {FRAMES.map((frame) => {
+                  {displayFrames.map((frame) => {
                     const isSelected = frame.id === selectedFrame.id;
                     return (
                       <button
@@ -3122,7 +3152,7 @@ export default function App() {
         </div>
 
         <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4">
-          {FRAMES.map((frame) => {
+          {displayFrames.map((frame) => {
             const isSelected = frame.id === selectedFrame.id;
             return (
               <div
