@@ -7,7 +7,8 @@ import { motion, AnimatePresence } from 'motion/react';
 
 // Firebase and database setup
 import { doc, setDoc, serverTimestamp } from 'firebase/firestore';
-import { db, handleFirestoreError, OperationType } from './firebase';
+import { onAuthStateChanged, signInWithPopup, GoogleAuthProvider, signOut, User } from 'firebase/auth';
+import { db, auth, handleFirestoreError, OperationType } from './firebase';
 
 // Custom components
 import BungteminHeader from './components/BungteminHeader';
@@ -86,6 +87,10 @@ const COMMUNITY_GALLERY = [
 ];
 
 export default function App() {
+  // Google Authentication State
+  const [user, setUser] = useState<User | null>(null);
+  const [isAuthLoading, setIsAuthLoading] = useState(true);
+
   // Page state: 'beranda' / 'bingkai' / 'galeri' / 'album'
   const [currentPage, setCurrentPage] = useState<'beranda' | 'bingkai' | 'galeri' | 'album'>('beranda');
   const [savedCreations, setSavedCreations] = useState<{ id: string; src: string; timestamp: string }[]>([]);
@@ -222,6 +227,48 @@ export default function App() {
       console.error(e);
     }
   }, []);
+
+  // Listen to Auth State changes for Auto Login with Google
+  useEffect(() => {
+    const unsubscribe = onAuthStateChanged(auth, (currentUser) => {
+      setUser(currentUser);
+      setIsAuthLoading(false);
+      if (currentUser) {
+        console.log(`[Firebase Auth] Auto-masuk sukses: ${currentUser.displayName || currentUser.email}`);
+      }
+    });
+    return () => unsubscribe();
+  }, []);
+
+  // Google sign in popup handler
+  const handleGoogleLogin = async () => {
+    const provider = new GoogleAuthProvider();
+    provider.setCustomParameters({ prompt: 'select_account' });
+    try {
+      setIsAuthLoading(true);
+      const result = await signInWithPopup(auth, provider);
+      triggerToast(`Selamat datang kembali, ${result.user.displayName || 'Pengguna'}! 🛸✨`);
+    } catch (err: any) {
+      console.error("Google login error:", err);
+      triggerToast(`Gagal masuk: ${err.message || err}`);
+    } finally {
+      setIsAuthLoading(false);
+    }
+  };
+
+  // Logout handler
+  const handleLogout = async () => {
+    try {
+      setIsAuthLoading(true);
+      await signOut(auth);
+      triggerToast("Akun Anda berhasil dinonaktifkan dari sesi ini. 👋");
+    } catch (err: any) {
+      console.error("Logout error:", err);
+      triggerToast("Gagal sign out akun.");
+    } finally {
+      setIsAuthLoading(false);
+    }
+  };
 
   // Monitor scroll for premium dynamic parallax tilt
   useEffect(() => {
@@ -731,7 +778,16 @@ export default function App() {
       theme === 'dark' ? 'bg-[#050505] text-[#E0E0E0] theme-dark' : 'bg-[#FAFAFB] text-zinc-800 theme-light'
     }`}>
       {/* Header component */}
-      <BungteminHeader currentPage={currentPage} onNavigate={setCurrentPage} theme={theme} onToggleTheme={toggleTheme} />
+      <BungteminHeader 
+        currentPage={currentPage} 
+        onNavigate={setCurrentPage} 
+        theme={theme} 
+        onToggleTheme={toggleTheme} 
+        user={user}
+        isAuthLoading={isAuthLoading}
+        onGoogleLogin={handleGoogleLogin}
+        onLogout={handleLogout}
+      />
 
       {/* Main Workspace Layout */}
       {currentPage === 'beranda' && (
@@ -1078,9 +1134,17 @@ export default function App() {
             transition={{ type: 'spring', damping: 26, stiffness: 340 }}
             className="fixed bottom-[64px] left-1/2 w-full max-w-lg px-4 z-40"
           >
-            <div className="bg-[#0b0b0d]/92 backdrop-blur-xl rounded-2xl border border-white/10 shadow-[0_8px_32px_rgba(0,0,0,0.6)] overflow-hidden flex flex-col max-h-[245px] transition-all duration-300">
+            <div className={`backdrop-blur-xl rounded-2xl border transition-all duration-300 overflow-hidden flex flex-col h-auto max-h-[85vh] ${
+              theme === 'dark' 
+                ? 'bg-[#0b0b0d]/92 border-white/10 text-white shadow-[0_12px_40px_rgba(0,0,0,0.75)]' 
+                : 'bg-white/80 border-black/10 text-zinc-900 shadow-[0_12px_40px_rgba(0,0,0,0.15)]'
+            }`}>
             {/* Modal Semi-transparent Header */}
-            <div className="flex items-center justify-between px-3 py-1.5 bg-black/40 border-b border-white/5 font-mono text-[9px] tracking-widest text-[#00F0FF] uppercase">
+            <div className={`flex items-center justify-between px-3 py-1.5 font-mono text-[9px] tracking-widest uppercase border-b transition-all duration-300 ${
+              theme === 'dark'
+                ? 'bg-black/40 border-white/5 text-[#00F0FF]'
+                : 'bg-black/5 border-black/5 text-[#0066FF] font-extrabold'
+            }`}>
               <span className="font-extrabold flex items-center gap-1.5 text-[10px]">
                 {activeTab === 'adjust' && <><Settings2 className="w-3.5 h-3.5 text-neon-cyan animate-pulse" /> POSISI FOTO</>}
                 {activeTab === 'filter' && <><Sliders className="w-3.5 h-3.5 text-neon-cyan" /> FILTER ESTETIK</>}
@@ -1091,7 +1155,11 @@ export default function App() {
               </span>
               <button 
                 onClick={() => setActiveTab(null)}
-                className="p-1 px-2 text-[9px] font-mono tracking-wider font-bold text-zinc-400 hover:text-white rounded bg-white/5 border border-white/10 transition-all uppercase"
+                className={`p-1 px-2 text-[9px] font-mono tracking-wider font-bold rounded uppercase border transition-all ${
+                  theme === 'dark'
+                    ? 'text-zinc-400 hover:text-white bg-white/5 border-white/10'
+                    : 'text-zinc-650 hover:text-black bg-black/5 border-black/10'
+                }`}
                 title="Tutup menu"
               >
                 TUTUP ✕
@@ -1099,7 +1167,9 @@ export default function App() {
             </div>
 
             {/* Modal Body Container */}
-            <div className="p-3 overflow-y-auto scrollbar-thin scrollbar-thumb-white/15 max-h-[195px]">
+            <div className={`p-4 overflow-y-auto scrollbar-thin max-h-[75vh] transition-all duration-300 ${
+              theme === 'dark' ? 'scrollbar-thumb-white/15' : 'scrollbar-thumb-black/10'
+            }`}>
               {activeTab === 'adjust' && (
                 <ImageAdjuster
                   settings={imageSettings}
@@ -1114,6 +1184,7 @@ export default function App() {
                   activeSection="posisi"
                   enableParallax={enableParallax}
                   onToggleParallax={setEnableParallax}
+                  theme={theme}
                 />
               )}
 
@@ -1130,6 +1201,7 @@ export default function App() {
                   activeSection="filter"
                   enableParallax={enableParallax}
                   onToggleParallax={setEnableParallax}
+                  theme={theme}
                 />
               )}
 
@@ -1154,6 +1226,7 @@ export default function App() {
                   activeSection="warna"
                   enableParallax={enableParallax}
                   onToggleParallax={setEnableParallax}
+                  theme={theme}
                 />
               )}
 
@@ -1166,19 +1239,22 @@ export default function App() {
                   neonColor={neonColor}
                   selectedStickerId={selectedStickerId}
                   onSelectSticker={setSelectedStickerId}
+                  theme={theme}
                 />
               )}
 
               {activeTab === 'ai' && (
                 <div className="space-y-3">
                   {/* Segment controller for AI mode */}
-                  <div className="flex bg-black p-0.5 rounded border border-white/10">
+                  <div className={`flex p-0.5 rounded border transition-all duration-300 ${
+                    theme === 'dark' ? 'bg-black border-white/10' : 'bg-black/5 border-black/5'
+                  }`}>
                     <button
                       onClick={() => { setAiMode('image'); setAiError(null); }}
                       className={`flex-1 py-1 px-2 rounded font-mono text-[9px] font-black tracking-widest uppercase transition-all ${
                         aiMode === 'image'
-                          ? 'bg-amber-400 text-black shadow-[0_0_10px_rgba(251,191,36,0.25)]'
-                          : 'text-zinc-400 hover:text-zinc-200'
+                          ? 'bg-amber-400 text-black shadow-[0_0_10px_rgba(251,191,36,0.25)] font-black'
+                          : theme === 'dark' ? 'text-zinc-400 hover:text-zinc-200' : 'text-zinc-500 hover:text-zinc-800'
                       }`}
                     >
                       ✨ GAMBAR AVATAR AI
@@ -1187,8 +1263,8 @@ export default function App() {
                       onClick={() => { setAiMode('frame'); setAiError(null); }}
                       className={`flex-1 py-1 px-2 rounded font-mono text-[9px] font-black tracking-widest uppercase transition-all ${
                         aiMode === 'frame'
-                          ? 'bg-[#00F0FF] text-black shadow-[0_0_10px_rgba(0,240,255,0.25)]'
-                          : 'text-zinc-400 hover:text-zinc-200'
+                          ? 'bg-[#00F0FF] text-black shadow-[0_0_10px_rgba(0,240,255,0.25)] font-black'
+                          : theme === 'dark' ? 'text-zinc-400 hover:text-zinc-200' : 'text-zinc-500 hover:text-zinc-800'
                       }`}
                     >
                       🎨 DESAIN BINGKAI AI
@@ -1196,7 +1272,9 @@ export default function App() {
                   </div>
 
                   <div className="space-y-1">
-                    <label className="text-zinc-400 text-[9px] font-mono tracking-wider block uppercase">
+                    <label className={`text-[9px] font-mono tracking-wider block uppercase ${
+                      theme === 'dark' ? 'text-zinc-400' : 'text-zinc-650 font-bold'
+                    }`}>
                       {aiMode === 'image' 
                         ? 'Deskripsi wajah impian:' 
                         : 'Detail tema bingkai futuristik:'}
@@ -1207,7 +1285,11 @@ export default function App() {
                       placeholder={aiMode === 'image' 
                         ? 'Contoh: robot gamer dari indonesia, helm cyber metalik, tatapan tajam, neon cyan' 
                         : 'Contoh: tema hacker dengan layar matriks hijau kode biner, sudut kawat besi cybernetic'}
-                      className="w-full bg-[#121214] border border-white/15 rounded-lg px-2 py-1 font-sans text-xs text-zinc-100 placeholder-zinc-600 focus:outline-none focus:border-neon-cyan transition-colors resize-none h-[42px]"
+                      className={`w-full rounded-lg px-2 py-1 font-sans text-xs transition-colors resize-none h-[42px] focus:outline-none focus:border-neon-cyan ${
+                        theme === 'dark'
+                          ? 'bg-[#121214] border-white/15 text-zinc-100 placeholder-zinc-600'
+                          : 'bg-white border border-black/10 text-zinc-900 placeholder-zinc-400 font-medium'
+                      }`}
                     />
                   </div>
 
@@ -1224,8 +1306,8 @@ export default function App() {
                       isGeneratingAI
                         ? 'bg-zinc-800 text-zinc-500 cursor-not-allowed'
                         : aiMode === 'image'
-                          ? 'bg-amber-400 hover:bg-amber-500 text-black shadow-[0_0_12px_rgba(251,191,36,0.3)]'
-                          : 'bg-neon-cyan hover:bg-[#00d2ff] text-black shadow-[0_0_12px_rgba(0,240,255,0.3)]'
+                          ? 'bg-amber-400 hover:bg-amber-500 text-black shadow-[0_0_12px_rgba(251,191,36,0.3)] font-black'
+                          : 'bg-neon-cyan hover:bg-[#00d2ff] text-black shadow-[0_0_12px_rgba(0,240,255,0.3)] font-black'
                     }`}
                   >
                     <Sparkles className={`w-3 h-3 ${isGeneratingAI ? 'animate-spin' : 'animate-bounce'}`} />
@@ -1240,7 +1322,9 @@ export default function App() {
 
               {activeTab === 'download' && (
                 <div className="space-y-3">
-                  <div className="text-zinc-300 text-[9px] font-mono tracking-widest uppercase">
+                  <div className={`text-[9px] font-mono tracking-widest uppercase ${
+                    theme === 'dark' ? 'text-zinc-300' : 'text-zinc-650 font-bold'
+                  }`}>
                     Pilih Resolusi Ukuran Output:
                   </div>
                   <div className="grid grid-cols-3 gap-1.5">
@@ -1259,18 +1343,28 @@ export default function App() {
                           }}
                           className={`p-1.5 rounded border text-left transition-all duration-200 flex flex-col justify-between ${
                             isSelected
-                              ? 'border-neon-cyan bg-cyan-950/20 text-white shadow-[0_0_10px_rgba(0,240,255,0.15)]'
-                              : 'border-white/10 bg-white/5 text-zinc-400'
+                              ? 'border-neon-cyan bg-cyan-950/20 text-white shadow-[0_0_10px_rgba(0,240,255,0.15)] font-bold'
+                              : theme === 'dark'
+                                ? 'border-white/10 bg-white/5 text-zinc-400 hover:bg-white/10'
+                                : 'border-black/10 bg-black/5 text-zinc-700 hover:bg-black/10'
                           }`}
                         >
-                          <span className={`text-[8.5px] font-bold ${isSelected ? 'text-neon-cyan' : 'text-zinc-350'}`}>{sz.label}</span>
-                          <span className="text-[7.5px] opacity-75 font-mono mt-0.5">{sz.desc}</span>
+                          <span className={`text-[8.5px] font-bold ${
+                            isSelected 
+                              ? 'text-neon-cyan' 
+                              : theme === 'dark' ? 'text-zinc-350' : 'text-zinc-800'
+                          }`}>{sz.label}</span>
+                          <span className={`text-[7.5px] opacity-75 font-mono mt-0.5 ${
+                            theme === 'dark' ? 'text-zinc-500' : 'text-zinc-600'
+                          }`}>{sz.desc}</span>
                         </button>
                       );
                     })}
                   </div>
 
-                  <div className="text-zinc-300 text-[9px] font-mono tracking-widest uppercase mt-2">
+                  <div className={`text-[9px] font-mono tracking-widest uppercase mt-2 ${
+                    theme === 'dark' ? 'text-zinc-300' : 'text-zinc-650 font-bold'
+                  }`}>
                     Pilih Format File Output:
                   </div>
                   <div className="grid grid-cols-3 gap-1.5">
@@ -1289,24 +1383,48 @@ export default function App() {
                           }}
                           className={`p-1.5 rounded border text-left transition-all duration-200 flex flex-col justify-between ${
                             isSelected
-                              ? 'border-neon-cyan bg-cyan-950/20 text-white shadow-[0_0_10px_rgba(0,240,255,0.15)]'
-                              : 'border-white/10 bg-white/5 text-zinc-400'
+                              ? 'border-neon-cyan bg-cyan-950/20 text-white shadow-[0_0_10px_rgba(0,240,255,0.15)] font-bold'
+                              : theme === 'dark'
+                                ? 'border-white/10 bg-white/5 text-zinc-400 hover:bg-white/10'
+                                : 'border-black/10 bg-black/5 text-zinc-700 hover:bg-black/10'
                           }`}
                         >
-                          <span className={`text-[8.5px] font-bold ${isSelected ? 'text-neon-cyan' : 'text-zinc-350'}`}>{fmt.label}</span>
-                          <span className="text-[7.5px] opacity-75 font-mono mt-0.5">{fmt.desc}</span>
+                          <span className={`text-[8.5px] font-bold ${
+                            isSelected 
+                              ? 'text-neon-cyan' 
+                              : theme === 'dark' ? 'text-zinc-350' : 'text-zinc-800'
+                          }`}>{fmt.label}</span>
+                          <span className={`text-[7.5px] opacity-75 font-mono mt-0.5 ${
+                            theme === 'dark' ? 'text-zinc-500' : 'text-zinc-600'
+                          }`}>{fmt.desc}</span>
                         </button>
                       );
                     })}
                   </div>
                   
-                  <button
-                    onClick={handleDownloadHD}
-                    className="w-full mt-2.5 uppercase font-mono font-black text-[10px] tracking-widest py-2 rounded bg-neon-cyan text-black hover:bg-[#00d2ff] hover:scale-[1.01] transition-all flex items-center justify-center gap-1.5 shadow-[0_0_12px_rgba(0,240,255,0.35)]"
-                  >
-                    <Download className="w-3.5 h-3.5 text-black animate-bounce" />
-                    UNDUH AVATAR ({downloadFormat.toUpperCase()} - {downloadSize}x{downloadSize})
-                  </button>
+                  {user ? (
+                    <button
+                      onClick={handleDownloadHD}
+                      className="w-full mt-4 uppercase font-mono font-black text-xs tracking-widest py-3.5 px-5 rounded-xl bg-neon-cyan text-black hover:bg-[#00d2ff] hover:scale-[1.02] transition-all flex items-center justify-center gap-2 shadow-[0_0_20px_rgba(0,240,255,0.45)] border border-white/10 active:scale-[0.98]"
+                    >
+                      <Download className="w-4 h-4 text-black animate-bounce" />
+                      UNDUH AVATAR ({downloadFormat.toUpperCase()} - {downloadSize}x{downloadSize})
+                    </button>
+                  ) : (
+                    <button
+                      type="button"
+                      onClick={handleGoogleLogin}
+                      className="w-full mt-4 uppercase font-mono font-black text-xs tracking-widest py-3.5 px-5 rounded-xl bg-[#4285F4] text-white hover:bg-[#357ae8] hover:scale-[1.02] transition-all flex items-center justify-center gap-2.5 shadow-[0_4px_15px_rgba(66,133,244,0.35)] border border-transparent active:scale-[0.98]"
+                    >
+                      <svg className="w-4 h-4 fill-current shrink-0" viewBox="0 0 24 24">
+                        <path d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z" />
+                        <path d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z" />
+                        <path d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.06H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.94l2.85-2.22.81-.63z" />
+                        <path d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.06l3.66 2.84c.87-2.6 3.3-4.53 6.16-4.53z" />
+                      </svg>
+                      MASUK DENGAN GOOGLE UNTUK UNDUH
+                    </button>
+                  )}
                 </div>
               )}
             </div>

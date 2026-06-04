@@ -14,6 +14,7 @@ interface ImageAdjusterProps {
   activeSection?: 'posisi' | 'filter' | 'warna';
   enableParallax?: boolean;
   onToggleParallax?: (enabled: boolean) => void;
+  theme?: 'dark' | 'light';
 }
 
 export default function ImageAdjuster({
@@ -24,7 +25,8 @@ export default function ImageAdjuster({
   onResetSettings,
   activeSection,
   enableParallax = true,
-  onToggleParallax
+  onToggleParallax,
+  theme = 'dark'
 }: ImageAdjusterProps) {
   const [internalSubTab, setInternalSubTab] = React.useState<'posisi' | 'filter' | 'warna'>('posisi');
   
@@ -42,13 +44,15 @@ export default function ImageAdjuster({
     <div className="space-y-3.5">
       {/* Sub Tabs - Only render if not actively controlled by parent */}
       {!activeSection && (
-        <div className="flex bg-black p-0.5 rounded border border-white/5">
+        <div className={`flex p-0.5 rounded border transition-all duration-300 ${
+          theme === 'dark' ? 'bg-black border-white/5' : 'bg-black/5 border-black/5'
+        }`}>
           <button
             onClick={() => setInternalSubTab('posisi')}
             className={`flex-1 py-1 rounded text-[10px] font-mono font-bold tracking-widest transition-all ${
               activeSubTab === 'posisi'
-                ? 'bg-white/15 text-neon-cyan'
-                : 'text-zinc-500 hover:text-zinc-300'
+                ? theme === 'dark' ? 'bg-white/15 text-neon-cyan' : 'bg-black/10 text-[#0066FF] font-black'
+                : theme === 'dark' ? 'text-zinc-500 hover:text-zinc-300' : 'text-zinc-400 hover:text-zinc-700'
             }`}
           >
             PENGATURAN
@@ -57,8 +61,8 @@ export default function ImageAdjuster({
             onClick={() => setInternalSubTab('filter')}
             className={`flex-1 py-1 rounded text-[10px] font-mono font-bold tracking-widest transition-all ${
               activeSubTab === 'filter'
-                ? 'bg-white/15 text-neon-cyan'
-                : 'text-zinc-500 hover:text-zinc-300'
+                ? theme === 'dark' ? 'bg-white/15 text-neon-cyan' : 'bg-black/10 text-[#0066FF] font-black'
+                : theme === 'dark' ? 'text-zinc-500 hover:text-zinc-300' : 'text-zinc-400 hover:text-zinc-700'
             }`}
           >
             FILTER FUTURISTIK
@@ -67,8 +71,8 @@ export default function ImageAdjuster({
             onClick={() => setInternalSubTab('warna')}
             className={`flex-1 py-1 rounded text-[10px] font-mono font-bold tracking-widest transition-all ${
               activeSubTab === 'warna'
-                ? 'bg-white/15 text-neon-cyan'
-                : 'text-zinc-500 hover:text-zinc-300'
+                ? theme === 'dark' ? 'bg-white/15 text-neon-cyan' : 'bg-black/10 text-[#0066FF] font-black'
+                : theme === 'dark' ? 'text-zinc-500 hover:text-zinc-300' : 'text-zinc-400 hover:text-zinc-700'
             }`}
           >
             KOREKSI WARNA
@@ -80,12 +84,12 @@ export default function ImageAdjuster({
         <div className="space-y-2.5">
           {/* Zoom Control */}
           <div className="space-y-0.5">
-            <div className="flex justify-between items-center text-[10px] text-zinc-400 font-mono">
-              <span className="flex items-center gap-1">
+            <div className="flex justify-between items-center text-[10px] font-mono">
+              <span className={`flex items-center gap-1 ${theme === 'dark' ? 'text-zinc-400' : 'text-zinc-650 font-bold'}`}>
                 <ZoomIn className="w-3.5 h-3.5 text-neon-cyan" />
                 Skala Foto (Zoom)
               </span>
-              <span className="text-zinc-300 font-bold text-[9.5px]">{Math.round(settings.scale * 100)}%</span>
+              <span className={`font-bold text-[9.5px] ${theme === 'dark' ? 'text-zinc-300' : 'text-zinc-800'}`}>{Math.round(settings.scale * 100)}%</span>
             </div>
             <input
               type="range"
@@ -94,18 +98,18 @@ export default function ImageAdjuster({
               step="0.05"
               value={settings.scale}
               onChange={(e) => updateSetting('scale', parseFloat(e.target.value))}
-              className="w-full h-1 bg-zinc-900 rounded appearance-none cursor-pointer accent-neon-cyan"
+              className={`w-full h-1 rounded appearance-none cursor-pointer accent-neon-cyan ${theme === 'dark' ? 'bg-zinc-900' : 'bg-black/10'}`}
             />
           </div>
 
           {/* Rotate Control */}
           <div className="space-y-0.5">
-            <div className="flex justify-between items-center text-[10px] text-zinc-400 font-mono">
-              <span className="flex items-center gap-1">
+            <div className="flex justify-between items-center text-[10px] font-mono">
+              <span className={`flex items-center gap-1 ${theme === 'dark' ? 'text-zinc-400' : 'text-zinc-650 font-bold'}`}>
                 <RotateCw className="w-3.5 h-3.5 text-neon-cyan" />
                 Putar Foto (Derajat)
               </span>
-              <span className="text-zinc-300 font-bold text-[9.5px]">{settings.rotation}°</span>
+              <span className={`font-bold text-[9.5px] ${theme === 'dark' ? 'text-zinc-300' : 'text-zinc-800'}`}>{settings.rotation}°</span>
             </div>
             <input
               type="range"
@@ -114,18 +118,18 @@ export default function ImageAdjuster({
               step="1"
               value={settings.rotation}
               onChange={(e) => updateSetting('rotation', parseInt(e.target.value))}
-              className="w-full h-1 bg-zinc-900 rounded appearance-none cursor-pointer accent-neon-cyan"
+              className={`w-full h-1 rounded appearance-none cursor-pointer accent-neon-cyan ${theme === 'dark' ? 'bg-zinc-900' : 'bg-black/10'}`}
             />
           </div>
 
           {/* Offset X Slider */}
           <div className="space-y-0.5">
-            <div className="flex justify-between items-center text-[10px] text-zinc-400 font-mono">
-              <span className="flex items-center gap-1">
+            <div className="flex justify-between items-center text-[10px] font-mono">
+              <span className={`flex items-center gap-1 ${theme === 'dark' ? 'text-zinc-400' : 'text-zinc-650 font-bold'}`}>
                 <MoveHorizontal className="w-3.5 h-3.5 text-neon-cyan" />
                 Geser Horizontal (X)
               </span>
-              <span className="text-zinc-300 font-bold text-[9.5px]">{settings.x}%</span>
+              <span className={`font-bold text-[9.5px] ${theme === 'dark' ? 'text-zinc-300' : 'text-zinc-800'}`}>{settings.x}%</span>
             </div>
             <input
               type="range"
@@ -134,18 +138,18 @@ export default function ImageAdjuster({
               step="1"
               value={settings.x}
               onChange={(e) => updateSetting('x', parseInt(e.target.value))}
-              className="w-full h-1 bg-zinc-900 rounded appearance-none cursor-pointer accent-neon-cyan"
+              className={`w-full h-1 rounded appearance-none cursor-pointer accent-neon-cyan ${theme === 'dark' ? 'bg-zinc-900' : 'bg-black/10'}`}
             />
           </div>
 
           {/* Offset Y Slider */}
           <div className="space-y-0.5">
-            <div className="flex justify-between items-center text-[10px] text-zinc-400 font-mono">
-              <span className="flex items-center gap-1">
+            <div className="flex justify-between items-center text-[10px] font-mono">
+              <span className={`flex items-center gap-1 ${theme === 'dark' ? 'text-zinc-400' : 'text-zinc-650 font-bold'}`}>
                 <MoveVertical className="w-3.5 h-3.5 text-neon-cyan" />
                 Geser Vertikal (Y)
               </span>
-              <span className="text-zinc-300 font-bold text-[9.5px]">{settings.y}%</span>
+              <span className={`font-bold text-[9.5px] ${theme === 'dark' ? 'text-zinc-300' : 'text-zinc-800'}`}>{settings.y}%</span>
             </div>
             <input
               type="range"
@@ -154,7 +158,7 @@ export default function ImageAdjuster({
               step="1"
               value={settings.y}
               onChange={(e) => updateSetting('y', parseInt(e.target.value))}
-              className="w-full h-1 bg-zinc-900 rounded appearance-none cursor-pointer accent-neon-cyan"
+              className={`w-full h-1 rounded appearance-none cursor-pointer accent-neon-cyan ${theme === 'dark' ? 'bg-zinc-900' : 'bg-black/10'}`}
             />
           </div>
 
@@ -164,8 +168,10 @@ export default function ImageAdjuster({
               onClick={() => updateSetting('flipH', !settings.flipH)}
               className={`flex items-center justify-center gap-1 p-1.5 rounded text-[9px] font-mono border transition-all ${
                 settings.flipH
-                  ? 'bg-[#00F0FF]/10 border-neon-cyan text-neon-cyan shadow-[0_0_8px_rgba(0,240,255,0.15)]'
-                  : 'bg-white/3 border-white/5 text-zinc-400 hover:border-white/10 hover:text-white'
+                  ? 'bg-[#00F0FF]/15 border-neon-cyan text-neon-cyan shadow-[0_0_8px_rgba(0,240,255,0.15)] font-bold'
+                  : theme === 'dark'
+                    ? 'bg-white/3 border-white/5 text-zinc-400 hover:border-white/10 hover:text-white'
+                    : 'bg-black/5 border-black/5 text-zinc-650 hover:border-black/15 hover:text-zinc-900'
               }`}
             >
               <FlipHorizontal className="w-3 h-3" />
@@ -175,8 +181,10 @@ export default function ImageAdjuster({
               onClick={() => updateSetting('flipV', !settings.flipV)}
               className={`flex items-center justify-center gap-1 p-1.5 rounded text-[9px] font-mono border transition-all ${
                 settings.flipV
-                  ? 'bg-[#00F0FF]/10 border-neon-cyan text-neon-cyan shadow-[0_0_8px_rgba(0,240,255,0.15)]'
-                  : 'bg-white/3 border-white/5 text-zinc-400 hover:border-white/10 hover:text-white'
+                  ? 'bg-[#00F0FF]/15 border-neon-cyan text-neon-cyan shadow-[0_0_8px_rgba(0,240,255,0.15)] font-bold'
+                  : theme === 'dark'
+                    ? 'bg-white/3 border-white/5 text-zinc-400 hover:border-white/10 hover:text-white'
+                    : 'bg-black/5 border-black/5 text-zinc-650 hover:border-black/15 hover:text-zinc-900'
               }`}
             >
               <FlipVertical className="w-3 h-3" />
@@ -184,7 +192,11 @@ export default function ImageAdjuster({
             </button>
             <button
               onClick={onResetSettings}
-              className="flex items-center justify-center p-1.5 rounded text-[9px] font-mono border bg-white/3 border-white/5 text-rose-400 hover:bg-rose-950/20 hover:border-rose-900/40 hover:text-rose-200 transition-all"
+              className={`flex items-center justify-center p-1.5 rounded text-[9px] font-mono border transition-all ${
+                theme === 'dark'
+                  ? 'bg-white/3 border-white/5 text-rose-400 hover:bg-rose-950/20 hover:border-rose-900/40 hover:text-rose-200'
+                  : 'bg-black/5 border-black/5 text-rose-600 hover:bg-rose-100 hover:border-rose-200 hover:text-rose-800'
+              }`}
             >
               RESET POSISI
             </button>
@@ -192,7 +204,11 @@ export default function ImageAdjuster({
 
           {/* 3D Parallax Tilt Toggle Control */}
           {onToggleParallax !== undefined && (
-            <div className="mt-3.5 p-2 rounded border border-[#00F0FF]/15 bg-cyan-950/10 flex items-center justify-between">
+            <div className={`mt-3.5 p-2 rounded border flex items-center justify-between transition-all duration-300 ${
+              theme === 'dark'
+                ? 'border-[#00F0FF]/15 bg-cyan-950/10'
+                : 'border-neon-cyan/25 bg-cyan-100/10'
+            }`}>
               <div className="flex flex-col select-none pr-3">
                 <span className="text-[9.5px] font-mono text-neon-cyan font-black uppercase tracking-widest flex items-center gap-1.5">
                   <span className="w-1.5 h-1.5 rounded-full bg-neon-cyan animate-pulse"></span>
@@ -206,11 +222,13 @@ export default function ImageAdjuster({
                 type="button"
                 onClick={() => onToggleParallax(!enableParallax)}
                 className={`flex-none w-8 h-4.5 rounded-full p-0.5 transition-colors duration-200 focus:outline-none relative ${
-                  enableParallax ? 'bg-neon-cyan' : 'bg-zinc-800'
+                  enableParallax ? 'bg-neon-cyan' : theme === 'dark' ? 'bg-zinc-800' : 'bg-black/10'
                 }`}
               >
-                <div className={`bg-neutral-950 w-3.5 h-3.5 rounded-full shadow-md transform duration-200 ${
-                  enableParallax ? 'translate-x-3.5 bg-neutral-950' : 'translate-x-0 bg-white/80'
+                <div className={`w-3.5 h-3.5 rounded-full shadow-md transform duration-200 ${
+                  enableParallax 
+                    ? 'translate-x-3.5 bg-neutral-950' 
+                    : theme === 'dark' ? 'translate-x-0 bg-white/80' : 'translate-x-0 bg-white'
                 }`} />
               </button>
             </div>
@@ -220,7 +238,9 @@ export default function ImageAdjuster({
 
       {activeSubTab === 'filter' && (
         <div className="space-y-2">
-          <div className="grid grid-cols-2 gap-1.5 max-h-[160px] overflow-y-auto pr-0.5 scrollbar-thin scrollbar-thumb-white/10">
+          <div className={`grid grid-cols-2 gap-1.5 max-h-[160px] overflow-y-auto pr-0.5 scrollbar-thin ${
+            theme === 'dark' ? 'scrollbar-thumb-white/10' : 'scrollbar-thumb-black/10'
+          }`}>
             {FILTER_PRESETS.map((filter) => {
               const isSelected = activeFilterPresetId === filter.id;
               return (
@@ -229,15 +249,27 @@ export default function ImageAdjuster({
                   onClick={() => onSelectFilterPreset(filter.id, filter.settings)}
                   className={`p-1.5 rounded border text-left font-mono transition-all group flex flex-col justify-between h-[52px] relative overflow-hidden ${
                     isSelected
-                      ? 'bg-cyan-950/25 border-neon-cyan'
-                      : 'bg-white/3 border-white/5 hover:bg-[#121214] hover:border-white/10'
+                      ? theme === 'dark'
+                        ? 'bg-cyan-950/25 border-neon-cyan'
+                        : 'bg-cyan-100/35 border-neon-cyan'
+                      : theme === 'dark'
+                        ? 'bg-white/3 border-white/5 hover:bg-[#121214] hover:border-white/10'
+                        : 'bg-black/5 border-black/5 hover:bg-black/10 hover:border-black/10'
                   }`}
                 >
-                  <div className="z-10 flex flex-col min-w-0 w-full">
-                    <span className={`text-[9.5px] font-bold tracking-wider truncate ${isSelected ? 'text-neon-cyan' : 'text-zinc-200 group-hover:text-neon-cyan'}`}>
+                  <div className="z-10 flex flex-col min-w-0 w-full font-mono">
+                    <span className={`text-[9.5px] font-bold tracking-wider truncate ${
+                      isSelected 
+                        ? 'text-neon-cyan' 
+                        : theme === 'dark' ? 'text-zinc-200 group-hover:text-neon-cyan' : 'text-zinc-800 group-hover:text-neon-cyan'
+                    }`}>
                       {filter.name}
                     </span>
-                    <span className="text-[8px] text-zinc-500 truncate mt-0.5 leading-snug group-hover:text-zinc-400">
+                    <span className={`text-[8px] truncate mt-0.5 leading-snug ${
+                      theme === 'dark' 
+                        ? 'text-zinc-500 group-hover:text-zinc-400' 
+                        : 'text-zinc-550 group-hover:text-zinc-700'
+                    }`}>
                       {filter.description}
                     </span>
                   </div>
@@ -258,9 +290,9 @@ export default function ImageAdjuster({
         <div className="space-y-2">
           {/* Brightness Adjustment */}
           <div className="space-y-0.5">
-            <div className="flex justify-between items-center text-[10px] text-zinc-400 font-mono">
-              <span>Kecerahan (Brightness)</span>
-              <span className="text-zinc-300 font-bold text-[9.5px]">{settings.brightness}%</span>
+            <div className="flex justify-between items-center text-[10px] font-mono">
+              <span className={theme === 'dark' ? 'text-zinc-400' : 'text-zinc-650 font-bold'}>Kecerahan (Brightness)</span>
+              <span className={`font-bold text-[9.5px] ${theme === 'dark' ? 'text-zinc-300' : 'text-zinc-800'}`}>{settings.brightness}%</span>
             </div>
             <input
               type="range"
@@ -268,15 +300,15 @@ export default function ImageAdjuster({
               max="150"
               value={settings.brightness}
               onChange={(e) => updateSetting('brightness', parseInt(e.target.value))}
-              className="w-full h-1 bg-zinc-900 rounded appearance-none cursor-pointer accent-neon-pink"
+              className={`w-full h-1 rounded appearance-none cursor-pointer accent-neon-pink ${theme === 'dark' ? 'bg-zinc-900' : 'bg-black/10'}`}
             />
           </div>
 
           {/* Contrast Adjustment */}
           <div className="space-y-0.5">
-            <div className="flex justify-between items-center text-[10px] text-zinc-400 font-mono">
-              <span>Kontras (Contrast)</span>
-              <span className="text-zinc-300 font-bold text-[9.5px]">{settings.contrast}%</span>
+            <div className="flex justify-between items-center text-[10px] font-mono">
+              <span className={theme === 'dark' ? 'text-zinc-400' : 'text-zinc-650 font-bold'}>Kontras (Contrast)</span>
+              <span className={`font-bold text-[9.5px] ${theme === 'dark' ? 'text-zinc-300' : 'text-zinc-800'}`}>{settings.contrast}%</span>
             </div>
             <input
               type="range"
@@ -284,15 +316,15 @@ export default function ImageAdjuster({
               max="150"
               value={settings.contrast}
               onChange={(e) => updateSetting('contrast', parseInt(e.target.value))}
-              className="w-full h-1 bg-zinc-900 rounded appearance-none cursor-pointer accent-neon-pink"
+              className={`w-full h-1 rounded appearance-none cursor-pointer accent-neon-pink ${theme === 'dark' ? 'bg-zinc-900' : 'bg-black/10'}`}
             />
           </div>
 
           {/* Saturation Adjustment */}
           <div className="space-y-0.5">
-            <div className="flex justify-between items-center text-[10px] text-zinc-400 font-mono">
-              <span>Saturasi (Saturation)</span>
-              <span className="text-zinc-300 font-bold text-[9.5px]">{settings.saturate}%</span>
+            <div className="flex justify-between items-center text-[10px] font-mono">
+              <span className={theme === 'dark' ? 'text-zinc-400' : 'text-zinc-650 font-bold'}>Saturasi (Saturation)</span>
+              <span className={`font-bold text-[9.5px] ${theme === 'dark' ? 'text-zinc-300' : 'text-zinc-800'}`}>{settings.saturate}%</span>
             </div>
             <input
               type="range"
@@ -300,15 +332,15 @@ export default function ImageAdjuster({
               max="200"
               value={settings.saturate}
               onChange={(e) => updateSetting('saturate', parseInt(e.target.value))}
-              className="w-full h-1 bg-zinc-900 rounded appearance-none cursor-pointer accent-neon-pink"
+              className={`w-full h-1 rounded appearance-none cursor-pointer accent-neon-pink ${theme === 'dark' ? 'bg-zinc-900' : 'bg-black/10'}`}
             />
           </div>
 
           {/* Hue Rotation */}
           <div className="space-y-0.5">
-            <div className="flex justify-between items-center text-[10px] text-zinc-400 font-mono">
-              <span>Shift Rona Warna</span>
-              <span className="text-zinc-300 font-bold text-[9.5px]">{settings.hueRotate}°</span>
+            <div className="flex justify-between items-center text-[10px] font-mono">
+              <span className={theme === 'dark' ? 'text-zinc-400' : 'text-zinc-650 font-bold'}>Shift Rona Warna</span>
+              <span className={`font-bold text-[9.5px] ${theme === 'dark' ? 'text-zinc-300' : 'text-zinc-800'}`}>{settings.hueRotate}°</span>
             </div>
             <input
               type="range"
@@ -316,18 +348,20 @@ export default function ImageAdjuster({
               max="360"
               value={settings.hueRotate}
               onChange={(e) => updateSetting('hueRotate', parseInt(e.target.value))}
-              className="w-full h-1 bg-zinc-900 rounded appearance-none cursor-pointer accent-neon-pink"
+              className={`w-full h-1 rounded appearance-none cursor-pointer accent-neon-pink ${theme === 'dark' ? 'bg-zinc-900' : 'bg-black/10'}`}
             />
           </div>
 
           {/* Blur & Digital Grain Effects */}
           <div className="grid grid-cols-2 gap-2 pt-1">
-            <div className="p-1 px-2 rounded border border-zinc-900 bg-zinc-950/20 flex items-center justify-between">
-              <span className="text-[9px] font-mono text-zinc-400">GRAIN (NOISE)</span>
+            <div className={`p-1 px-2 rounded border flex items-center justify-between transition-all duration-300 ${
+              theme === 'dark' ? 'border-[#ff0055]/15 bg-[#ff0055]/5' : 'border-black/10 bg-black/5'
+            }`}>
+              <span className={`text-[9px] font-mono ${theme === 'dark' ? 'text-zinc-400' : 'text-zinc-650 font-bold'}`}>GRAIN (NOISE)</span>
               <button
                 onClick={() => updateSetting('noise', !settings.noise)}
                 className={`w-8 h-4 rounded-full p-0.5 transition-colors duration-200 focus:outline-none ${
-                  settings.noise ? 'bg-neon-pink' : 'bg-zinc-800'
+                  settings.noise ? 'bg-neon-pink' : theme === 'dark' ? 'bg-zinc-800' : 'bg-black/10'
                 }`}
               >
                 <div className={`bg-white w-3 h-3 rounded-full shadow transform duration-200 ${
@@ -335,10 +369,12 @@ export default function ImageAdjuster({
                 }`} />
               </button>
             </div>
-            <div className="p-1 px-2 rounded border border-zinc-900 bg-zinc-950/20 flex flex-col justify-between">
-              <div className="flex justify-between items-center text-[9px] font-mono text-zinc-400">
-                <span>BLUR</span>
-                <span>{settings.blur}px</span>
+            <div className={`p-1 px-2 rounded border flex flex-col justify-between transition-all duration-300 ${
+              theme === 'dark' ? 'border-[#ff0055]/15 bg-[#ff0055]/5' : 'border-black/10 bg-black/5'
+            }`}>
+              <div className="flex justify-between items-center text-[9px] font-mono">
+                <span className={theme === 'dark' ? 'text-zinc-400' : 'text-zinc-650 font-bold'}>BLUR</span>
+                <span className={`font-bold ${theme === 'dark' ? 'text-zinc-300' : 'text-zinc-800'}`}>{settings.blur}px</span>
               </div>
               <input
                 type="range"
@@ -347,7 +383,7 @@ export default function ImageAdjuster({
                 step="0.5"
                 value={settings.blur}
                 onChange={(e) => updateSetting('blur', parseFloat(e.target.value))}
-                className="w-full h-1 bg-zinc-900 rounded appearance-none cursor-pointer accent-neon-pink"
+                className={`w-full h-1 rounded appearance-none cursor-pointer accent-neon-pink ${theme === 'dark' ? 'bg-zinc-900' : 'bg-black/10'}`}
               />
             </div>
           </div>
