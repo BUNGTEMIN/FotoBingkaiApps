@@ -2,6 +2,7 @@ import React from 'react';
 import { Frame } from '../types';
 import { FRAMES } from '../presets';
 import { LazyImage } from './LazyImage';
+import { resolveApiUrl } from '../canvasUtils';
 
 interface FrameSelectorProps {
   selectedFrame: Frame;
@@ -40,7 +41,7 @@ export default function FrameSelector({
               <div className="relative w-full aspect-square bg-black rounded overflow-hidden border border-white/5 group-hover:scale-105 transition-transform duration-300 flex items-center justify-center p-0">
                 {frame.src ? (
                   <LazyImage 
-                    src={frame.src}
+                    src={resolveApiUrl(frame.src)}
                     alt={frame.name}
                     referrerPolicy="no-referrer"
                     className="w-full h-full object-cover bg-transparent"

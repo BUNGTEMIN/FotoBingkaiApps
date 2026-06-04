@@ -13,8 +13,8 @@ async function startServer() {
 
   app.use(express.json({ limit: "15mb" }));
 
-  // CORS Middleware for any /api request (enables qcc-online.web.app to make backend calls)
-  app.use("/api", (req, res, next) => {
+  // Generic CORS Middleware for ALL routes (including static assets and /api)
+  app.use((req, res, next) => {
     res.setHeader("Access-Control-Allow-Origin", "*");
     res.setHeader("Access-Control-Allow-Methods", "GET, POST, OPTIONS, PUT, PATCH, DELETE");
     res.setHeader("Access-Control-Allow-Headers", "X-Requested-With,content-type,Authorization,Origin,Accept");

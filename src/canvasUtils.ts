@@ -256,7 +256,7 @@ export const renderToCanvas = async (
          await new Promise((res) => { frameImg.onload = res; frameImg.onerror = res; });
       }
     } else {
-      frameImg = await loadImage(params.frame.src, true);
+      frameImg = await loadImage(resolveApiUrl(params.frame.src), true);
     }
 
     ctx.save();

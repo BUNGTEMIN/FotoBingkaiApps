@@ -1280,7 +1280,7 @@ export default function App() {
                             />
                           ) : frame.src ? (
                             <img 
-                              src={frame.src} 
+                              src={resolveApiUrl(frame.src)} 
                               alt={frame.name}
                               className="w-full h-full object-contain pointer-events-none"
                             />
@@ -3150,7 +3150,7 @@ export default function App() {
                     />
                   ) : frame.src ? (
                     <img
-                      src={frame.src}
+                      src={resolveApiUrl(frame.src)}
                       alt={frame.name}
                       className="w-full h-full object-contain filter brightness-95 pointer-events-none"
                     />
