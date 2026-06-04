@@ -1,9 +1,11 @@
 import { Frame, ImageSettings, PlacedSticker } from './types';
 
-// Helper to resolve relative API routes to direct full-stack backend URL if hosted on a static domain (such as web.app / firebaseapp.com)
+// Helper to resolve relative API routes to direct full-stack backend URL if hosted on a static domain
 export const resolveApiUrl = (apiPath: string): string => {
   const host = window.location.hostname;
-  if (host.includes('web.app') || host.includes('firebaseapp.com') || host.includes('qcc-online')) {
+  // Use absolute backend URL ONLY if hosted on an external static domain (like Firebase/web.app)
+  // If we are already on localhost or the native Cloud Run url (*.run.app), we can safely use relative paths.
+  if (!host.includes('localhost') && !host.includes('127.0.0.1') && !host.includes('.run.app')) {
     const cloudRunBaseUrl = 'https://ais-pre-h437zomktk5zw36hxyzbwi-844303505958.asia-southeast1.run.app';
     return `${cloudRunBaseUrl}${apiPath}`;
   }
@@ -16,20 +18,28 @@ export const loadImage = (src: string, isCrossOrigin = true): Promise<HTMLImageE
     // 1. Convert external URLs to proxy-image endpoint to resolve relative paths and bypass CORS
     let finalSrc = src;
     let isUsingProxy = false;
-    if (src.startsWith('http')) {
+    
+    // Only proxy actual http/https external URLs that point to different origins
+    // Wait, if it's already an absolute URL to our own backend, we don't need to proxy it twice.
+    if (src.startsWith('http') && !src.includes(window.location.hostname)) {
       finalSrc = resolveApiUrl(`/api/proxy-image?url=${encodeURIComponent(src)}`);
       isUsingProxy = true;
     }
 
     const img = new Image();
     
-    if ((isCrossOrigin || src.startsWith('http')) && !finalSrc.startsWith('data:')) {
+    // Do NOT set crossOrigin="anonymous" for purely local relative paths to prevent strict CORS blocks on static hosts
+    const isLocalRelative = src.startsWith('/') || src.startsWith('./') || src.startsWith('../');
+    if ((isCrossOrigin || src.startsWith('http')) && !isLocalRelative && !finalSrc.startsWith('data:')) {
       img.crossOrigin = 'anonymous';
     }
 
     img.onload = () => resolve(img);
 
     img.onerror = () => {
+      // Avoid browser cache from the previously failed request
+      const cacheBustedSrc = src + (src.includes('?') ? '&' : '?') + 'fallback=' + Date.now();
+      
       // Fallback 1: If using the proxy failed (e.g. network/dns or proxy down), retry direct original source with CORS
       if (isUsingProxy) {
         console.warn(`[CORS Helper] Proxy failed to load for: ${src}. Retrying with direct URL with CORS...`);
@@ -42,7 +52,7 @@ export const loadImage = (src: string, isCrossOrigin = true): Promise<HTMLImageE
           const rawImg = new Image();
           rawImg.onload = () => resolve(rawImg);
           rawImg.onerror = (err) => reject(new Error(`Gagal memuat gambar: ${src}`));
-          rawImg.src = src;
+          rawImg.src = cacheBustedSrc;
         };
         fallbackImg.src = src;
       } else {
@@ -50,7 +60,7 @@ export const loadImage = (src: string, isCrossOrigin = true): Promise<HTMLImageE
         const rawImg = new Image();
         rawImg.onload = () => resolve(rawImg);
         rawImg.onerror = (err) => reject(new Error(`Gagal memuat gambar: ${src}`));
-        rawImg.src = src;
+        rawImg.src = cacheBustedSrc;
       }
     };
 
