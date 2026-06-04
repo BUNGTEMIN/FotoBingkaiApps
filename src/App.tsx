@@ -1,7 +1,8 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { 
   Upload, Sparkles, RefreshCw, Sliders, CircleHelp, Download, Maximize2, 
-  FolderOpen, Camera, Laptop, Cpu, Layers, Settings2, Activity, Info, CheckCircle, MoveHorizontal
+  FolderOpen, Camera, Laptop, Cpu, Layers, Settings2, Activity, Info, CheckCircle, MoveHorizontal,
+  Undo, Redo
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 
@@ -143,10 +144,18 @@ export default function App() {
   const [customFrames, setCustomFrames] = useState<Frame[]>([]);
   const [neonColor, setNeonColor] = useState('#00f2fe'); // default tech cyan
   const [imageSettings, setImageSettings] = useState<ImageSettings>(DEFAULT_SETTINGS);
+  
+  // Undo/Redo history states for ImageSettings
+  const [history, setHistory] = useState<ImageSettings[]>([DEFAULT_SETTINGS]);
+  const [historyIndex, setHistoryIndex] = useState<number>(0);
+  const lastCommittedRef = useRef<ImageSettings>(DEFAULT_SETTINGS);
+  const pendingHistoryTimerRef = useRef<NodeJS.Timeout | null>(null);
+  const imageSettingsRef = useRef<ImageSettings>(DEFAULT_SETTINGS);
+
   const [filterPresetId, setFilterPresetId] = useState('none');
   const [stickers, setStickers] = useState<PlacedSticker[]>([]);
   const [selectedStickerId, setSelectedStickerId] = useState<string | null>(null);
-  const [activeTab, setActiveTab] = useState<'adjust' | 'filter' | 'color' | 'overlays' | 'ai' | 'download' | null>('adjust');
+  const [activeTab, setActiveTab] = useState<'adjust' | 'filter' | 'color' | 'overlays' | 'ai' | 'download' | 'history' | null>('adjust');
   const [downloadSize, setDownloadSize] = useState<number>(1000);
   const [downloadFormat, setDownloadFormat] = useState<'png' | 'webp' | 'jpeg'>('png');
   
@@ -211,6 +220,122 @@ export default function App() {
       }, 150);
     }
   }, [activeTab, currentPage]);
+
+  // Keep the mutable ref always sync'ed with latest state to safely access inside callbacks
+  useEffect(() => {
+    imageSettingsRef.current = imageSettings;
+  }, [imageSettings]);
+
+  // Settings equality helper
+  const areSettingsEqual = (s1: ImageSettings, s2: ImageSettings) => {
+    return (
+      s1.scale === s2.scale &&
+      s1.rotation === s2.rotation &&
+      s1.x === s2.x &&
+      s1.y === s2.y &&
+      s1.flipH === s2.flipH &&
+      s1.flipV === s2.flipV &&
+      s1.brightness === s2.brightness &&
+      s1.contrast === s2.contrast &&
+      s1.saturate === s2.saturate &&
+      s1.hueRotate === s2.hueRotate &&
+      s1.blur === s2.blur &&
+      s1.noise === s2.noise
+    );
+  };
+
+  // Helper to commit a state into the history stack
+  const pushToHistory = (newSettings: ImageSettings) => {
+    if (areSettingsEqual(newSettings, lastCommittedRef.current)) {
+      return;
+    }
+
+    // Slice any redo paths if user edited in the past
+    const updatedHistory = history.slice(0, historyIndex + 1);
+    updatedHistory.push(newSettings);
+
+    // Keep history maximum size reasonable to preserve performance and memory (e.g. 50 items)
+    if (updatedHistory.length > 50) {
+      updatedHistory.shift();
+    }
+
+    setHistory(updatedHistory);
+    setHistoryIndex(updatedHistory.length - 1);
+    lastCommittedRef.current = newSettings;
+  };
+
+  // Automated debounced tracker to automatically commit sliders & clicks safely
+  useEffect(() => {
+    if (areSettingsEqual(imageSettings, lastCommittedRef.current)) {
+      return;
+    }
+
+    if (pendingHistoryTimerRef.current) {
+      clearTimeout(pendingHistoryTimerRef.current);
+    }
+
+    pendingHistoryTimerRef.current = setTimeout(() => {
+      pushToHistory(imageSettingsRef.current);
+      pendingHistoryTimerRef.current = null;
+    }, 350); // Settle time of 350ms captures gestures and range sliders cleanly
+
+    return () => {
+      if (pendingHistoryTimerRef.current) {
+        clearTimeout(pendingHistoryTimerRef.current);
+      }
+    };
+  }, [imageSettings]);
+
+  // Clean the stack (e.g. fresh image load)
+  const resetHistoryStack = (initialSettings: ImageSettings = DEFAULT_SETTINGS) => {
+    if (pendingHistoryTimerRef.current) {
+      clearTimeout(pendingHistoryTimerRef.current);
+      pendingHistoryTimerRef.current = null;
+    }
+    setHistory([initialSettings]);
+    setHistoryIndex(0);
+    lastCommittedRef.current = initialSettings;
+  };
+
+  // Undo Handler
+  const handleUndo = () => {
+    if (pendingHistoryTimerRef.current) {
+      clearTimeout(pendingHistoryTimerRef.current);
+      pendingHistoryTimerRef.current = null;
+    }
+
+    if (historyIndex > 0) {
+      const prevIndex = historyIndex - 1;
+      const prevSettings = history[prevIndex];
+
+      lastCommittedRef.current = prevSettings;
+      setImageSettings(prevSettings);
+      setHistoryIndex(prevIndex);
+      triggerToast("Sistem: Urungkan perubahan berhasil! ↩️");
+    } else {
+      triggerToast("Sistem: Tidak ada perubahan untuk diurungkan.");
+    }
+  };
+
+  // Redo Handler
+  const handleRedo = () => {
+    if (pendingHistoryTimerRef.current) {
+      clearTimeout(pendingHistoryTimerRef.current);
+      pendingHistoryTimerRef.current = null;
+    }
+
+    if (historyIndex < history.length - 1) {
+      const nextIndex = historyIndex + 1;
+      const nextSettings = history[nextIndex];
+
+      lastCommittedRef.current = nextSettings;
+      setImageSettings(nextSettings);
+      setHistoryIndex(nextIndex);
+      triggerToast("Sistem: Urungkan kembali berhasil! ↪️");
+    } else {
+      triggerToast("Sistem: Tidak ada perubahan untuk diurungkan kembali.");
+    }
+  };
 
   // Load custom frames & my gallery from localstorage on mount
   useEffect(() => {
@@ -369,11 +494,13 @@ export default function App() {
     reader.onload = (e) => {
       if (typeof e.target?.result === 'string') {
         setUserImage(e.target.result);
-        // Reset positioning settings for fresh images
-        setImageSettings({
+        const startSettings = {
           ...DEFAULT_SETTINGS,
           scale: 1.0,
-        });
+        };
+        // Reset positioning settings for fresh images
+        setImageSettings(startSettings);
+        resetHistoryStack(startSettings);
         setFilterPresetId('none');
         setIsLoading(false);
         setStatusMessage('GAMBAR UNGGAHAN TERPASANG');
@@ -1108,8 +1235,6 @@ export default function App() {
                   </span>
                 </div>
               )}
-
-
             </div>
 
             {/* Hidden File Input Picker */}
@@ -1152,6 +1277,7 @@ export default function App() {
                 {activeTab === 'overlays' && <><Layers className="w-3.5 h-3.5 text-neon-cyan" /> TEKS DAN BADGE</>}
                 {activeTab === 'ai' && <><Sparkles className="w-3.5 h-3.5 text-amber-400 animate-pulse" /> AI GENERATE</>}
                 {activeTab === 'download' && <><Download className="w-3.5 h-3.5 text-neon-cyan animate-bounce" /> FORMAT UNDUH & RESOLUSI</>}
+                {activeTab === 'history' && <><Activity className="w-3.5 h-3.5 text-emerald-400 animate-pulse" /> RIWAYAT PERUBAHAN</>}
               </span>
               <button 
                 onClick={() => setActiveTab(null)}
@@ -1170,6 +1296,165 @@ export default function App() {
             <div className={`p-4 overflow-y-auto scrollbar-thin max-h-[75vh] transition-all duration-300 ${
               theme === 'dark' ? 'scrollbar-thumb-white/15' : 'scrollbar-thumb-black/10'
             }`}>
+              {activeTab === 'history' && (
+                <div className="flex flex-col gap-3 font-mono">
+                  {/* Action buttons (Undo / Redo / Reset) */}
+                  <div className="flex flex-col xs:flex-row xs:items-center justify-between gap-2 border-b pb-2.5 border-white/[0.04]">
+                    <span className="text-[10px] text-zinc-400 font-bold tracking-wider uppercase">PILIH HISTORI LANGKAH:</span>
+                    <div className="flex items-center gap-1.5 flex-wrap">
+                      <button
+                        type="button"
+                        onClick={() => {
+                          if (history.length > 0 && historyIndex !== 0) {
+                            if (pendingHistoryTimerRef.current) {
+                              clearTimeout(pendingHistoryTimerRef.current);
+                              pendingHistoryTimerRef.current = null;
+                            }
+                            const initialSettings = history[0];
+                            lastCommittedRef.current = initialSettings;
+                            setImageSettings(initialSettings);
+                            setHistoryIndex(0);
+                            triggerToast("Kembali ke Posisi Awal! 🌄");
+                          }
+                        }}
+                        disabled={historyIndex === 0}
+                        className={`py-1 px-2.5 text-[9px] font-mono tracking-wider font-extrabold rounded-lg border transition-all flex items-center gap-1 focus:outline-none ${
+                          historyIndex === 0
+                            ? theme === 'dark'
+                              ? 'border-white/5 text-zinc-650 bg-neutral-950/20 cursor-not-allowed opacity-35'
+                              : 'border-zinc-200 text-zinc-400 bg-zinc-100/30 cursor-not-allowed'
+                            : theme === 'dark'
+                              ? 'bg-neutral-900 border-white/10 text-emerald-400 hover:border-emerald-500/40 hover:bg-emerald-500/5 hover:text-white hover:scale-102 active:scale-98 shadow-[0_0_8px_rgba(16,185,129,0.05)]'
+                              : 'bg-white border-zinc-200 text-emerald-600 hover:bg-emerald-50/50 hover:border-emerald-300 hover:text-emerald-700 hover:scale-102 active:scale-98'
+                        }`}
+                        title="Kembali ke setelan / posisi awal gambar"
+                      >
+                        <RefreshCw className="w-2.5 h-2.5" />
+                        POSISI AWAL
+                      </button>
+
+                      <button
+                        type="button"
+                        onClick={handleUndo}
+                        disabled={historyIndex === 0}
+                        className={`py-1 px-2.5 text-[9px] font-mono tracking-wider font-extrabold rounded-lg border transition-all flex items-center gap-1 focus:outline-none ${
+                          historyIndex === 0
+                            ? theme === 'dark'
+                              ? 'border-white/5 text-zinc-650 bg-neutral-950/20 cursor-not-allowed opacity-35'
+                              : 'border-zinc-200 text-zinc-400 bg-zinc-100/30 cursor-not-allowed'
+                            : theme === 'dark'
+                              ? 'bg-neutral-900 border-white/10 text-neon-cyan hover:border-neon-cyan/45 hover:bg-neon-cyan/5 hover:text-white hover:scale-102 active:scale-98 shadow-[0_0_8px_rgba(0,240,255,0.05)]'
+                              : 'bg-white border-zinc-200 text-cyan-600 hover:bg-cyan-50/50 hover:border-cyan-300 hover:text-cyan-700 hover:scale-102 active:scale-98'
+                        }`}
+                        title="Urungkan perubahan (Undo)"
+                      >
+                        <Undo className="w-2.5 h-2.5" />
+                        UNDO
+                      </button>
+
+                      <button
+                        type="button"
+                        onClick={handleRedo}
+                        disabled={historyIndex === history.length - 1}
+                        className={`py-1 px-2.5 text-[9px] font-mono tracking-wider font-extrabold rounded-lg border transition-all flex items-center gap-1 focus:outline-none ${
+                          historyIndex === history.length - 1
+                            ? theme === 'dark'
+                              ? 'border-white/5 text-zinc-650 bg-neutral-950/20 cursor-not-allowed opacity-35'
+                              : 'border-zinc-200 text-zinc-400 bg-zinc-100/30 cursor-not-allowed'
+                            : theme === 'dark'
+                              ? 'bg-neutral-900 border-white/10 text-neon-pink hover:border-neon-pink/45 hover:bg-neon-pink/5 hover:text-white hover:scale-102 active:scale-98 shadow-[0_0_8px_rgba(255,0,80,0.05)]'
+                              : 'bg-white border-zinc-200 text-rose-600 hover:bg-rose-50/50 hover:border-rose-300 hover:text-rose-700 hover:scale-102 active:scale-98'
+                        }`}
+                        title="Ulangi perubahan (Redo)"
+                      >
+                        REDO
+                        <Redo className="w-2.5 h-2.5" />
+                      </button>
+                    </div>
+                  </div>
+
+                  {/* Horizontal Scroll sliding timeline steps */}
+                  <div className="overflow-x-auto pb-2 flex select-none touch-pan-x scrollbar-thin w-full">
+                    <ul className="flex flex-row gap-2 shrink-0 py-1">
+                      {history.slice().reverse().map((h, reverseIdx) => {
+                        const index = history.length - 1 - reverseIdx;
+                        let label = "";
+                        if (index === 0) {
+                          label = "Posisi Asli";
+                        } else {
+                          const prev = history[index - 1];
+                          const changes: string[] = [];
+                          if (h.scale !== prev.scale) changes.push("Skala");
+                          if (h.x !== prev.x || h.y !== prev.y) changes.push("Geser");
+                          if (h.rotation !== prev.rotation) changes.push("Rotasi");
+                          if (h.flipH !== prev.flipH || h.flipV !== prev.flipV) changes.push("Balik");
+                          if (h.brightness !== prev.brightness || h.contrast !== prev.contrast || h.saturate !== prev.saturate) changes.push("Koreksi");
+                          if (h.blur !== prev.blur || h.noise !== prev.noise) changes.push("Filter");
+                          
+                          label = changes.length > 0 ? changes.join(" & ") : `Langkah ${index}`;
+                        }
+
+                        const isActive = index === historyIndex;
+
+                        return (
+                          <li key={index} className="inline-block shrink-0">
+                            <button
+                              type="button"
+                              onClick={() => {
+                                if (pendingHistoryTimerRef.current) {
+                                  clearTimeout(pendingHistoryTimerRef.current);
+                                  pendingHistoryTimerRef.current = null;
+                                }
+                                const selectedSettings = history[index];
+                                lastCommittedRef.current = selectedSettings;
+                                setImageSettings(selectedSettings);
+                                setHistoryIndex(index);
+                                triggerToast(index === 0 ? "Kembali ke Posisi Awal! 🌄" : `Loncat ke langkah ${index}!`);
+                              }}
+                              className={`w-28 md:w-32 text-left p-2.5 rounded-xl border flex flex-col justify-between h-[68px] transition-all hover:scale-[1.02] active:scale-[0.98] ${
+                                isActive
+                                  ? theme === 'dark'
+                                    ? 'bg-neon-cyan/10 border-neon-cyan/50 text-white font-extrabold shadow-[inset_0_0_8px_rgba(0,240,255,0.06)]'
+                                    : 'bg-cyan-50 border-cyan-350 text-cyan-800 font-extrabold shadow-sm'
+                                  : theme === 'dark'
+                                    ? 'bg-neutral-900 border-white/5 text-zinc-400 hover:border-white/10 hover:text-white'
+                                    : 'bg-white border-zinc-200 text-zinc-650 hover:border-zinc-300 hover:text-zinc-900 shadow-sm'
+                              }`}
+                            >
+                              <div className="flex items-center justify-between w-full border-b pb-1 border-white/[0.04] mb-1">
+                                <span className="opacity-60 text-[8px]">#{index}</span>
+                                {isActive ? (
+                                  <span className="w-1.5 h-1.5 rounded-full bg-neon-cyan animate-pulse shadow-[0_0_4px_#00f2fe]" />
+                                ) : (
+                                  <span className={`w-1 h-1 rounded-full ${theme === 'dark' ? 'bg-zinc-600' : 'bg-zinc-300'}`} />
+                                )}
+                              </div>
+                              
+                              <span className="truncate w-full text-left font-bold text-[9px] leading-tight block">
+                                {index === 0 ? "Posisi Asli" : label}
+                              </span>
+                              
+                              <div className="flex items-center justify-between w-full mt-1">
+                                <span className="text-[7.5px] opacity-40 uppercase tracking-widest leading-none font-bold">
+                                  {index === 0 ? "Awal" : "Langkah"}
+                                </span>
+                                {isActive && (
+                                  <span className={`text-[7.5px] font-black tracking-wider leading-none select-none shrink-0 ${
+                                    theme === 'dark' ? 'text-neon-cyan' : 'text-cyan-700'
+                                  }`}>
+                                    AKTIF
+                                  </span>
+                                )}
+                              </div>
+                            </button>
+                          </li>
+                        );
+                      })}
+                    </ul>
+                  </div>
+                </div>
+              )}
+
               {activeTab === 'adjust' && (
                 <ImageAdjuster
                   settings={imageSettings}
@@ -1499,6 +1784,18 @@ export default function App() {
               >
                 <Layers className="w-4 h-4" />
                 <span className="text-[8px] uppercase tracking-wider font-extrabold">TEKS</span>
+              </button>
+
+              <button
+                onClick={() => setActiveTab(activeTab === 'history' ? null : 'history')}
+                className={`snap-center flex-shrink-0 px-3.5 py-1.5 rounded-xl font-mono text-xs font-bold tracking-widest transition-all duration-150 flex flex-col items-center justify-center space-y-1 min-w-[76px] ${
+                  activeTab === 'history'
+                    ? 'bg-emerald-500/25 text-emerald-400 border-t-2 border-emerald-500 shadow-[0_0_15px_rgba(16,185,129,0.2)]'
+                    : 'text-zinc-450 hover:text-zinc-200 hover:bg-white/5'
+                }`}
+              >
+                <Activity className="w-4 h-4 text-emerald-400" />
+                <span className="text-[8px] uppercase tracking-wider font-extrabold text-emerald-400">RIWAYAT</span>
               </button>
 
               <button
