@@ -1396,8 +1396,8 @@ export default function App() {
         isAuthLoading={isAuthLoading}
         onGoogleLogin={handleGoogleLogin}
         onLogout={handleLogout}
-        completedQuests={completedCount}
-        totalQuests={totalQuests}
+        completedQuests={user?.email === 'bungtemin@gmail.com' ? completedCount : undefined}
+        totalQuests={user?.email === 'bungtemin@gmail.com' ? totalQuests : undefined}
       />
 
       {/* Main Workspace Layout */}
