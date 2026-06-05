@@ -136,7 +136,7 @@ export const getCssFilterString = (settings: ImageSettings): string => {
 
 interface RenderParams {
   userImageSrc: string | null;
-  frame: Frame;
+  frame: Frame | null;
   neonColor: string;
   settings: ImageSettings;
   stickers: PlacedSticker[];
@@ -276,58 +276,60 @@ export const renderToCanvas = async (
   }
 
   // 3. Draw frame layer on top of user image
-  try {
-    let frameImg: HTMLImageElement;
-    let tempUrl: string | null = null;
-
-    if (params.frame.type === 'procedural') {
-      let svgString = '';
-      if (params.frame.renderSvg) {
-        svgString = params.frame.renderSvg(params.neonColor);
-      } else if (params.frame.svgElements) {
-        // Fallback for custom frames retrieved from JSON/localStorage where renderSvg function is lost
-        const rendered = params.frame.svgElements
-          .replace(/HIGHLIGHT_COLOR/g, params.neonColor)
-          .replace(/currentColor/g, params.neonColor);
+  if (params.frame) {
+    try {
+      let frameImg: HTMLImageElement;
+      let tempUrl: string | null = null;
+  
+      if (params.frame.type === 'procedural') {
+        let svgString = '';
+        if (params.frame.renderSvg) {
+          svgString = params.frame.renderSvg(params.neonColor);
+        } else if (params.frame.svgElements) {
+          // Fallback for custom frames retrieved from JSON/localStorage where renderSvg function is lost
+          const rendered = params.frame.svgElements
+            .replace(/HIGHLIGHT_COLOR/g, params.neonColor)
+            .replace(/currentColor/g, params.neonColor);
+          
+          svgString = `<svg width="1000" height="1000" viewBox="0 0 1000 1000" fill="none" xmlns="http://www.w3.org/2000/svg">
+            ${rendered}
+          </svg>`;
+        }
         
-        svgString = `<svg width="1000" height="1000" viewBox="0 0 1000 1000" fill="none" xmlns="http://www.w3.org/2000/svg">
-          ${rendered}
-        </svg>`;
-      }
-      
-      if (svgString) {
-        tempUrl = svgToDataUrl(svgString);
-        frameImg = await loadImage(tempUrl, true);
+        if (svgString) {
+          tempUrl = svgToDataUrl(svgString);
+          frameImg = await loadImage(tempUrl, true);
+        } else {
+           // Should not happen, but safe fallback
+           frameImg = new Image();
+           frameImg.src = 'data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciPjwvc3ZnPg=='; // empty svg
+           await new Promise((res) => { frameImg.onload = res; frameImg.onerror = res; });
+        }
       } else {
-         // Should not happen, but safe fallback
-         frameImg = new Image();
-         frameImg.src = 'data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciPjwvc3ZnPg=='; // empty svg
-         await new Promise((res) => { frameImg.onload = res; frameImg.onerror = res; });
+        frameImg = await loadImage(resolveApiUrl(params.frame.src), true);
       }
-    } else {
-      frameImg = await loadImage(resolveApiUrl(params.frame.src), true);
+  
+      ctx.save();
+      ctx.filter = 'none'; // Ensure the frame remains completely authentic without photo filters
+      ctx.drawImage(frameImg, 0, 0, size, size);
+      ctx.restore();
+  
+      if (tempUrl) {
+        URL.revokeObjectURL(tempUrl);
+      }
+    } catch (err) {
+      console.error("CORS / Gagal memuat bingkai pada canvas:", err);
+      
+      // Aesthetic error border drawn directly on canvas for diagnostics
+      ctx.save();
+      ctx.strokeStyle = params.neonColor;
+      ctx.lineWidth = 10;
+      ctx.strokeRect(20, 20, size-40, size-40);
+      ctx.font = '24px "Space Grotesk", sans-serif';
+      ctx.fillStyle = '#ff2a74';
+      ctx.fillText('!] Error memuat frame eksternal (CORS) [!', size / 2, 80);
+      ctx.restore();
     }
-
-    ctx.save();
-    ctx.filter = 'none'; // Ensure the frame remains completely authentic without photo filters
-    ctx.drawImage(frameImg, 0, 0, size, size);
-    ctx.restore();
-
-    if (tempUrl) {
-      URL.revokeObjectURL(tempUrl);
-    }
-  } catch (err) {
-    console.error("CORS / Gagal memuat bingkai pada canvas:", err);
-    
-    // Aesthetic error border drawn directly on canvas for diagnostics
-    ctx.save();
-    ctx.strokeStyle = params.neonColor;
-    ctx.lineWidth = 10;
-    ctx.strokeRect(20, 20, size-40, size-40);
-    ctx.font = '24px "Space Grotesk", sans-serif';
-    ctx.fillStyle = '#ff2a74';
-    ctx.fillText('!] Error memuat frame eksternal (CORS) [!', size / 2, 80);
-    ctx.restore();
   }
 
   // 4. Draw placed stickers and text (Only during final download to avoid double rendering with HTML interactive layers)

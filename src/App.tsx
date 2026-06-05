@@ -179,7 +179,7 @@ export default function App() {
         items.sort((a, b) => b.id.localeCompare(a.id));
         setCloudDownloads(items);
       } catch (fallbackErr: any) {
-        console.error("Gagal total mengambil koleksi cloud:", fallbackErr);
+        console.warn("Gagal total mengambil koleksi cloud:", fallbackErr);
         try {
           handleFirestoreError(fallbackErr, OperationType.LIST, 'downloads');
         } catch (fErr) {}
@@ -252,7 +252,7 @@ export default function App() {
 
   // State variables
   const [userImage, setUserImage] = useState<string | null>(DEFAULT_IMAGE);
-  const [selectedFrame, setSelectedFrame] = useState<Frame>(FRAMES[0]);
+  const [selectedFrame, setSelectedFrame] = useState<Frame | null>(null);
   const [customFrames, setCustomFrames] = useState<Frame[]>([]);
   const [appwriteFrames, setAppwriteFrames] = useState<Frame[]>([]);
   const [isLoadingAppwrite, setIsLoadingAppwrite] = useState(false);
@@ -590,9 +590,6 @@ export default function App() {
       triggerToast(`Selamat datang kembali, ${result.user.displayName || 'Pengguna'}! 🛸✨`);
       setShowAuthWarning(false);
     } catch (err: any) {
-      console.error("Google login error:", err);
-      setAuthErrorDetail(err.message || String(err));
-      
       // Check if popup was closed, cancelled or blocked
       if (err.code === 'auth/popup-closed-by-user' || 
           err.code === 'auth/cancelled-popup-request' || 
@@ -600,11 +597,15 @@ export default function App() {
           err.message?.includes('popup') ||
           err.message?.includes('closed') ||
           err.message?.includes('blocked')) {
+        console.log('Login popup was closed or blocked by user');
         setShowAuthWarning(true);
         triggerToast("Login terputus karena browser memblokir pop-up. Menampilkan solusi... 🔐");
-      } else {
-        triggerToast(`Gagal masuk: ${err.message || err}`);
+        return;
       }
+      
+      console.error("Google login error:", err);
+      setAuthErrorDetail(err.message || String(err));
+      triggerToast(`Gagal masuk: ${err.message || err}`);
     } finally {
       setIsAuthLoading(false);
     }
@@ -991,8 +992,8 @@ export default function App() {
     setCustomFrames(updated);
     localStorage.setItem('bt_custom_frames', JSON.stringify(updated));
     triggerToast('Bingkai kustom dihapus');
-    if (selectedFrame.id === id) {
-      setSelectedFrame(FRAMES[0]);
+    if (selectedFrame?.id === id) {
+      setSelectedFrame(null);
     }
   };
 
@@ -1267,7 +1268,7 @@ export default function App() {
   // Quest validation calculations
   const displayFrames = [...FRAMES, ...appwriteFrames, ...customFrames];
   const quest1Completed = userImage !== null && userImage !== DEFAULT_IMAGE;
-  const quest2Completed = selectedFrame !== null && selectedFrame.id !== FRAMES[0].id;
+  const quest2Completed = selectedFrame !== null;
   const quest3Completed = filterPresetId !== 'none';
   const quest4Completed = imageSettings.maskShape !== 'square';
   const quest5Completed = imageSettings.scanlines === true;
@@ -1318,7 +1319,7 @@ export default function App() {
                 {/* Horizontal Frame Selection Carousel (Slider Bingkai) */}
                 <div className="flex gap-2.5 overflow-x-auto pb-2 scrollbar-thin scrollbar-thumb-white/10 scrollbar-track-transparent w-full">
                   {displayFrames.map((frame) => {
-                    const isSelected = frame.id === selectedFrame.id;
+                    const isSelected = frame.id === selectedFrame?.id;
                     return (
                       <button
                         key={frame.id}
@@ -3217,7 +3218,7 @@ export default function App() {
 
         <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4">
           {displayFrames.map((frame) => {
-            const isSelected = frame.id === selectedFrame.id;
+            const isSelected = frame.id === selectedFrame?.id;
             return (
               <div
                 key={frame.id}
@@ -3252,20 +3253,8 @@ export default function App() {
                   <div className="absolute inset-0 bg-transparent group-hover:bg-cyan-950/10 transition-colors pointer-events-none" />
                 </div>
 
-                <div className="text-center w-full min-w-0">
-                  <span className="text-[9px] font-mono text-neon-cyan tracking-wider uppercase font-bold px-1.5 py-0.5 rounded bg-cyan-950/30 border border-cyan-500/10">
-                    {frame.category || 'PRESET'}
-                  </span>
-                  <h3 className="font-mono text-xs font-bold text-zinc-100 mt-2 truncate w-full group-hover:text-neon-cyan transition-colors">
-                    {frame.name}
-                  </h3>
-                  <p className="text-[9.5px] text-zinc-500 truncate mt-0.5 w-full font-sans">
-                    {frame.description || 'Bingkai estetik edisi digital futuristik'}
-                  </p>
-                </div>
-
                 {/* Action button */}
-                <div className="w-full pt-2 border-t border-white/5">
+                <div className="w-full pt-2 mt-2">
                   <button className="w-full py-1.5 rounded bg-white/5 hover:bg-neon-cyan hover:text-black font-mono text-[9px] font-bold tracking-wider transition-all uppercase">
                     GUNAKAN BINGKAI
                   </button>
@@ -3625,7 +3614,7 @@ export default function App() {
                             triggerToast(`SISTEM: Bingkai Nufat "${post.frameName}" berhasil diterapkan! 🎨`);
                           } else {
                             // Copy mock styles
-                            const targetFrame = FRAMES.find(f => f.id === post.frameId) || FRAMES[0];
+                            const targetFrame = FRAMES.find(f => f.id === post.frameId) || null;
                             setSelectedFrame(targetFrame);
                             setNeonColor(post.neonColor);
                             const matchingPreset = FILTER_PRESETS.find(p => p.id === post.filterPresetId);
