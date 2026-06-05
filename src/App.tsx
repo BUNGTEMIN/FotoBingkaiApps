@@ -272,7 +272,43 @@ export default function App() {
   // Save changes to localStorage only if they are not null (or handle nulls explicitly without clearing initial values)
   useEffect(() => {
     if (userImage) {
-      localStorage.setItem('bt_user_image', userImage);
+      try {
+        localStorage.setItem('bt_user_image', userImage);
+      } catch (storageError) {
+        console.warn('localStorage quota exceeded while saving userImage, attempting to free space from gallery...');
+        // Try to free space by pruning some of the gallery
+        const galleryPersisted = localStorage.getItem('bt_my_gallery');
+        if (galleryPersisted) {
+          try {
+            const parsed = JSON.parse(galleryPersisted);
+            if (parsed.length > 0) {
+              // Keep only the 1-2 newest items, or discard more
+              const truncated = parsed.slice(0, Math.min(2, parsed.length));
+              try {
+                localStorage.setItem('bt_my_gallery', JSON.stringify(truncated));
+                setSavedCreations(truncated);
+                // Now try saving userImage again
+                localStorage.setItem('bt_user_image', userImage);
+                console.log('Successfully saved userImage after pruning gallery!');
+                return;
+              } catch (innerWriteErr) {
+                // keep falling through
+              }
+            }
+          } catch (innerErr) {
+            console.error('Failed to prune gallery to free space:', innerErr);
+          }
+        }
+        // If still failing or no gallery, let's try clearing the entire gallery
+        try {
+          localStorage.removeItem('bt_my_gallery');
+          setSavedCreations([]);
+          localStorage.setItem('bt_user_image', userImage);
+          console.log('Successfully saved userImage after clearing gallery!');
+        } catch (fallbackErr) {
+          console.error('Absolutely no space left even after clearing gallery for userImage:', fallbackErr);
+        }
+      }
     } else {
       localStorage.removeItem('bt_user_image');
     }
@@ -523,58 +559,26 @@ export default function App() {
     }
   };
 
-  // Fetch custom frames from Appwrite
+  // Fetch frames from new proxy
   const fetchAppwriteFrames = async () => {
-    if (!BUCKET_ID) {
-      console.warn("Appwrite BUCKET_ID is missing. Skipping Appwrite frames fetch.");
-      triggerToast("Sistem Peringatan: BUCKET_ID Appwrite belum diatur.");
-      return;
-    }
     setIsLoadingAppwrite(true);
     try {
-      let mappedFrames: Frame[] = [];
-      try {
-        // Try proxy first to bypass CORS
-        const proxyRes = await fetch("/api/appwrite/files");
-        if (proxyRes.ok) {
-          const proxyData = await proxyRes.json();
-          mappedFrames = (proxyData.files || [])
-            .filter((file: any) => file.mimeType && file.mimeType.includes('image'))
-            .map((file: any) => ({
-              id: `aw_${file.$id}`,
-              name: (file.name || '').split('.')[0] || 'Appwrite Frame',
-              src: file.fileViewUrl || storage.getFileView(BUCKET_ID, file.$id).toString(),
-              category: 'Appwrite',
-              type: 'url'
-            }));
-        } else {
-          throw new Error("Proxy failed");
-        }
-      } catch (proxyErr) {
-        // Fallback to client SDK
-        console.warn("Proxy fallback to client SDK for Appwrite:", proxyErr);
-        const fileList = await storage.listFiles(BUCKET_ID);
-        mappedFrames = fileList.files
-          .filter(file => file.mimeType.includes('image'))
-          .map(file => ({
-            id: `aw_${file.$id}`,
-            name: (file.name || '').split('.')[0] || 'Appwrite Frame',
-            src: storage.getFileView(BUCKET_ID, file.$id).toString(),
-            category: 'Appwrite',
-            type: 'url'
-          }));
-      }
+      const response = await fetch("https://nudb.bungtemin.net/bingkai/api");
+      if (!response.ok) throw new Error("Failed to fetch frames");
+      const data = await response.json();
+      
+      const mappedFrames: Frame[] = Array.isArray(data) ? data : [];
 
       setAppwriteFrames(mappedFrames);
       localStorage.setItem('bt_appwrite_frames', JSON.stringify(mappedFrames));
       if (mappedFrames.length > 0) {
-        triggerToast(`Sistem: Berhasil memuat ${mappedFrames.length} bingkai dari Appwrite!`);
+        triggerToast(`Sistem: Berhasil memuat ${mappedFrames.length} bingkai!`);
       } else {
-        triggerToast("Sistem: Folder Appwrite Anda saat ini kosong/tidak memiliki file bingkai gambar.");
+        triggerToast("Sistem: Folder bingkai saat ini kosong/tidak memiliki file bingkai gambar.");
       }
     } catch (error) {
-      console.error("Failed to load frames from Appwrite:", error);
-      triggerToast("Sistem: Gagal memuat bingkai Appwrite. Periksa koneksi atau ID Proyek.");
+      console.error("Failed to load frames:", error);
+      triggerToast("Sistem: Gagal memuat bingkai. Periksa koneksi.");
     } finally {
       setIsLoadingAppwrite(false);
     }
@@ -733,9 +737,23 @@ export default function App() {
       
       const existingStr = localStorage.getItem('bt_my_gallery') || '[]';
       const existing = JSON.parse(existingStr);
-      const updated = [item, ...existing];
+      let updated = [item, ...existing];
+      
+      let success = false;
+      let prunedCount = 0;
+      while (!success && updated.length > 0) {
+        try {
+          localStorage.setItem('bt_my_gallery', JSON.stringify(updated));
+          success = true;
+        } catch (storageError) {
+          updated.pop();
+          prunedCount++;
+        }
+      }
       setSavedCreations(updated);
-      localStorage.setItem('bt_my_gallery', JSON.stringify(updated));
+      if (prunedCount > 0) {
+        console.warn(`[Galeri] Menghapus ${prunedCount} karya lama dari penyimpanan lokal karena kuota penuh.`);
+      }
     } catch (e) {
       console.error(e);
     }
@@ -2377,16 +2395,7 @@ export default function App() {
                         }`}>
                           <Maximize className="w-3.5 h-3.5" />
                         </div>
-                        <div className="min-w-0">
-                          <div className="flex items-center gap-1.5 leading-none mb-1">
-                            <span className="text-[7px] tracking-widest font-extrabold uppercase text-emerald-500/80">OVERLAY</span>
-                            <span className="text-[7.5px] text-zinc-500 font-bold">#FIXED</span>
-                            <Lock className="w-2.5 h-2.5 text-zinc-500 ml-1 opacity-50" />
-                          </div>
-                          <p className="text-[11px] font-sans font-semibold uppercase truncate">
-                            {selectedFrame ? `BINGKAI: ${selectedFrame.name}` : 'TIDAK ADA BINGKAI AKTIF'}
-                          </p>
-                        </div>
+
                       </div>
                     </div>
 
@@ -2468,7 +2477,7 @@ export default function App() {
                           : theme === 'dark' ? 'text-zinc-550 hover:text-zinc-200' : 'text-zinc-500 hover:text-zinc-800'
                       }`}
                     >
-                      🎨 BINGKAI AI
+                      🎨 OVERLAY AI
                     </button>
                     <button
                       type="button"
@@ -2579,7 +2588,7 @@ export default function App() {
                       : aiMode === 'image' 
                         ? 'GENERATE FOTO PROFIL' 
                         : aiMode === 'frame'
-                          ? 'RANCANG BINGKAI AI'
+                          ? 'RANCANG OVERLAY AI'
                           : 'GENERATE SLOGAN FUTURISTIK'}
                   </button>
                 </div>
@@ -3258,8 +3267,8 @@ export default function App() {
         </div>
       )}
 
-      {/* BINGKAI CATALOG DIRECTORY PAGE */}
-    {currentPage === 'bingkai' && (
+            {/* OVERLAY CATALOG DIRECTORY PAGE */}
+    {currentPage === 'removed' && (
       <div className="flex-1 max-w-7xl w-full mx-auto p-4 sm:p-6 lg:p-8 space-y-8 relative">
         <button
            onClick={() => setCurrentPage('beranda')}
@@ -3269,10 +3278,10 @@ export default function App() {
         </button>
         <div className="text-center max-w-xl mx-auto space-y-2">
           <div className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded bg-[#00F0FF]/10 text-neon-cyan border border-[#00F0FF]/25 font-mono text-[9px] tracking-widest uppercase mb-1">
-            <Layers className="w-3.5 h-3.5 animate-pulse" /> DAFTAR BINGKAI AKTIF
+            <Layers className="w-3.5 h-3.5 animate-pulse" /> DAFTAR OVERLAY AKTIF
           </div>
           <h2 className="text-2xl font-display font-extrabold tracking-tight text-white uppercase">
-            KATALOG BINGKAI FUTURISTIK
+            KATALOG OVERLAY FUTURISTIK
           </h2>
           <p className="text-xs text-zinc-400">
             Pilih bingkai kustom atau resmi di bawah ini untuk langsung diterapkan di ruang kerja editor Beranda.
@@ -3329,7 +3338,7 @@ export default function App() {
                 {/* Action button */}
                 <div className="w-full pt-2 mt-2">
                   <button className="w-full py-1.5 rounded bg-white/5 hover:bg-neon-cyan hover:text-black font-mono text-[9px] font-bold tracking-wider transition-all uppercase">
-                    GUNAKAN BINGKAI
+                    GUNAKAN OVERLAY
                   </button>
                 </div>
               </div>
@@ -3597,7 +3606,7 @@ export default function App() {
                         }}
                         className="w-full py-2 bg-gradient-to-r from-neon-cyan/20 to-blue-900/10 hover:from-neon-cyan hover:to-[#39ff14] hover:text-[#050505] active:scale-[0.98] transition-all duration-300 font-mono text-[9px] uppercase font-black tracking-widest text-[#00F0FF] rounded border border-neon-cyan/40 hover:border-[#39ff14]/60"
                       >
-                        GUNAKAN BINGKAI INI
+                        GUNAKAN OVERLAY INI
                       </button>
                     </div>
                   </div>
@@ -3689,7 +3698,11 @@ export default function App() {
                     onClick={() => {
                       const updated = savedCreations.filter(c => c.id !== creation.id);
                       setSavedCreations(updated);
-                      localStorage.setItem('bt_my_gallery', JSON.stringify(updated));
+                      try {
+                        localStorage.setItem('bt_my_gallery', JSON.stringify(updated));
+                      } catch (e) {
+                        console.error('Failed to update gallery localStorage:', e);
+                      }
                       triggerToast('Karya dihapus dari album.');
                     }}
                     className="p-1.5 bg-black/80 hover:bg-red-500 hover:text-white text-zinc-400 rounded border border-white/10 font-bold shadow-lg shadow-black"

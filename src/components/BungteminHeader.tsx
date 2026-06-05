@@ -49,7 +49,7 @@ export default function BungteminHeader({
               <span className={`font-mono text-[10px] font-extrabold tracking-widest uppercase transition-colors duration-300 ${
                 theme === 'dark' ? 'text-[#E0E0E0]' : 'text-zinc-800'
               }`}>
-                FOTO BINGKAI
+                FOTO OVERLAY
               </span>
             </div>
           </div>
@@ -62,13 +62,6 @@ export default function BungteminHeader({
             >
               BERANDA
               <span className={`absolute bottom-0 left-0 w-full h-0.5 bg-neon-cyan origin-left transition-transform duration-300 ${currentPage === 'beranda' ? 'scale-x-100' : 'scale-x-0 group-hover:scale-x-100'}`} />
-            </button>
-            <button 
-              onClick={() => onNavigate('bingkai')}
-              className={`${currentPage === 'bingkai' ? 'text-neon-cyan font-bold' : (theme === 'dark' ? 'text-zinc-400 hover:text-neon-cyan' : 'text-zinc-600 hover:text-neon-cyan')} transition-colors relative py-1 group`}
-            >
-              BINGKAI
-              <span className={`absolute bottom-0 left-0 w-full h-0.5 bg-neon-cyan origin-left transition-transform duration-300 ${currentPage === 'bingkai' ? 'scale-x-100' : 'scale-x-0 group-hover:scale-x-100'}`} />
             </button>
             <button 
               onClick={() => onNavigate('misi')}
@@ -218,19 +211,6 @@ export default function BungteminHeader({
                 >
                   <span className={`block text-[9px] ${theme === 'dark' ? 'text-zinc-500' : 'text-zinc-450'}`}>Beranda</span>
                   <span className={`text-xs font-semibold ${theme === 'dark' ? 'text-zinc-200' : 'text-zinc-800'}`}>HOME</span>
-                </button>
-                <button 
-                  onClick={() => { onNavigate('bingkai'); setIsOpen(false); }}
-                  className={`p-3 rounded border text-center transition-all ${
-                    currentPage === 'bingkai' 
-                      ? 'border-neon-cyan bg-cyan-950/20' 
-                      : theme === 'dark' 
-                        ? 'bg-white/3 border-white/10 hover:border-neon-cyan' 
-                        : 'bg-zinc-50 border-zinc-200 text-zinc-800 hover:border-neon-cyan hover:bg-zinc-100'
-                  }`}
-                >
-                  <span className={`block text-[9px] ${theme === 'dark' ? 'text-zinc-500' : 'text-zinc-450'}`}>Daftar</span>
-                  <span className={`text-xs font-semibold ${theme === 'dark' ? 'text-zinc-200' : 'text-zinc-800'}`}>BINGKAI</span>
                 </button>
                 <button 
                   onClick={() => { onNavigate('galeri'); setIsOpen(false); }}
