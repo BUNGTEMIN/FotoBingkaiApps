@@ -1,5 +1,8 @@
 import React, { useState } from 'react';
 import { LazyImage } from './LazyImage';
+import { AnimatePresence, motion } from "motion/react";
+import { Trash2 } from 'lucide-react';
+import { DeleteConfirmationModal } from './DeleteConfirmationModal';
 
 interface CloudItemProps {
   item: any;
@@ -10,9 +13,47 @@ interface CloudItemProps {
   onLike: () => void;
 }
 
-export const CloudItem: React.FC<CloudItemProps> = ({ item, matchesUser, onEdit, onDownload, onDelete, onLike }) => {
+export const CloudItem: React.FC<CloudItemProps> = ({ item, matchesUser, onDelete, onLike }) => {
+  const [hearts, setHearts] = useState<{ id: number }[]>([]);
+  const [isDeleteModalOpen, setIsDeleteModalOpen] = useState(false);
+
+  const handleLikeClick = () => {
+    onLike();
+    const id = Date.now();
+    setHearts(prev => [...prev, { id }]);
+    setTimeout(() => {
+      setHearts(prev => prev.filter(h => h.id !== id));
+    }, 1000);
+  };
+
   return (
-    <div className="rounded-xl bg-[#0b0b0b] border border-white/10 overflow-hidden flex flex-col group hover:border-[#00F0FF]/30 transition-all duration-300 shadow-xl w-full sm:w-auto">
+    <div className="relative rounded-xl bg-[#0b0b0b] border border-white/10 overflow-hidden flex flex-col group hover:border-[#00F0FF]/30 transition-all duration-300 shadow-xl w-full sm:w-auto">
+      <DeleteConfirmationModal
+        isOpen={isDeleteModalOpen}
+        onClose={() => setIsDeleteModalOpen(false)}
+        onConfirm={onDelete || (() => {})}
+      />
+
+      {/* Floating Hearts Animation */}
+      <AnimatePresence>
+        {hearts.map(h => (
+          <motion.div
+            key={h.id}
+            initial={{ opacity: 1, y: 0, x: '50%', scale: 0.5 }}
+            animate={{ 
+              opacity: [0, 1, 0], 
+              y: -200, 
+              x: `${50 + (Math.random() - 0.5) * 100}%`, 
+              scale: [0.5, 1.5, 2] 
+            }}
+            transition={{ duration: 1.5, ease: "easeOut" }}
+            exit={{ opacity: 0 }}
+            className="absolute bottom-16 right-6 text-2xl pointer-events-none z-50"
+          >
+            ❤
+          </motion.div>
+        ))}
+      </AnimatePresence>
       {/* User Header */}
       <div className="p-3 bg-black/40 border-b border-white/5 flex items-center justify-between">
         <div className="flex items-center space-x-2 min-w-0">
@@ -41,7 +82,7 @@ export const CloudItem: React.FC<CloudItemProps> = ({ item, matchesUser, onEdit,
       <div className="relative aspect-square bg-zinc-950 flex items-center justify-center p-0 overflow-hidden border-b border-white/5">
         <LazyImage
           src={item.imageUrl}
-          alt={item.fileName}
+          alt="Image"
           className="w-full h-full object-cover transition-transform duration-500 group-hover:scale-105 pointer-events-none select-none"
         />
         <div className="absolute bottom-2 left-2 bg-black/85 px-1.5 py-0.5 rounded border border-white/10 font-mono text-[8px] text-neon-cyan tracking-wider">
@@ -52,49 +93,27 @@ export const CloudItem: React.FC<CloudItemProps> = ({ item, matchesUser, onEdit,
       {/* Details & Actions */}
       <div className="p-4 flex-1 flex flex-col justify-between space-y-3.5">
         <div className="flex items-center justify-between">
-          <h4 className="font-mono text-[10.5px] font-bold text-zinc-200 truncate" title={item.fileName}>
-            {item.fileName}
-          </h4>
-          <button 
-            onClick={onLike}
-            className="flex items-center gap-1 text-[10px] text-neon-cyan hover:text-white"
+          <p className="text-[9px] text-zinc-500 font-mono leading-none">
+            Dimuat: {item.downloadedAt}
+          </p>
+          <motion.button 
+            onClick={handleLikeClick}
+            whileTap={{ scale: 1.5, rotate: -10, transition: { duration: 0.1 } }}
+            className="flex items-center gap-1.5 text-2xl text-red-500 hover:text-red-400 p-2"
           >
-            ❤ {item.likes || 0}
+            ❤ <span className="text-[14px] font-mono text-zinc-200">{item.likes || 0}</span>
+          </motion.button>
+        </div>
+
+        {matchesUser && onDelete && (
+          <button
+            type="button"
+            onClick={() => setIsDeleteModalOpen(true)}
+            className="w-full flex items-center justify-center gap-1.5 py-1.5 text-[10px] border border-red-500/20 text-red-500 hover:bg-red-500/10 font-mono uppercase font-bold rounded transition-all active:scale-[0.98]"
+          >
+            <Trash2 size={12} /> HAPUS
           </button>
-        </div>
-        <p className="text-[9px] text-zinc-500 font-mono leading-none">
-          Dimuat: {item.downloadedAt}
-        </p>
-
-        <div className="space-y-2 pt-1 border-t border-white/5">
-          <div className="grid grid-cols-2 gap-2">
-            <button
-              type="button"
-              onClick={onEdit}
-              className="py-1.5 border border-white/10 hover:border-neon-cyan/50 bg-zinc-900/60 hover:bg-zinc-900 text-zinc-300 hover:text-white rounded font-mono text-[9px] uppercase font-bold transition-all"
-              title="Gunakan foto ini kembali di Canvas Editor"
-            >
-              EDIT ULANG 🔄
-            </button>
-            <button
-              type="button"
-              onClick={onDownload}
-              className="py-1.5 border border-white/10 hover:border-neon-green/50 bg-zinc-900/60 hover:bg-zinc-900 text-zinc-350 hover:text-white rounded font-mono text-[9px] uppercase font-bold transition-all"
-            >
-              UNDUH 📥
-            </button>
-          </div>
-
-          {matchesUser && onDelete && (
-            <button
-              type="button"
-              onClick={onDelete}
-              className="w-full py-1 text-[8.5px] border border-red-500/20 text-red-400 hover:bg-red-500/10 font-mono uppercase font-bold rounded transition-all active:scale-[0.98]"
-            >
-              HAPUS
-            </button>
-          )}
-        </div>
+        )}
       </div>
     </div>
   );

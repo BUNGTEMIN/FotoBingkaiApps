@@ -8,7 +8,7 @@ import {
 import { motion, AnimatePresence } from 'motion/react';
 
 // Firebase and database setup
-import { doc, setDoc, serverTimestamp, collection, getDocs, query, orderBy, deleteDoc, where, updateDoc, increment } from 'firebase/firestore';
+import { doc, setDoc, serverTimestamp, collection, getDocs, query, orderBy, deleteDoc, where, updateDoc, increment, addDoc } from 'firebase/firestore';
 import { onAuthStateChanged, signInWithPopup, GoogleAuthProvider, signOut, User } from 'firebase/auth';
 import { db, auth, handleFirestoreError, OperationType } from './firebase';
 
@@ -19,6 +19,7 @@ import ImageAdjuster from './components/ImageAdjuster';
 import StickerSelector, { FUTURISTIC_FONTS, STICKER_COLORS } from './components/StickerSelector';
 import { LazyImage } from './components/LazyImage';
 import { CloudItem } from './components/CloudItem';
+import { DeleteConfirmationModal } from './components/DeleteConfirmationModal';
 
 // Types & presets
 import { Frame, ImageSettings, PlacedSticker } from './types';
@@ -100,13 +101,73 @@ export default function App() {
   const [showAuthWarning, setShowAuthWarning] = useState(false);
 
   // Page state: 'beranda' / 'bingkai' / 'misi' / 'galeri' / 'album'
-  const [currentPage, setCurrentPage] = useState<'beranda' | 'bingkai' | 'misi' | 'galeri' | 'album' | 'wabot'>('beranda');
-  const [savedCreations, setSavedCreations] = useState<{ id: string; src: string; timestamp: string }[]>([]);
+  const [currentPage, setCurrentPage] = useState<'beranda' | 'bingkai' | 'misi' | 'galeri' | 'album'>('beranda');
+  // Removed local savedCreations storage
+  const [savedCreations, setSavedCreations] = useState<{ id: string; src: string; timestamp: string, userId: string }[]>([]);
+  const [isLoadingGallery, setIsLoadingGallery] = useState(false);
 
   // Cloud Firestore downloads state and fetching logic
   const [cloudDownloads, setCloudDownloads] = useState<any[]>([]);
   const [isLoadingCloudDownloads, setIsLoadingCloudDownloads] = useState(false);
-  const [galleryTab, setGalleryTab] = useState<'cloud' | 'nufat'>('cloud');
+  const [isDeleteModalOpen, setIsDeleteModalOpen] = useState(false);
+  const [itemToDelete, setItemToDelete] = useState<string | null>(null);
+  
+  // User My Gallery
+  const fetchMyGallery = async () => {
+    if (!user) return;
+    setIsLoadingGallery(true);
+    try {
+      const q = query(
+        collection(db, 'downloads'),
+        where('userId', '==', user.uid),
+        orderBy('downloadedAt', 'desc')
+      );
+      const querySnapshot = await getDocs(q);
+      const items: any[] = [];
+      querySnapshot.forEach((docSnap) => {
+        const data = docSnap.data() as any;
+        items.push({
+          id: docSnap.id,
+          src: data.imageUrl,
+          timestamp: data.downloadedAt?.toDate ? data.downloadedAt.toDate().toLocaleString() : new Date().toLocaleString(),
+          userId: data.userId
+        });
+      });
+      setSavedCreations(items);
+    } catch (err: any) {
+      console.warn("Gagal mengambil data koleksi dengan pengurutan (index belum matang), mencoba query alternatif tanpa orderBy:", err);
+      try {
+        const fallbackQuery = query(
+          collection(db, 'downloads'),
+          where('userId', '==', user.uid)
+        );
+        const querySnapshot = await getDocs(fallbackQuery);
+        const items: any[] = [];
+        querySnapshot.forEach((docSnap) => {
+          const data = docSnap.data() as any;
+          items.push({
+            id: docSnap.id,
+            src: data.imageUrl,
+            timestamp: data.downloadedAt?.toDate ? data.downloadedAt.toDate().toLocaleString() : new Date().toLocaleString(),
+            userId: data.userId
+          });
+        });
+        // Sort manually by id if timestamp index is missing (descending)
+        items.sort((a, b) => b.id.localeCompare(a.id));
+        setSavedCreations(items);
+      } catch (fallbackErr: any) {
+        console.error("Error fetching koleksi fallback:", fallbackErr);
+      }
+    } finally {
+      setIsLoadingGallery(false);
+    }
+  };
+
+  useEffect(() => {
+    if (user && (currentPage === 'galeri' || currentPage === 'album')) {
+      fetchMyGallery();
+    }
+  }, [currentPage, user]);
   const [cloudSubTab, setCloudSubTab] = useState<'all' | 'mine' | 'others'>('all');
 
   const fetchCloudDownloads = async (targetSubTab?: 'all' | 'mine' | 'others') => {
@@ -205,6 +266,17 @@ export default function App() {
     }
   };
 
+  const deleteFromMyGallery = async (id: string) => {
+    try {
+      await deleteDoc(doc(db, 'downloads', id));
+      triggerToast('SISTEM: Berhasil menghapus karya dari galeri! 🗑️');
+      fetchMyGallery();
+    } catch (err: any) {
+      console.error('Error delete gallery document:', err);
+      triggerToast(`Gagal: ${err.message || err}`);
+    }
+  };
+
   const handleLike = async (id: string) => {
     try {
       await updateDoc(doc(db, 'downloads', id), {
@@ -272,43 +344,7 @@ export default function App() {
   // Save changes to localStorage only if they are not null (or handle nulls explicitly without clearing initial values)
   useEffect(() => {
     if (userImage) {
-      try {
-        localStorage.setItem('bt_user_image', userImage);
-      } catch (storageError) {
-        console.warn('localStorage quota exceeded while saving userImage, attempting to free space from gallery...');
-        // Try to free space by pruning some of the gallery
-        const galleryPersisted = localStorage.getItem('bt_my_gallery');
-        if (galleryPersisted) {
-          try {
-            const parsed = JSON.parse(galleryPersisted);
-            if (parsed.length > 0) {
-              // Keep only the 1-2 newest items, or discard more
-              const truncated = parsed.slice(0, Math.min(2, parsed.length));
-              try {
-                localStorage.setItem('bt_my_gallery', JSON.stringify(truncated));
-                setSavedCreations(truncated);
-                // Now try saving userImage again
-                localStorage.setItem('bt_user_image', userImage);
-                console.log('Successfully saved userImage after pruning gallery!');
-                return;
-              } catch (innerWriteErr) {
-                // keep falling through
-              }
-            }
-          } catch (innerErr) {
-            console.error('Failed to prune gallery to free space:', innerErr);
-          }
-        }
-        // If still failing or no gallery, let's try clearing the entire gallery
-        try {
-          localStorage.removeItem('bt_my_gallery');
-          setSavedCreations([]);
-          localStorage.setItem('bt_user_image', userImage);
-          console.log('Successfully saved userImage after clearing gallery!');
-        } catch (fallbackErr) {
-          console.error('Absolutely no space left even after clearing gallery for userImage:', fallbackErr);
-        }
-      }
+      localStorage.setItem('bt_user_image', userImage);
     } else {
       localStorage.removeItem('bt_user_image');
     }
@@ -603,21 +639,6 @@ export default function App() {
           localStorage.setItem('bt_custom_frames', JSON.stringify(filteredFrames));
         }
       }
-      const galleryPersisted = localStorage.getItem('bt_my_gallery');
-      if (galleryPersisted) {
-        const parsed = JSON.parse(galleryPersisted);
-        setSavedCreations(parsed);
-
-        const filteredGallery = parsed.filter((g: any) => 
-          !(g.caption?.toLowerCase().includes('overload')) && 
-          !(g.caption?.toLowerCase().includes('ahah')) &&
-          !(g.frameName?.toLowerCase().includes('rose'))
-        );
-        setSavedCreations(filteredGallery);
-        if (parsed.length !== filteredGallery.length) {
-          localStorage.setItem('bt_my_gallery', JSON.stringify(filteredGallery));
-        }
-      }
       const appwritePersisted = localStorage.getItem('bt_appwrite_frames');
       if (appwritePersisted) {
         const parsed = JSON.parse(appwritePersisted);
@@ -727,35 +748,22 @@ export default function App() {
   }, [enableParallax]);
 
   // Save base64 rendering to user gallery album
-  const saveToGallery = (dataUrl: string) => {
+  const saveToGallery = async (dataUrl: string) => {
+    if (!user) {
+      triggerToast('Silakan login untuk menyimpan karya ke galeri cloud.');
+      return;
+    }
+    
     try {
-      const item = {
-        id: Date.now().toString(),
+      await addDoc(collection(db, 'my_gallery'), {
+        userId: user.uid,
         src: dataUrl,
-        timestamp: new Date().toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit' }) + ' ' + new Date().toLocaleDateString('id-ID')
-      };
-      
-      const existingStr = localStorage.getItem('bt_my_gallery') || '[]';
-      const existing = JSON.parse(existingStr);
-      let updated = [item, ...existing];
-      
-      let success = false;
-      let prunedCount = 0;
-      while (!success && updated.length > 0) {
-        try {
-          localStorage.setItem('bt_my_gallery', JSON.stringify(updated));
-          success = true;
-        } catch (storageError) {
-          updated.pop();
-          prunedCount++;
-        }
-      }
-      setSavedCreations(updated);
-      if (prunedCount > 0) {
-        console.warn(`[Galeri] Menghapus ${prunedCount} karya lama dari penyimpanan lokal karena kuota penuh.`);
-      }
+        timestamp: serverTimestamp(),
+      });
+      triggerToast('Berhasil menyimpan ke galeri cloud! ☁️');
     } catch (e) {
       console.error(e);
+      triggerToast('Gagal menyimpan ke galeri.');
     }
   };
 
@@ -2477,7 +2485,7 @@ export default function App() {
                           : theme === 'dark' ? 'text-zinc-550 hover:text-zinc-200' : 'text-zinc-500 hover:text-zinc-800'
                       }`}
                     >
-                      🎨 OVERLAY AI
+                      🎨 BINGKAI AI
                     </button>
                     <button
                       type="button"
@@ -2588,7 +2596,7 @@ export default function App() {
                       : aiMode === 'image' 
                         ? 'GENERATE FOTO PROFIL' 
                         : aiMode === 'frame'
-                          ? 'RANCANG OVERLAY AI'
+                          ? 'RANCANG BINGKAI AI'
                           : 'GENERATE SLOGAN FUTURISTIK'}
                   </button>
                 </div>
@@ -3267,8 +3275,8 @@ export default function App() {
         </div>
       )}
 
-            {/* OVERLAY CATALOG DIRECTORY PAGE */}
-    {currentPage === 'removed' && (
+            {/* BINGKAI CATALOG DIRECTORY PAGE */}
+    {currentPage === 'bingkai' && (
       <div className="flex-1 max-w-7xl w-full mx-auto p-4 sm:p-6 lg:p-8 space-y-8 relative">
         <button
            onClick={() => setCurrentPage('beranda')}
@@ -3278,10 +3286,10 @@ export default function App() {
         </button>
         <div className="text-center max-w-xl mx-auto space-y-2">
           <div className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded bg-[#00F0FF]/10 text-neon-cyan border border-[#00F0FF]/25 font-mono text-[9px] tracking-widest uppercase mb-1">
-            <Layers className="w-3.5 h-3.5 animate-pulse" /> DAFTAR OVERLAY AKTIF
+            <Layers className="w-3.5 h-3.5 animate-pulse" /> DAFTAR BINGKAI AKTIF
           </div>
           <h2 className="text-2xl font-display font-extrabold tracking-tight text-white uppercase">
-            KATALOG OVERLAY FUTURISTIK
+            KATALOG BINGKAI FUTURISTIK
           </h2>
           <p className="text-xs text-zinc-400">
             Pilih bingkai kustom atau resmi di bawah ini untuk langsung diterapkan di ruang kerja editor Beranda.
@@ -3338,7 +3346,7 @@ export default function App() {
                 {/* Action button */}
                 <div className="w-full pt-2 mt-2">
                   <button className="w-full py-1.5 rounded bg-white/5 hover:bg-neon-cyan hover:text-black font-mono text-[9px] font-bold tracking-wider transition-all uppercase">
-                    GUNAKAN OVERLAY
+                    GUNAKAN BINGKAI
                   </button>
                 </div>
               </div>
@@ -3357,52 +3365,8 @@ export default function App() {
         >
            <X className="w-6 h-6" />
         </button>
-        {/* Simple List (Tanpa Header Besar) */}
-        <div className="flex flex-wrap gap-2 border-b border-white/5 pb-4">
-          <button
-            onClick={() => setCloudSubTab('all')}
-            className={`px-4 py-2 rounded-lg font-mono text-[9px] uppercase tracking-wider transition-all font-bold ${
-              cloudSubTab === 'all'
-                ? 'bg-white text-zinc-950'
-                : 'bg-zinc-900 text-zinc-400 hover:text-zinc-200 hover:bg-zinc-850'
-            }`}
-          >
-            Semua Karya Cloud {cloudSubTab === 'all' ? `(${cloudDownloads.length})` : ''}
-          </button>
-          <button
-            onClick={() => setCloudSubTab('mine')}
-            className={`px-4 py-2 rounded-lg font-mono text-[9px] uppercase tracking-wider transition-all font-bold flex items-center gap-1.5 ${
-              cloudSubTab === 'mine'
-                ? 'bg-neon-cyan text-zinc-950 shadow-[0_0_10px_rgba(0,240,255,0.2)]'
-                : 'bg-zinc-900 text-zinc-400 hover:text-zinc-200 hover:bg-zinc-850'
-            }`}
-          >
-            👤 Galeri Saya {cloudSubTab === 'all' ? `(${cloudDownloads.filter(item => {
-              const currentUid = auth.currentUser?.uid || user?.uid;
-              return currentUid && item.userId === currentUid;
-            }).length})` : cloudSubTab === 'mine' ? `(${cloudDownloads.length})` : ''}
-          </button>
-          <button
-            onClick={() => setCloudSubTab('others')}
-            className={`px-4 py-2 rounded-lg font-mono text-[9px] uppercase tracking-wider transition-all font-bold flex items-center gap-1.5 ${
-              cloudSubTab === 'others'
-                ? 'bg-purple-600 text-white'
-                : 'bg-zinc-900 text-zinc-400 hover:text-zinc-200 hover:bg-zinc-850'
-            }`}
-          >
-            🌐 Galeri Orang Lain {cloudSubTab === 'all' ? `(${cloudDownloads.filter(item => {
-              const currentUid = auth.currentUser?.uid || user?.uid;
-              return !currentUid || item.userId !== currentUid;
-            }).length})` : cloudSubTab === 'others' ? `(${cloudDownloads.length})` : ''}
-          </button>
-
-          <button
-            onClick={() => fetchCloudDownloads()}
-            disabled={isLoadingCloudDownloads}
-            className="ml-auto px-3 py-1.5 text-zinc-400 hover:text-white rounded border border-white/5 bg-zinc-950 font-mono text-[9.5px] uppercase tracking-wider font-bold flex items-center gap-1.5 active:scale-95 disabled:opacity-50"
-          >
-            <RefreshCw className={`w-3.5 h-3.5 ${isLoadingCloudDownloads ? 'animate-spin text-neon-cyan' : 'text-zinc-400'}`} /> SINKRONISASI
-          </button>
+        <div className="flex justify-between items-center mb-6">
+          <h2 className="text-2xl font-display font-extrabold tracking-tight text-white uppercase">QCC FOTO</h2>
         </div>
 
             {isLoadingCloudDownloads ? (
@@ -3412,17 +3376,7 @@ export default function App() {
               </div>
             ) : (
               (() => {
-                const filteredCloud = cloudDownloads.filter(item => {
-                  const currentUid = auth.currentUser?.uid || user?.uid;
-                  const matchesUser = currentUid && item.userId === currentUid;
-                  if (cloudSubTab === 'mine') {
-                    return matchesUser;
-                  }
-                  if (cloudSubTab === 'others') {
-                    return !matchesUser;
-                  }
-                  return true;
-                });
+                const filteredCloud = cloudDownloads;
 
                 if (filteredCloud.length === 0) {
                   return (
@@ -3449,33 +3403,20 @@ export default function App() {
                           key={item.id}
                           item={item}
                           matchesUser={!!matchesUser}
-                          onEdit={() => {
-                            setUserImage(item.imageUrl);
-                            setCurrentPage('beranda');
-                            triggerToast('Workspace dimuat ulang! Gunakan bingkai baru pada foto ini. 🔄✨');
-                          }}
-                          onDownload={() => {
-                            const a = document.createElement('a');
-                            a.href = item.imageUrl;
-                            a.download = item.fileName || 'unduhan-cloud.jpg';
-                            document.body.appendChild(a);
-                            a.click();
-                            document.body.removeChild(a);
-                            triggerToast('Unduhan berjalan lancar! 📥🛸');
-                          }}
-                          onDelete={matchesUser ? () => deleteCloudDownload(item.id) : undefined}
                           onLike={() => handleLike(item.id)}
+                          onDelete={cloudSubTab === 'mine' ? () => deleteCloudDownload(item.id) : undefined}
                         />
                       );
                     })}
                   </div>
                 );
               })()
-            )}
+            )
+          }
       </div>
     )}
 
-    {/* WABOT LIVE API (Instagram Style on Mobile) */}
+
     {currentPage === 'wabot' && (
       <div className="flex-1 w-full mx-auto p-0 sm:p-6 lg:p-8 space-y-0 sm:space-y-6 max-w-7xl pb-16 sm:pb-8">
         <div className="space-y-0 sm:space-y-6 w-full">
@@ -3606,7 +3547,7 @@ export default function App() {
                         }}
                         className="w-full py-2 bg-gradient-to-r from-neon-cyan/20 to-blue-900/10 hover:from-neon-cyan hover:to-[#39ff14] hover:text-[#050505] active:scale-[0.98] transition-all duration-300 font-mono text-[9px] uppercase font-black tracking-widest text-[#00F0FF] rounded border border-neon-cyan/40 hover:border-[#39ff14]/60"
                       >
-                        GUNAKAN OVERLAY INI
+                        GUNAKAN BINGKAI INI
                       </button>
                     </div>
                   </div>
@@ -3629,41 +3570,40 @@ export default function App() {
         <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
           <div className="space-y-1">
             <div className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded bg-[#00F0FF]/10 text-neon-cyan border border-[#00F0FF]/25 font-mono text-[9px] tracking-widest uppercase mb-1">
-              <FolderOpen className="w-3.5 h-3.5 animate-pulse" /> PENYIMPANAN WORKSPACE SAYA
+              <FolderOpen className="w-3.5 h-3.5 animate-pulse" /> CLOUD STORAGE SAYA
             </div>
             <h2 className="text-2xl font-display font-extrabold tracking-tight text-white uppercase">
-              ALBUM KREASI SAYA
+              GALERI SAYA
             </h2>
             <p className="text-xs text-zinc-400">
-              Penyimpanan lokal khusus untuk foto-foto yang diunduh atau disimpan dalam sesi penjelajahan ini.
+              Koleksi karya pribadi Anda yang tersimpan aman di cloud galeri.
             </p>
           </div>
 
-          {savedCreations.length > 0 && (
-            <button
-              onClick={() => {
-                if (confirm('Apakah Anda yakin ingin menghapus semua hasil kreasi di galeri lokal ini?')) {
-                  setSavedCreations([]);
-                  localStorage.removeItem('bt_my_gallery');
-                  triggerToast('SISTEM: Semua album lokal dihapus.');
-                }
-              }}
-              className="px-3 py-1.5 border border-red-500/30 hover:border-red-500 text-red-400 hover:bg-red-950/20 rounded font-mono text-[9px] transition-all"
-            >
-              KOSONGKAN ALBUM
-            </button>
-          )}
+          <button
+            onClick={() => fetchMyGallery()}
+            disabled={isLoadingGallery}
+            className="px-3 py-1.5 border border-neon-cyan/30 hover:border-neon-cyan text-neon-cyan hover:bg-cyan-950/20 rounded font-mono text-[9px] transition-all flex items-center gap-2"
+          >
+            <RefreshCw className={`w-3 h-3 ${isLoadingGallery ? 'animate-spin' : ''}`} />
+            REFRESH GALERI
+          </button>
         </div>
 
-        {savedCreations.length === 0 ? (
+        {isLoadingGallery ? (
+          <div className="py-20 text-center">
+            <RefreshCw className="w-8 h-8 text-neon-cyan animate-spin mx-auto mb-4" />
+            <p className="font-mono text-xs text-zinc-500 uppercase tracking-widest">Sinkronisasi Cloud...</p>
+          </div>
+        ) : savedCreations.length === 0 ? (
           <div className="py-20 text-center border border-white/5 bg-[#0b0b0b]/60 rounded-xl space-y-4 max-w-lg mx-auto">
             <div className="w-12 h-12 rounded-full bg-white/5 border border-white/10 flex items-center justify-center mx-auto">
               <FolderOpen className="w-6 h-6 text-zinc-500 animate-pulse" />
             </div>
             <div className="space-y-2">
-              <h3 className="font-mono text-xs font-bold text-zinc-300">ALBUM SAYA MASIH KOSONG</h3>
+              <h3 className="font-mono text-xs font-bold text-zinc-300">GALERI SAYA MASIH KOSONG</h3>
               <p className="text-[11px] text-zinc-400 max-w-xs mx-auto">
-                Unduh karya pertama Anda di menu Beranda untuk menyimpannya di koleksi galeri lokal ini secara otomatis!
+                Karya yang Anda simpan ke galeri cloud akan muncul di sini secara otomatis!
               </p>
             </div>
             <button 
@@ -3696,19 +3636,13 @@ export default function App() {
                   </button>
                   <button
                     onClick={() => {
-                      const updated = savedCreations.filter(c => c.id !== creation.id);
-                      setSavedCreations(updated);
-                      try {
-                        localStorage.setItem('bt_my_gallery', JSON.stringify(updated));
-                      } catch (e) {
-                        console.error('Failed to update gallery localStorage:', e);
-                      }
-                      triggerToast('Karya dihapus dari album.');
+                      setItemToDelete(creation.id);
+                      setIsDeleteModalOpen(true);
                     }}
                     className="p-1.5 bg-black/80 hover:bg-red-500 hover:text-white text-zinc-400 rounded border border-white/10 font-bold shadow-lg shadow-black"
-                    title="Hapus"
+                    title="Hapus dari Cloud"
                   >
-                    <span className="text-[10px]">✕</span>
+                    <Trash2 className="w-3.5 h-3.5" />
                   </button>
                 </div>
 
@@ -3722,7 +3656,7 @@ export default function App() {
 
                 <div className="p-3 bg-black/30 flex items-center justify-between">
                   <span className="font-mono text-[8px] text-zinc-500 uppercase">{creation.timestamp}</span>
-                  <span className="font-mono text-[8.5px] text-neon-cyan px-1.5 rounded bg-cyan-950/20 border border-cyan-500/10 uppercase tracking-widest font-bold">SAVED HD</span>
+                  <span className="font-mono text-[8.5px] text-neon-cyan px-1.5 rounded bg-cyan-950/20 border border-cyan-500/10 uppercase tracking-widest font-bold">SAVED CLOUD</span>
                 </div>
               </div>
             ))}
@@ -3842,6 +3776,16 @@ export default function App() {
           </motion.div>
         )}
       </AnimatePresence>
+      <DeleteConfirmationModal
+        isOpen={isDeleteModalOpen}
+        onClose={() => setIsDeleteModalOpen(false)}
+        onConfirm={() => {
+          if (itemToDelete) {
+            deleteFromMyGallery(itemToDelete);
+            setItemToDelete(null);
+          }
+        }}
+      />
     </div>
   );
 }
