@@ -153,7 +153,7 @@ export const FRAMES: Frame[] = [
   {
     id: 'static-qcc-1',
     name: 'QCC & SS 2026 - Frame 1',
-    src: 'https://qcc-online.web.app/frames/qcc1.png',
+    src: '/frames/qcc1.png',
     type: 'static',
     category: 'Sponsor',
     description: 'Bingkai QCC & SS Convention 2026'
@@ -161,7 +161,7 @@ export const FRAMES: Frame[] = [
   {
     id: 'static-qcc-2',
     name: 'QCC & SS 2026 - Frame 2',
-    src: 'https://qcc-online.web.app/frames/qcc2.png',
+    src: '/frames/qcc2.png',
     type: 'static',
     category: 'Sponsor',
     description: 'Bingkai QCC & SS Convention 2026'
@@ -169,7 +169,7 @@ export const FRAMES: Frame[] = [
   {
     id: 'static-qcc-3',
     name: 'QCC & SS 2026 - Frame 3',
-    src: 'https://qcc-online.web.app/frames/qcc3.png',
+    src: '/frames/qcc3.png',
     type: 'static',
     category: 'Sponsor',
     description: 'Bingkai QCC & SS Convention 2026'
@@ -177,7 +177,7 @@ export const FRAMES: Frame[] = [
   {
     id: 'static-qcc-4',
     name: 'QCC & SS 2026 - Frame 4',
-    src: 'https://qcc-online.web.app/frames/qcc4.png',
+    src: '/frames/qcc4.png',
     type: 'static',
     category: 'Sponsor',
     description: 'Bingkai QCC & SS Convention 2026'
@@ -185,7 +185,7 @@ export const FRAMES: Frame[] = [
   {
     id: 'static-qcc-5',
     name: 'QCC & SS 2026 - Frame 5',
-    src: 'https://qcc-online.web.app/frames/qcc5.png',
+    src: '/frames/qcc5.png',
     type: 'static',
     category: 'Sponsor',
     description: 'Bingkai QCC & SS Convention 2026'
@@ -193,7 +193,7 @@ export const FRAMES: Frame[] = [
   {
     id: 'static-qcc-6',
     name: 'QCC & SS 2026 - Frame 6',
-    src: 'https://qcc-online.web.app/frames/qcc6.png',
+    src: '/frames/qcc6.png',
     type: 'static',
     category: 'Sponsor',
     description: 'Bingkai QCC & SS Convention 2026'
@@ -201,7 +201,7 @@ export const FRAMES: Frame[] = [
   {
     id: 'static-qcc-7',
     name: 'QCC & SS 2026 - Frame 7',
-    src: 'https://qcc-online.web.app/frames/qcc7.png',
+    src: '/frames/qcc7.png',
     type: 'static',
     category: 'Sponsor',
     description: 'Bingkai QCC & SS Convention 2026'
@@ -209,7 +209,7 @@ export const FRAMES: Frame[] = [
   {
     id: 'static-qcc-8',
     name: 'QCC & SS 2026 - Frame 8',
-    src: 'https://qcc-online.web.app/frames/qcc8.png',
+    src: '/frames/qcc8.png',
     type: 'static',
     category: 'Sponsor',
     description: 'Bingkai QCC & SS Convention 2026'
