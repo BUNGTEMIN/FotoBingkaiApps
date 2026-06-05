@@ -84,7 +84,22 @@ export default function BungteminHeader({
               BINGKAI
               <span className={`absolute bottom-0 left-0 w-full h-0.5 bg-neon-cyan origin-left transition-transform duration-300 ${currentPage === 'bingkai' ? 'scale-x-100' : 'scale-x-0 group-hover:scale-x-100'}`} />
             </button>
-
+            {user?.email === 'bungtemin@gmail.com' && (
+              <button 
+                onClick={() => onNavigate('misi')}
+                className={`${currentPage === 'misi' ? 'text-neon-pink font-extrabold' : (theme === 'dark' ? 'text-zinc-400 hover:text-neon-pink' : 'text-zinc-600 hover:text-neon-pink')} transition-colors relative py-1 group flex items-center gap-1`}
+              >
+                🚀 MISI KREATIF
+                <span className={`px-1 py-0.5 text-[7px] font-mono rounded ${
+                  completedQuests === totalQuests 
+                    ? 'bg-emerald-500/20 text-emerald-400 border border-emerald-500/30' 
+                    : 'bg-neon-pink/15 text-neon-pink border border-neon-pink/30 animate-pulse'
+                }`}>
+                  {completedQuests}/{totalQuests}
+                </span>
+                <span className={`absolute bottom-0 left-0 w-full h-0.5 bg-neon-pink origin-left transition-transform duration-300 ${currentPage === 'misi' ? 'scale-x-100' : 'scale-x-0 group-hover:scale-x-100'}`} />
+              </button>
+            )}
           </nav>
 
           {/* Collapsible Info Button, Dark/Light Toggle & Mobile Hamburger */}

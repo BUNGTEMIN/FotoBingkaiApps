@@ -2735,29 +2735,33 @@ export default function App() {
                 <span className="text-[8px] uppercase tracking-wider font-extrabold">UNGGAH</span>
               </button>
 
-              <button
-                onClick={() => setActiveTab(activeTab === 'text' ? null : 'text')}
-                className={`snap-center flex-shrink-0 px-3.5 py-1.5 rounded-xl font-mono text-xs font-bold tracking-widest transition-all duration-150 flex flex-col items-center justify-center space-y-1 min-w-[76px] ${
-                  activeTab === 'text'
-                    ? 'bg-neon-cyan/20 text-neon-cyan border-t-2 border-neon-cyan shadow-[0_0_15px_rgba(0,240,255,0.2)]'
-                    : 'text-zinc-450 hover:text-zinc-200 hover:bg-white/5'
-                }`}
-              >
-                <Type className="w-4 h-4" />
-                <span className="text-[8px] uppercase tracking-wider font-extrabold">TEKS</span>
-              </button>
+              {user?.email === 'bungtemin@gmail.com' && (
+                <button
+                  onClick={() => setActiveTab(activeTab === 'text' ? null : 'text')}
+                  className={`snap-center flex-shrink-0 px-3.5 py-1.5 rounded-xl font-mono text-xs font-bold tracking-widest transition-all duration-150 flex flex-col items-center justify-center space-y-1 min-w-[76px] ${
+                    activeTab === 'text'
+                      ? 'bg-neon-cyan/20 text-neon-cyan border-t-2 border-neon-cyan shadow-[0_0_15px_rgba(0,240,255,0.2)]'
+                      : 'text-zinc-450 hover:text-zinc-200 hover:bg-white/5'
+                  }`}
+                >
+                  <Type className="w-4 h-4" />
+                  <span className="text-[8px] uppercase tracking-wider font-extrabold">TEKS</span>
+                </button>
+              )}
 
-              <button
-                onClick={() => setActiveTab(activeTab === 'stickers' ? null : 'stickers')}
-                className={`snap-center flex-shrink-0 px-3.5 py-1.5 rounded-xl font-mono text-xs font-bold tracking-widest transition-all duration-150 flex flex-col items-center justify-center space-y-1 min-w-[76px] ${
-                  activeTab === 'stickers'
-                    ? 'bg-neon-cyan/20 text-neon-cyan border-t-2 border-neon-cyan shadow-[0_0_15px_rgba(0,240,255,0.2)]'
-                    : 'text-zinc-450 hover:text-zinc-200 hover:bg-white/5'
-                }`}
-              >
-                <Layers className="w-4 h-4" />
-                <span className="text-[8px] uppercase tracking-wider font-extrabold">BADGE</span>
-              </button>
+              {user?.email === 'bungtemin@gmail.com' && (
+                <button
+                  onClick={() => setActiveTab(activeTab === 'stickers' ? null : 'stickers')}
+                  className={`snap-center flex-shrink-0 px-3.5 py-1.5 rounded-xl font-mono text-xs font-bold tracking-widest transition-all duration-150 flex flex-col items-center justify-center space-y-1 min-w-[76px] ${
+                    activeTab === 'stickers'
+                      ? 'bg-neon-cyan/20 text-neon-cyan border-t-2 border-neon-cyan shadow-[0_0_15px_rgba(0,240,255,0.2)]'
+                      : 'text-zinc-450 hover:text-zinc-200 hover:bg-white/5'
+                  }`}
+                >
+                  <Layers className="w-4 h-4" />
+                  <span className="text-[8px] uppercase tracking-wider font-extrabold">BADGE</span>
+                </button>
+              )}
 
               <button
                 onClick={() => setActiveTab(activeTab === 'filter' ? null : 'filter')}
@@ -2849,7 +2853,7 @@ export default function App() {
       </AnimatePresence>
 
        {/* CREATIVE QUESTS PAGE TAB */}
-      {currentPage === 'misi' && (
+      {currentPage === 'misi' && user?.email === 'bungtemin@gmail.com' && (
         <div className="flex-1 max-w-4xl w-full mx-auto p-4 sm:p-6 lg:p-8 space-y-8">
           <div className="text-center max-w-xl mx-auto space-y-2">
             <div className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded bg-neon-pink/10 text-neon-pink border border-neon-pink/25 font-mono text-[9px] tracking-widest uppercase mb-1">
