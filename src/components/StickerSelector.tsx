@@ -12,7 +12,7 @@ interface StickerSelectorProps {
   selectedStickerId: string | null;
   onSelectSticker: (id: string | null) => void;
   theme?: 'dark' | 'light';
-  modeOnly?: 'sticker' | 'text';
+  modeOnly?: 'sticker' | 'text' | 'text_preset' | 'text_custom';
 }
 
 export const STICKER_COLORS = [
@@ -205,7 +205,7 @@ export default function StickerSelector({
         {(!modeOnly) && <hr className={theme === 'dark' ? 'border-white/5' : 'border-black/5'} />}
 
         {/* Preset Typography & 3D Text Section */}
-        {(!modeOnly || modeOnly === 'text') && (
+        {(!modeOnly || modeOnly === 'text' || modeOnly === 'text_preset') && (
           <div className="space-y-1.5">
             <div className="flex items-center justify-between">
               <span className="text-[9px] text-zinc-500 font-mono font-bold block uppercase tracking-wider">Koleksi Tipografi & Teks 3D</span>
@@ -248,7 +248,7 @@ export default function StickerSelector({
         )}
 
         {/* Custom Text Overlay Generation */}
-        {(!modeOnly || modeOnly === 'text') && (
+        {(!modeOnly || modeOnly === 'text' || modeOnly === 'text_custom') && (
           <form onSubmit={handleAddCustomText} className="space-y-2">
             <span className="text-[9px] text-zinc-500 font-mono font-bold block uppercase tracking-wider">Atau Tulis Teks Kustom Anda</span>
             

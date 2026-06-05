@@ -272,6 +272,208 @@ You must return a valid JSON object matching this structure EXACTLY:
     }
   });
 
+  // Appwrite Likes List Proxy using secure API Key
+  app.get("/api/appwrite/likes", async (req, res) => {
+    try {
+      const endpoint = process.env.VITE_APPWRITE_ENDPOINT || 'https://cloud.appwrite.io/v1';
+      const projectId = process.env.VITE_APPWRITE_PROJECT_ID;
+      const databaseId = process.env.VITE_APPWRITE_DATABASE_ID || 'server_logs_db';
+      const collectionId = process.env.VITE_APPWRITE_COLLECTION_ID || 'twlike';
+      const apiKey = process.env.APPWRITE_API_KEY || process.env.VITE_APPWRITE_API_KEY || '';
+
+      if (!projectId || projectId === 'YOUR_PROJECT_ID') {
+        return res.status(400).json({ error: "Appwrite configuration missing" });
+      }
+
+      const headers: Record<string, string> = {
+        'X-Appwrite-Project': projectId,
+        'Content-Type': 'application/json'
+      };
+
+      if (apiKey) {
+        headers['X-Appwrite-Key'] = apiKey;
+      }
+
+      console.log(`[Proxy Appwrite Likes] Fetching from Appwrite DB: ${databaseId}, Coll: ${collectionId}`);
+      const response = await fetch(`${endpoint}/databases/${databaseId}/collections/${collectionId}/documents?limit=5000`, {
+        headers
+      });
+
+      if (!response.ok) {
+        const errText = await response.text();
+        return res.status(response.status).json({ error: `Appwrite DB error: ${response.statusText} - ${errText}` });
+      }
+
+      const data = await response.json();
+      res.json(data);
+    } catch (error: any) {
+      console.error("[Proxy Appwrite Likes List Error]", error);
+      res.status(500).json({ error: error?.message || "Internal server error" });
+    }
+  });
+
+  // Help generate integer hashes matching the frontend Client
+  function stringToUniqueInt(str: string): number {
+    let hash = 0;
+    for (let i = 0; i < str.length; i++) {
+      hash = (hash * 31 + str.charCodeAt(i)) | 0;
+    }
+    return (Math.abs(hash) % 1000000) || 1;
+  }
+
+  // Appwrite Create Like Proxy using secure API Key
+  app.post("/api/appwrite/like", async (req, res) => {
+    try {
+      const { id, userId } = req.body;
+      if (!id) {
+        return res.status(400).json({ error: "id parameter is required" });
+      }
+
+      const endpoint = process.env.VITE_APPWRITE_ENDPOINT || 'https://cloud.appwrite.io/v1';
+      const projectId = process.env.VITE_APPWRITE_PROJECT_ID;
+      const databaseId = process.env.VITE_APPWRITE_DATABASE_ID || 'server_logs_db';
+      const collectionId = process.env.VITE_APPWRITE_COLLECTION_ID || 'twlike';
+      const apiKey = process.env.APPWRITE_API_KEY || process.env.VITE_APPWRITE_API_KEY || '';
+
+      if (!projectId || projectId === 'YOUR_PROJECT_ID') {
+        return res.status(400).json({ error: "Appwrite project ID is missing" });
+      }
+
+      const headers: Record<string, string> = {
+        'X-Appwrite-Project': projectId,
+        'Content-Type': 'application/json'
+      };
+
+      if (apiKey) {
+        headers['X-Appwrite-Key'] = apiKey;
+      }
+
+      const postIdInt = stringToUniqueInt(id);
+      const userIdString = userId || 'guest';
+      const userIdInt = stringToUniqueInt(userIdString);
+      const cleanIsoDateString = new Date().toISOString(); // standard ISO string format
+
+      const docId = `doc_${postIdInt}`;
+
+      // Check if document for this postId already exists
+      console.log(`[Proxy Like] Checking if document ${docId} exists...`);
+      const checkResponse = await fetch(`${endpoint}/databases/${databaseId}/collections/${collectionId}/documents/${docId}`, {
+        headers
+      });
+
+      console.log(`[Proxy Like Check Status] Status: ${checkResponse.status} ok: ${checkResponse.ok}`);
+
+      let currentLikesCount = 0;
+      let existingDocument: any = null;
+
+      if (checkResponse.ok) {
+        existingDocument = await checkResponse.json();
+        currentLikesCount = Number(existingDocument.likeId) || 0;
+      } else {
+        const checkErrText = await checkResponse.text();
+        console.warn(`[Proxy Like Check Failed Details] for ${docId}:`, checkErrText);
+      }
+
+      const newLikesCount = Math.min((currentLikesCount + 1), 1000000);
+
+      if (existingDocument) {
+        // Document exists -> update (PATCH) the existing record
+        console.log(`[Proxy Like] Document ${docId} exists with likes=${currentLikesCount}. Incrementing to ${newLikesCount}`);
+        const updateBody = {
+          data: {
+            likeId: newLikesCount,
+            userId: userIdInt,
+            interactionDate: cleanIsoDateString
+          }
+        };
+
+        const updateResponse = await fetch(`${endpoint}/databases/${databaseId}/collections/${collectionId}/documents/${docId}`, {
+          method: "PATCH",
+          headers,
+          body: JSON.stringify(updateBody)
+        });
+
+        if (!updateResponse.ok) {
+          const errText = await updateResponse.text();
+          console.error("[Proxy Like Update Error]", errText);
+          return res.status(updateResponse.status).json({ error: `Appwrite update error: ${updateResponse.statusText} - ${errText}` });
+        }
+      } else {
+        // Document does not exist -> create (POST) a new one
+        console.log(`[Proxy Like] Document ${docId} does not exist. Creating new with likes=1`);
+        const documentBody = {
+          documentId: docId,
+          data: {
+            likeId: 1,
+            postId: postIdInt,
+            userId: userIdInt,
+            interactionType: 'like',
+            commentText: 'Suka dari Web QCC Foto (Proxy)',
+            interactionDate: cleanIsoDateString
+          }
+        };
+
+        const createResponse = await fetch(`${endpoint}/databases/${databaseId}/collections/${collectionId}/documents`, {
+          method: "POST",
+          headers,
+          body: JSON.stringify(documentBody)
+        });
+
+        if (!createResponse.ok) {
+          const errText = await createResponse.text();
+          console.error("[Proxy Like Create Error]", errText);
+
+          // Graceful 409 Conflict Recovery
+          if (createResponse.status === 409) {
+            console.log(`[Proxy Like Recovery] Document ${docId} actually exists (409 Conflict). Retrying with GET + PATCH flow...`);
+            const retryGetResponse = await fetch(`${endpoint}/databases/${databaseId}/collections/${collectionId}/documents/${docId}`, {
+              headers
+            });
+
+            if (retryGetResponse.ok) {
+              const retryDocument = await retryGetResponse.json();
+              const latestLikes = Number(retryDocument.likeId) || 0;
+              const recoveredLikesCount = Math.min(latestLikes + 1, 1000000);
+              console.log(`[Proxy Like Recovery] Found database record. Current likes: ${latestLikes}. Patching to ${recoveredLikesCount}`);
+
+              const patchBody = {
+                data: {
+                  likeId: recoveredLikesCount,
+                  userId: userIdInt,
+                  interactionDate: cleanIsoDateString
+                }
+              };
+
+              const retryPatchResponse = await fetch(`${endpoint}/databases/${databaseId}/collections/${collectionId}/documents/${docId}`, {
+                method: "PATCH",
+                headers,
+                body: JSON.stringify(patchBody)
+              });
+
+              if (retryPatchResponse.ok) {
+                console.log(`[Proxy Like Recovery] Gracefully patched to ${recoveredLikesCount} successfully!`);
+                return res.json({ success: true, count: recoveredLikesCount });
+              } else {
+                const patchErr = await retryPatchResponse.text();
+                console.error("[Proxy Like Recovery Patch Failed]", patchErr);
+              }
+            } else {
+              const getErr = await retryGetResponse.text();
+              console.error("[Proxy Like Recovery GET Failed]", getErr);
+            }
+          }
+
+          return res.status(createResponse.status).json({ error: `Appwrite create error: ${createResponse.statusText} - ${errText}` });
+        }
+      }
+
+      res.json({ success: true, count: newLikesCount });
+    } catch (error: any) {
+      console.error("[Proxy Appwrite Like Write Error]", error);
+      res.status(500).json({ error: error?.message || "Internal server error" });
+    }
+  });
+
   // GET Route to fetch external nufat images with Bearer Authorization
   app.get("/api/external-images", async (req, res) => {
     try {
@@ -462,6 +664,47 @@ You must return a valid JSON object matching this structure EXACTLY:
         }
       ]);
     }
+  });
+
+  // GET Route to fetch Appwrite frames from nudb server
+  app.get("/api/appwrite-frames", async (req, res) => {
+    try {
+      console.log(`[Proxy Appwrite Frames] Fetching from nudb server...`);
+      const response = await fetch("https://nudb.bungtemin.net/bingkai/api");
+      if (!response.ok) {
+        console.warn(`[Proxy Appwrite Frames Info] Failed to fetch from nudb: ${response.statusText}. Using fallback frames.`);
+      } else {
+        const data = await response.json();
+        return res.json(data);
+      }
+    } catch (err: any) {
+      console.warn("[Proxy Appwrite Frames Info] Could not fetch remote nudb frames, using backup:", err?.message);
+    }
+
+    // Give a friendly fallback list of beautiful cyber frames so our user sees amazing content even if nudb is down
+    return res.json([
+      {
+        id: "cyber-default-1",
+        name: "Cyberpunk Glow",
+        src: "https://apps.bungtemin.net/images/RAKERNIT2025/3.png",
+        type: "url",
+        category: "Aesthetic"
+      },
+      {
+        id: "cyber-default-2",
+        name: "Neon Horizon",
+        src: "https://apps.bungtemin.net/images/RAKERNIT2025/11.png",
+        type: "url",
+        category: "Neon"
+      },
+      {
+        id: "cyber-default-3",
+        name: "Matrix Code Frame",
+        src: "https://apps.bungtemin.net/images/RAKERNIT2025/25.png",
+        type: "url",
+        category: "Hacker"
+      }
+    ]);
   });
 
   // Vite server connection

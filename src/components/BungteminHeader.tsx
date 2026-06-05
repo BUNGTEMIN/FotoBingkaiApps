@@ -1,10 +1,10 @@
-import React, { useState } from 'react';
+import React, { useState, useRef, useEffect } from 'react';
 import { Menu, X, ShieldAlert, Sparkles, Laptop, Disc, Cpu, Award, Sun, Moon, LogOut, LogIn, RefreshCw } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 
 interface BungteminHeaderProps {
-  currentPage: 'beranda' | 'bingkai' | 'galeri' | 'album';
-  onNavigate: (page: 'beranda' | 'bingkai' | 'galeri' | 'album') => void;
+  currentPage: 'beranda' | 'bingkai' | 'misi' | 'galeri' | 'album';
+  onNavigate: (page: 'beranda' | 'bingkai' | 'misi' | 'galeri' | 'album') => void;
   theme: 'dark' | 'light';
   onToggleTheme: () => void;
   user: any;
@@ -28,9 +28,24 @@ export default function BungteminHeader({
   totalQuests = 6
 }: BungteminHeaderProps) {
   const [isOpen, setIsOpen] = useState(false);
+  const headerRef = useRef<HTMLElement>(null);
+
+  useEffect(() => {
+    function handleClickOutside(event: MouseEvent) {
+      if (headerRef.current && !headerRef.current.contains(event.target as Node)) {
+        setIsOpen(false);
+      }
+    }
+    if (isOpen) {
+      document.addEventListener('mousedown', handleClickOutside);
+    }
+    return () => {
+      document.removeEventListener('mousedown', handleClickOutside);
+    };
+  }, [isOpen]);
 
   return (
-    <header className={`sticky top-0 z-40 w-full backdrop-blur-md transition-all duration-300 shadow-lg ${
+    <header ref={headerRef} className={`sticky top-0 z-40 w-full backdrop-blur-md transition-all duration-300 shadow-lg ${
       theme === 'dark' ? 'bg-[#050505]/85 border-b border-white/10' : 'bg-white/85 border-b border-zinc-200'
     }`}>
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
@@ -64,6 +79,13 @@ export default function BungteminHeader({
               <span className={`absolute bottom-0 left-0 w-full h-0.5 bg-neon-cyan origin-left transition-transform duration-300 ${currentPage === 'beranda' ? 'scale-x-100' : 'scale-x-0 group-hover:scale-x-100'}`} />
             </button>
             <button 
+              onClick={() => onNavigate('bingkai')}
+              className={`${currentPage === 'bingkai' ? 'text-neon-cyan font-bold' : (theme === 'dark' ? 'text-zinc-400 hover:text-neon-cyan' : 'text-zinc-600 hover:text-neon-cyan')} transition-colors relative py-1 group`}
+            >
+              BINGKAI
+              <span className={`absolute bottom-0 left-0 w-full h-0.5 bg-neon-cyan origin-left transition-transform duration-300 ${currentPage === 'bingkai' ? 'scale-x-100' : 'scale-x-0 group-hover:scale-x-100'}`} />
+            </button>
+            <button 
               onClick={() => onNavigate('galeri')}
               className={`${currentPage === 'galeri' ? 'text-neon-cyan font-bold' : (theme === 'dark' ? 'text-zinc-400 hover:text-neon-cyan' : 'text-zinc-600 hover:text-neon-cyan')} transition-colors relative py-1 group`}
             >
@@ -76,13 +98,6 @@ export default function BungteminHeader({
             >
               GALERI SAYA
               <span className={`absolute bottom-0 left-0 w-full h-0.5 bg-neon-cyan origin-left transition-transform duration-300 ${currentPage === 'album' ? 'scale-x-100' : 'scale-x-0 group-hover:scale-x-100'}`} />
-            </button>
-            <button 
-              onClick={() => onNavigate('bingkai')}
-              className={`${currentPage === 'bingkai' ? 'text-neon-cyan font-bold' : (theme === 'dark' ? 'text-zinc-400 hover:text-neon-cyan' : 'text-zinc-600 hover:text-neon-cyan')} transition-colors relative py-1 group`}
-            >
-              BINGKAI
-              <span className={`absolute bottom-0 left-0 w-full h-0.5 bg-neon-cyan origin-left transition-transform duration-300 ${currentPage === 'bingkai' ? 'scale-x-100' : 'scale-x-0 group-hover:scale-x-100'}`} />
             </button>
             {user?.email === 'bungtemin@gmail.com' && (
               <button 
@@ -192,6 +207,19 @@ export default function BungteminHeader({
                   <span className={`text-xs font-semibold ${theme === 'dark' ? 'text-zinc-200' : 'text-zinc-800'}`}>HOME</span>
                 </button>
                 <button 
+                  onClick={() => { onNavigate('bingkai'); setIsOpen(false); }}
+                  className={`p-3 rounded border text-center transition-all ${
+                    currentPage === 'bingkai' 
+                      ? 'border-neon-cyan bg-cyan-950/20' 
+                      : theme === 'dark' 
+                        ? 'bg-white/3 border-white/10 hover:border-neon-cyan' 
+                        : 'bg-zinc-50 border-zinc-200 text-zinc-800 hover:border-neon-cyan hover:bg-zinc-100'
+                  }`}
+                >
+                  <span className={`block text-[9px] ${theme === 'dark' ? 'text-zinc-500' : 'text-zinc-450'}`}>Overlay</span>
+                  <span className={`text-xs font-semibold ${theme === 'dark' ? 'text-zinc-200' : 'text-zinc-800'}`}>BINGKAI</span>
+                </button>
+                <button 
                   onClick={() => { onNavigate('galeri'); setIsOpen(false); }}
                   className={`p-3 rounded border text-center transition-all ${
                     currentPage === 'galeri' 
@@ -216,19 +244,6 @@ export default function BungteminHeader({
                 >
                   <span className={`block text-[9px] ${theme === 'dark' ? 'text-zinc-500' : 'text-zinc-450'}`}>Koleksi</span>
                   <span className={`text-xs font-semibold ${theme === 'dark' ? 'text-zinc-200' : 'text-zinc-800'}`}>GALERI SAYA</span>
-                </button>
-                <button 
-                  onClick={() => { onNavigate('bingkai'); setIsOpen(false); }}
-                  className={`p-3 rounded border text-center transition-all ${
-                    currentPage === 'bingkai' 
-                      ? 'border-neon-cyan bg-cyan-950/20' 
-                      : theme === 'dark' 
-                        ? 'bg-white/3 border-white/10 hover:border-neon-cyan' 
-                        : 'bg-zinc-50 border-zinc-200 text-zinc-800 hover:border-neon-cyan hover:bg-zinc-100'
-                  }`}
-                >
-                  <span className={`block text-[9px] ${theme === 'dark' ? 'text-zinc-500' : 'text-zinc-450'}`}>Overlay</span>
-                  <span className={`text-xs font-semibold ${theme === 'dark' ? 'text-zinc-200' : 'text-zinc-800'}`}>BINGKAI</span>
                 </button>
               </div>
 

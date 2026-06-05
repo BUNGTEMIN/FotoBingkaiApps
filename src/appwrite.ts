@@ -1,4 +1,4 @@
-import { Client, Storage } from "appwrite";
+import { Client, Storage, Databases, Query, ID } from "appwrite";
 
 const client = new Client();
 const endpoint = import.meta.env.VITE_APPWRITE_ENDPOINT || 'https://cloud.appwrite.io/v1';
@@ -13,5 +13,11 @@ if (projectId && projectId !== 'YOUR_PROJECT_ID') {
 }
 
 export const storage = new Storage(client);
+export const databases = new Databases(client);
+export { Query, ID };
+
 export const BUCKET_ID = import.meta.env.VITE_APPWRITE_BUCKET_ID === 'YOUR_BUCKET_ID' ? '' : (import.meta.env.VITE_APPWRITE_BUCKET_ID || '');
+export const DATABASE_ID = import.meta.env.VITE_APPWRITE_DATABASE_ID || 'server_logs_db';
+export const COLLECTION_ID = import.meta.env.VITE_APPWRITE_COLLECTION_ID || 'twlike';
+
 console.log("Appwrite Bucket:", BUCKET_ID || "not set");

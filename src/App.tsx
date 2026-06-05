@@ -2,8 +2,8 @@ import React, { useState, useEffect, useRef } from 'react';
 import { 
   Upload, Sparkles, RefreshCw, Sliders, CircleHelp, Download, Maximize2, Edit2,
   FolderOpen, Camera, Laptop, Cpu, Layers, Settings2, Activity, Info, CheckCircle, MoveHorizontal,
-  Undo, Redo, Type, ArrowUp, ArrowDown, ChevronsUp, ChevronsDown, Trash2, RotateCw, Move,
-  Lock, Unlock, Image as ImageIcon, Maximize, X
+  Undo, Redo, Type, ArrowUp, ArrowDown, ChevronsUp, ChevronsDown, Trash2, RotateCw, Move, Baseline,
+  Lock, Unlock, Image as ImageIcon, Maximize, X, Crop, Menu
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 
@@ -25,7 +25,7 @@ import { DeleteConfirmationModal } from './components/DeleteConfirmationModal';
 import { Frame, ImageSettings, PlacedSticker } from './types';
 import { FRAMES, FILTER_PRESETS, PRESET_STICKERS } from './presets';
 import { renderToCanvas, resolveApiUrl, compressImage } from './canvasUtils';
-import { storage, BUCKET_ID } from './appwrite';
+import { storage, BUCKET_ID, databases, DATABASE_ID, COLLECTION_ID, Query, ID } from './appwrite';
 
 const DEFAULT_IMAGE = 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?auto=format&fit=crop&w=600&q=80';
 
@@ -93,6 +93,36 @@ const COMMUNITY_GALLERY = [
   }
 ];
 
+const getSavedSettings = (): ImageSettings => {
+  if (typeof window === 'undefined') return DEFAULT_SETTINGS;
+  try {
+    const saved = localStorage.getItem('bt_image_settings');
+    return saved ? JSON.parse(saved) : DEFAULT_SETTINGS;
+  } catch (e) {
+    return DEFAULT_SETTINGS;
+  }
+};
+
+const getSavedStickers = (): PlacedSticker[] => {
+  if (typeof window === 'undefined') return [];
+  try {
+    const saved = localStorage.getItem('bt_stickers');
+    return saved ? JSON.parse(saved) : [];
+  } catch (e) {
+    return [];
+  }
+};
+
+const getSavedFilterPresetId = (): string => {
+  if (typeof window === 'undefined') return 'none';
+  return localStorage.getItem('bt_filter_preset_id') || 'none';
+};
+
+const getSavedNeonColor = (): string => {
+  if (typeof window === 'undefined') return '#00f2fe';
+  return localStorage.getItem('bt_neon_color') || '#00f2fe';
+};
+
 export default function App() {
   // Google Authentication State
   const [user, setUser] = useState<User | null>(null);
@@ -113,8 +143,30 @@ export default function App() {
   const [itemToDelete, setItemToDelete] = useState<string | null>(null);
   
   // User My Gallery
-  const fetchMyGallery = async () => {
+  const fetchMyGallery = async (forceRefresh = false) => {
     if (!user) return;
+
+    const cacheKey = `bt_my_gallery_${user.uid}`;
+    const cacheTimeKey = `bt_my_gallery_time_${user.uid}`;
+    const cachedData = localStorage.getItem(cacheKey);
+    const cachedTime = localStorage.getItem(cacheTimeKey);
+
+    if (cachedData && cachedTime && !forceRefresh) {
+      try {
+        const parsedItems = JSON.parse(cachedData);
+        setSavedCreations(parsedItems);
+
+        // If cache is fresh (less than 2 minutes), skip Firestore call
+        const cacheAge = Date.now() - Number(cachedTime);
+        if (cacheAge < 120000) {
+          console.log("[Firebase Cache MyGallery] Cache is fresh. Skipping remote fetch.");
+          return;
+        }
+      } catch (cacheErr) {
+        console.warn("[Firebase Cache MyGallery Error] Parse failed:", cacheErr);
+      }
+    }
+
     setIsLoadingGallery(true);
     try {
       const q = query(
@@ -134,6 +186,9 @@ export default function App() {
         });
       });
       setSavedCreations(items);
+      // Save cache
+      localStorage.setItem(cacheKey, JSON.stringify(items));
+      localStorage.setItem(cacheTimeKey, String(Date.now()));
     } catch (err: any) {
       console.warn("Gagal mengambil data koleksi dengan pengurutan (index belum matang), mencoba query alternatif tanpa orderBy:", err);
       try {
@@ -155,6 +210,9 @@ export default function App() {
         // Sort manually by id if timestamp index is missing (descending)
         items.sort((a, b) => b.id.localeCompare(a.id));
         setSavedCreations(items);
+        // Save cache
+        localStorage.setItem(cacheKey, JSON.stringify(items));
+        localStorage.setItem(cacheTimeKey, String(Date.now()));
       } catch (fallbackErr: any) {
         console.error("Error fetching koleksi fallback:", fallbackErr);
       }
@@ -168,12 +226,64 @@ export default function App() {
       fetchMyGallery();
     }
   }, [currentPage, user]);
+  const stringToUniqueInt = (str: string): number => {
+    let hash = 0;
+    for (let i = 0; i < str.length; i++) {
+      hash = (hash * 31 + str.charCodeAt(i)) | 0;
+    }
+    return (Math.abs(hash) % 1000000) || 1;
+  };
+
   const [cloudSubTab, setCloudSubTab] = useState<'all' | 'mine' | 'others'>('all');
 
-  const fetchCloudDownloads = async (targetSubTab?: 'all' | 'mine' | 'others') => {
+  const fetchCloudDownloads = async (targetSubTab?: 'all' | 'mine' | 'others', forceRefresh = false) => {
     const activeSubTab = targetSubTab || cloudSubTab;
-    setIsLoadingCloudDownloads(true);
     const currentUid = auth.currentUser?.uid || user?.uid;
+
+    const cacheKey = `bt_cloud_downloads_${activeSubTab}_${currentUid || 'guest'}`;
+    const cacheTimeKey = `bt_cloud_downloads_time_${activeSubTab}_${currentUid || 'guest'}`;
+    const cachedData = localStorage.getItem(cacheKey);
+    const cachedTime = localStorage.getItem(cacheTimeKey);
+
+    if (cachedData && cachedTime && !forceRefresh) {
+      try {
+        const parsedItems = JSON.parse(cachedData);
+        setCloudDownloads(parsedItems);
+
+        // If cache is fresh (less than 2 minutes), skip Firestore call
+        const cacheAge = Date.now() - Number(cachedTime);
+        if (cacheAge < 120000) {
+          console.log("[Firebase Cache CloudDownloads] Cache is fresh. Skipping remote fetch.");
+          return;
+        }
+      } catch (cacheErr) {
+        console.warn("[Firebase Cache CloudDownloads Error] Parse failed:", cacheErr);
+      }
+    }
+
+    setIsLoadingCloudDownloads(true);
+
+    // Fetch likes map from Appwrite Databases through secure proxy
+    let appwriteLikesMap: { [key: number]: number } = {};
+    try {
+      const response = await fetch('/api/appwrite/likes');
+      if (response.ok) {
+        const data = await response.json();
+        if (data && data.documents) {
+          data.documents.forEach((doc: any) => {
+            const pId = Number(doc.postId);
+            if (!isNaN(pId)) {
+              appwriteLikesMap[pId] = Number(doc.likeId) || 0;
+            }
+          });
+        }
+      } else {
+        const errText = await response.text();
+        console.warn("Appwrite likes proxy failed. Status:", response.status, errText);
+      }
+    } catch (err) {
+      console.warn("Appwrite likes proxy fetch failed, falling back to Firestore default likes count:", err);
+    }
 
     try {
       let q;
@@ -194,6 +304,7 @@ export default function App() {
       const items: any[] = [];
       querySnapshot.forEach((docSnap) => {
         const data = docSnap.data() as any;
+        const mappedPostId = stringToUniqueInt(docSnap.id);
         items.push({
           id: docSnap.id,
           fileName: data.fileName,
@@ -205,10 +316,13 @@ export default function App() {
           userName: data.userName || 'Tamu',
           userEmail: data.userEmail || '',
           userAvatar: data.userAvatar || '',
-          likes: data.likes || 0
+          likes: appwriteLikesMap[mappedPostId] !== undefined ? appwriteLikesMap[mappedPostId] : (data.likes || 0)
         });
       });
       setCloudDownloads(items);
+      // Save cache
+      localStorage.setItem(cacheKey, JSON.stringify(items));
+      localStorage.setItem(cacheTimeKey, String(Date.now()));
     } catch (err) {
       console.warn("Gagal mengambil data dengan pengurutan (index belum matang), mencoba query alternatif tanpa orderBy:", err);
       try {
@@ -226,6 +340,7 @@ export default function App() {
         const items: any[] = [];
         querySnapshot.forEach((docSnap) => {
           const data = docSnap.data() as any;
+          const mappedPostId = stringToUniqueInt(docSnap.id);
           items.push({
             id: docSnap.id,
             fileName: data.fileName,
@@ -237,11 +352,14 @@ export default function App() {
             userName: data.userName || 'Tamu',
             userEmail: data.userEmail || '',
             userAvatar: data.userAvatar || '',
-            likes: data.likes || 0
+            likes: appwriteLikesMap[mappedPostId] !== undefined ? appwriteLikesMap[mappedPostId] : (data.likes || 0)
           });
         });
         items.sort((a, b) => b.id.localeCompare(a.id));
         setCloudDownloads(items);
+        // Save cache
+        localStorage.setItem(cacheKey, JSON.stringify(items));
+        localStorage.setItem(cacheTimeKey, String(Date.now()));
       } catch (fallbackErr: any) {
         console.warn("Gagal total mengambil koleksi cloud:", fallbackErr);
         try {
@@ -258,7 +376,21 @@ export default function App() {
       try {
         await deleteDoc(doc(db, 'downloads', id));
         triggerToast('SISTEM: Berhasil menghapus karya dari cloud database! 🗑️');
-        fetchCloudDownloads();
+        
+        // Clear caches to force query
+        const currentUid = auth.currentUser?.uid || user?.uid;
+        if (currentUid) {
+          localStorage.removeItem(`bt_my_gallery_${currentUid}`);
+          localStorage.removeItem(`bt_my_gallery_time_${currentUid}`);
+        }
+        localStorage.removeItem(`bt_cloud_downloads_all_${currentUid || 'guest'}`);
+        localStorage.removeItem(`bt_cloud_downloads_time_all_${currentUid || 'guest'}`);
+        localStorage.removeItem(`bt_cloud_downloads_mine_${currentUid || 'guest'}`);
+        localStorage.removeItem(`bt_cloud_downloads_time_mine_${currentUid || 'guest'}`);
+        localStorage.removeItem(`bt_cloud_downloads_others_${currentUid || 'guest'}`);
+        localStorage.removeItem(`bt_cloud_downloads_time_others_${currentUid || 'guest'}`);
+
+        fetchCloudDownloads(undefined, true);
       } catch (err: any) {
         console.error('Error delete cloud document:', err);
         triggerToast(`Gagal: ${err.message || err}`);
@@ -270,7 +402,20 @@ export default function App() {
     try {
       await deleteDoc(doc(db, 'downloads', id));
       triggerToast('SISTEM: Berhasil menghapus karya dari galeri! 🗑️');
-      fetchMyGallery();
+      
+      const currentUid = auth.currentUser?.uid || user?.uid;
+      if (currentUid) {
+        localStorage.removeItem(`bt_my_gallery_${currentUid}`);
+        localStorage.removeItem(`bt_my_gallery_time_${currentUid}`);
+        localStorage.removeItem(`bt_cloud_downloads_all_${currentUid}`);
+        localStorage.removeItem(`bt_cloud_downloads_time_all_${currentUid}`);
+        localStorage.removeItem(`bt_cloud_downloads_mine_${currentUid}`);
+        localStorage.removeItem(`bt_cloud_downloads_time_mine_${currentUid}`);
+        localStorage.removeItem(`bt_cloud_downloads_others_${currentUid}`);
+        localStorage.removeItem(`bt_cloud_downloads_time_others_${currentUid}`);
+      }
+      
+      fetchMyGallery(true);
     } catch (err: any) {
       console.error('Error delete gallery document:', err);
       triggerToast(`Gagal: ${err.message || err}`);
@@ -278,15 +423,49 @@ export default function App() {
   };
 
   const handleLike = async (id: string) => {
+    let success = false;
+    let newLikes = 0;
+
+    const userIdString = auth.currentUser?.uid || user?.uid || 'guest';
+
+    // Try Appwrite Databases insert through secure server proxy using user provided API key
     try {
-      await updateDoc(doc(db, 'downloads', id), {
-        likes: increment(1)
+      const response = await fetch('/api/appwrite/like', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({
+          id,
+          userId: userIdString
+        })
       });
-      setCloudDownloads(prev => prev.map(item => item.id === id ? {...item, likes: (item.likes || 0) + 1} : item));
-      triggerToast('SISTEM: Suka ditambahkan! ❤️');
+
+      if (response.ok) {
+        const resData = await response.json();
+        if (resData.success) {
+          newLikes = resData.count;
+          success = true;
+        }
+      } else {
+        const errText = await response.text();
+        throw new Error(errText || `Server error ${response.status}`);
+      }
     } catch (err: any) {
-      console.error('Error updating like:', err);
-      triggerToast('SISTEM: Gagal menyukai karya! ❌');
+      console.warn("Proxy Appwrite like failed:", err);
+      const errDetails = err?.message || String(err);
+      triggerToast(`Gagal menyukai foto. Silakan coba beberapa saat lagi. ❌`);
+    }
+
+    if (success) {
+      setCloudDownloads(prev => {
+        const updated = prev.map(item => item.id === id ? {...item, likes: newLikes} : item);
+        // Sync cache
+        const cacheKey = `bt_cloud_downloads_${cloudSubTab}_${userIdString}`;
+        localStorage.setItem(cacheKey, JSON.stringify(updated));
+        return updated;
+      });
+      triggerToast('Suka berhasil ditambahkan! Terima kasih atas dukungan Anda. ❤️');
     }
   };
 
@@ -377,21 +556,22 @@ export default function App() {
     }
   }, [customFrames, appwriteFrames]);
   const [isLoadingAppwrite, setIsLoadingAppwrite] = useState(false);
-  const [neonColor, setNeonColor] = useState('#00f2fe'); // default tech cyan
-  const [imageSettings, setImageSettings] = useState<ImageSettings>(DEFAULT_SETTINGS);
+  const [neonColor, setNeonColor] = useState<string>(getSavedNeonColor); // default tech cyan
+  const [imageSettings, setImageSettings] = useState<ImageSettings>(getSavedSettings);
   
   // Undo/Redo history states for ImageSettings
-  const [history, setHistory] = useState<ImageSettings[]>([DEFAULT_SETTINGS]);
+  const [history, setHistory] = useState<ImageSettings[]>(() => [getSavedSettings()]);
   const [historyIndex, setHistoryIndex] = useState<number>(0);
-  const lastCommittedRef = useRef<ImageSettings>(DEFAULT_SETTINGS);
+  const lastCommittedRef = useRef<ImageSettings>(getSavedSettings());
   const pendingHistoryTimerRef = useRef<NodeJS.Timeout | null>(null);
-  const imageSettingsRef = useRef<ImageSettings>(DEFAULT_SETTINGS);
+  const imageSettingsRef = useRef<ImageSettings>(getSavedSettings());
 
-  const [filterPresetId, setFilterPresetId] = useState('none');
-  const [stickers, setStickers] = useState<PlacedSticker[]>([]);
+  const [filterPresetId, setFilterPresetId] = useState<string>(getSavedFilterPresetId);
+  const [stickers, setStickers] = useState<PlacedSticker[]>(getSavedStickers);
   const [selectedStickerId, setSelectedStickerId] = useState<string | null>(null);
   const [isHudOpen, setIsHudOpen] = useState(false);
-  const [activeTab, setActiveTab] = useState<'adjust' | 'filter' | 'color' | 'stickers' | 'text' | 'layers' | 'ai' | 'download' | 'history' | null>(null);
+  const [activeTab, setActiveTab] = useState<'adjust' | 'crop' | 'filter' | 'color' | 'stickers' | 'text' | 'text_preset' | 'layers' | 'ai' | 'download' | 'history' | 'settings' | null>(null);
+  const [isFloatingHubOpen, setIsFloatingHubOpen] = useState(false);
   const [isPhotoLocked, setIsPhotoLocked] = useState(false);
   const [downloadSize, setDownloadSize] = useState<number>(1000);
   const [downloadFormat, setDownloadFormat] = useState<'png' | 'webp' | 'jpeg'>('png');
@@ -445,6 +625,9 @@ export default function App() {
   const activePointersRef = useRef<Record<number, { clientX: number, clientY: number }>>({});
   const initialPinchDistanceRef = useRef<number | null>(null);
   const initialPinchScaleRef = useRef<number>(1);
+  const initialStickerPinchScaleRef = useRef<number>(1);
+  const initialStickerPinchRotationRef = useRef<number>(0);
+  const initialStickerPinchAngleRef = useRef<number | null>(null);
   const hasMovedOrScaledRef = useRef(false);
 
   // Smooth scroll to photo/canvas area (align with sticky header) when a toolbar tab is opened
@@ -483,6 +666,31 @@ export default function App() {
   useEffect(() => {
     imageSettingsRef.current = imageSettings;
   }, [imageSettings]);
+
+  // Persist settings, stickers, neon color, and filter preset to localStorage
+  useEffect(() => {
+    try {
+      localStorage.setItem('bt_image_settings', JSON.stringify(imageSettings));
+    } catch (e) {
+      console.error("Local storage error:", e);
+    }
+  }, [imageSettings]);
+
+  useEffect(() => {
+    try {
+      localStorage.setItem('bt_stickers', JSON.stringify(stickers));
+    } catch (e) {
+      console.error("Local storage error:", e);
+    }
+  }, [stickers]);
+
+  useEffect(() => {
+    localStorage.setItem('bt_neon_color', neonColor);
+  }, [neonColor]);
+
+  useEffect(() => {
+    localStorage.setItem('bt_filter_preset_id', filterPresetId);
+  }, [filterPresetId]);
 
   // Settings equality helper
   const areSettingsEqual = (s1: ImageSettings, s2: ImageSettings) => {
@@ -599,8 +807,8 @@ export default function App() {
   const fetchAppwriteFrames = async () => {
     setIsLoadingAppwrite(true);
     try {
-      const response = await fetch("https://nudb.bungtemin.net/bingkai/api");
-      if (!response.ok) throw new Error("Failed to fetch frames");
+      const response = await fetch(resolveApiUrl("/api/appwrite-frames"));
+      if (!response.ok) throw new Error("Failed to fetch frames via proxy");
       const data = await response.json();
       
       const mappedFrames: Frame[] = Array.isArray(data) ? data : [];
@@ -754,16 +962,50 @@ export default function App() {
       return;
     }
     
+    let dbReadyData = dataUrl;
+    
+    // Safety check: if data exceeds size limit, compress it on-the-fly on client
+    if (dataUrl.length > 750 * 1024) {
+      console.log('[Gallery] Gambar berukuran besar, kompilasi ulang / kompresi otomatis sedang dijalankan...');
+      try {
+        const img = new Image();
+        img.src = dataUrl;
+        await new Promise((resolve) => {
+          img.onload = resolve;
+          img.onerror = resolve;
+        });
+        
+        if (img.width > 0 && img.height > 0) {
+          const scale = Math.min(1, 800 / Math.max(img.width, img.height));
+          const tempCanvas = document.createElement('canvas');
+          tempCanvas.width = img.width * scale;
+          tempCanvas.height = img.height * scale;
+          const tempCtx = tempCanvas.getContext('2d');
+          if (tempCtx) {
+            tempCtx.drawImage(img, 0, 0, tempCanvas.width, tempCanvas.height);
+            dbReadyData = tempCanvas.toDataURL('image/jpeg', 0.82);
+          }
+        }
+      } catch (err) {
+        console.warn('[Gallery] Gagal kompresi dinamis saveToGallery:', err);
+      }
+    }
+    
     try {
       await addDoc(collection(db, 'my_gallery'), {
         userId: user.uid,
-        src: dataUrl,
+        src: dbReadyData,
         timestamp: serverTimestamp(),
       });
       triggerToast('Berhasil menyimpan ke galeri cloud! ☁️');
     } catch (e) {
       console.error(e);
       triggerToast('Gagal menyimpan ke galeri.');
+      try {
+        handleFirestoreError(e, OperationType.CREATE, 'my_gallery');
+      } catch (formattedErr) {
+        // Log formatted trace for system diagnostics
+      }
     }
   };
 
@@ -859,12 +1101,6 @@ export default function App() {
 
   // Handle direct canvas pointer drag translation & multi-touch pinch zooming
   const handlePointerDown = (e: React.PointerEvent<HTMLDivElement>) => {
-    // If user clicks the canvas, we assume they want to deselect active layers
-    if (selectedStickerId) {
-      setSelectedStickerId(null);
-      setIsHudOpen(false);
-    }
-    
     if (!userImage) return;
 
     // Track active pointer info
@@ -873,19 +1109,38 @@ export default function App() {
     hasMovedOrScaledRef.current = false;
 
     if (pointerIds.length === 1) {
-      if (!isPhotoLocked) {
+      if (!isPhotoLocked && !selectedStickerId) {
         setIsDraggingCanvas(true);
         dragStartRef.current = { x: e.clientX, y: e.clientY };
         startOffsetRef.current = { x: imageSettings.x, y: imageSettings.y };
       }
-    } else if (pointerIds.length === 2 && !isPhotoLocked) {
-      // Switch from drag state to dual pointer zoom state
-      setIsDraggingCanvas(false);
-      const p1 = activePointersRef.current[Number(pointerIds[0])];
-      const p2 = activePointersRef.current[Number(pointerIds[1])];
-      const distance = Math.hypot(p1.clientX - p2.clientX, p1.clientY - p2.clientY);
-      initialPinchDistanceRef.current = distance;
-      initialPinchScaleRef.current = imageSettings.scale;
+    } else if (pointerIds.length === 2) {
+      if (selectedStickerId) {
+        const activeSticker = stickers.find(s => s.id === selectedStickerId);
+        if (activeSticker) {
+          setIsDraggingCanvas(false);
+          const p1 = activePointersRef.current[Number(pointerIds[0])];
+          const p2 = activePointersRef.current[Number(pointerIds[1])];
+          if (p1 && p2) {
+            const distance = Math.hypot(p1.clientX - p2.clientX, p1.clientY - p2.clientY);
+            initialPinchDistanceRef.current = distance;
+            initialStickerPinchScaleRef.current = activeSticker.scale;
+            initialStickerPinchRotationRef.current = activeSticker.rotation || 0;
+            const angle = Math.atan2(p2.clientY - p1.clientY, p2.clientX - p1.clientX) * (180 / Math.PI);
+            initialStickerPinchAngleRef.current = angle;
+          }
+        }
+      } else if (!isPhotoLocked) {
+        // Switch from drag state to dual pointer zoom state
+        setIsDraggingCanvas(false);
+        const p1 = activePointersRef.current[Number(pointerIds[0])];
+        const p2 = activePointersRef.current[Number(pointerIds[1])];
+        if (p1 && p2) {
+          const distance = Math.hypot(p1.clientX - p2.clientX, p1.clientY - p2.clientY);
+          initialPinchDistanceRef.current = distance;
+          initialPinchScaleRef.current = imageSettings.scale;
+        }
+      }
     }
 
     e.currentTarget.setPointerCapture(e.pointerId);
@@ -924,19 +1179,43 @@ export default function App() {
         const currentDistance = Math.hypot(p1.clientX - p2.clientX, p1.clientY - p2.clientY);
         if (initialPinchDistanceRef.current > 0) {
           const factor = currentDistance / initialPinchDistanceRef.current;
-          // Scale range boundary modified to allow unrestricted zooming
-          const targetScale = Math.max(0.05, initialPinchScaleRef.current * factor);
-          setImageSettings(prev => ({
-            ...prev,
-            scale: parseFloat(targetScale.toFixed(2))
-          }));
-          hasMovedOrScaledRef.current = true;
+          
+          if (selectedStickerId) {
+            // Pinch-to-zoom and rotation on selected sticker
+            const targetScale = Math.max(0.1, initialStickerPinchScaleRef.current * factor);
+            
+            // Calculate rotation change
+            let targetRotation = initialStickerPinchRotationRef.current;
+            if (initialStickerPinchAngleRef.current !== null) {
+              const currentAngle = Math.atan2(p2.clientY - p1.clientY, p2.clientX - p1.clientX) * (180 / Math.PI);
+              const angleDelta = currentAngle - initialStickerPinchAngleRef.current;
+              targetRotation = (initialStickerPinchRotationRef.current + angleDelta) % 360;
+              if (targetRotation < 0) targetRotation += 360;
+            }
+
+            handleUpdateSticker(selectedStickerId, {
+              scale: parseFloat(targetScale.toFixed(2)),
+              rotation: Math.round(targetRotation)
+            });
+            hasMovedOrScaledRef.current = true;
+          } else if (!isPhotoLocked) {
+            // Scale range boundary modified to allow unrestricted zooming
+            const targetScale = Math.max(0.05, initialPinchScaleRef.current * factor);
+            setImageSettings(prev => ({
+              ...prev,
+              scale: parseFloat(targetScale.toFixed(2))
+            }));
+            hasMovedOrScaledRef.current = true;
+          }
         }
       }
     }
   };
 
   const handlePointerUp = (e: React.PointerEvent<HTMLDivElement>) => {
+    const wasDragging = isDraggingCanvas;
+    const initialPointerCount = Object.keys(activePointersRef.current).length;
+
     delete activePointersRef.current[e.pointerId];
     try {
       e.currentTarget.releasePointerCapture(e.pointerId);
@@ -947,6 +1226,7 @@ export default function App() {
     const pointerIds = Object.keys(activePointersRef.current);
     if (pointerIds.length < 2) {
       initialPinchDistanceRef.current = null;
+      initialStickerPinchAngleRef.current = null;
     }
 
     if (pointerIds.length === 0) {
@@ -956,6 +1236,12 @@ export default function App() {
         hasMovedOrScaledRef.current = false;
       }
       setIsDraggingCanvas(false);
+
+      // DESELECT: Jika ada stiker terpilih dan user melakukan single tap lepas di kanvas background kosong (tanpa pergerakan / drag)
+      if (selectedStickerId && initialPointerCount === 1 && !wasDragging) {
+        setSelectedStickerId(null);
+        setIsHudOpen(false);
+      }
     } else if (pointerIds.length === 1 && !isPhotoLocked) {
       // Re-initialize drag reference coordinates with the single remaining finger
       const remainingId = Number(pointerIds[0]);
@@ -1009,7 +1295,15 @@ export default function App() {
   // Sticker adjustments
   const handleAddSticker = (sticker: PlacedSticker) => {
     setStickers(prev => [...prev, sticker]);
-    triggerToast('Overlay ditambahkan!');
+    setSelectedStickerId(sticker.id);
+    
+    // Auto close tab and select text for immediate canvas interaction
+    if (sticker.type === 'text') {
+      setActiveTab(null);
+      triggerToast('Teks berhasil ditambahkan! Silahkan geser atau atur di kanvas 🎨');
+    } else {
+      triggerToast('Badge berhasil mendarat di kanvas! 🚀');
+    }
   };
 
   const handleUpdateSticker = (id: string, updated: Partial<PlacedSticker>) => {
@@ -1272,9 +1566,6 @@ export default function App() {
         link.click();
         document.body.removeChild(link);
 
-        // Auto save to local gallery
-        saveToGallery(dataUrl);
-
         // Compress and prepare compact base64 representation for Firebase Firestore storage (ensure < 1MB limit is structurally enforced)
         let firebaseBase64 = dataUrl;
         try {
@@ -1290,6 +1581,9 @@ export default function App() {
         } catch (compressErr) {
           console.warn('Gagal kompresi thumbnail Firebase, menggunakan data asli:', compressErr);
         }
+
+        // Auto save to cloud gallery using optimized small image representation
+        saveToGallery(firebaseBase64);
 
         // 2. Restore preview render (hide duplicate stickers on canvas to avoid HTML overlap)
         await renderToCanvas(canvas, {
@@ -1329,6 +1623,21 @@ export default function App() {
 
           await setDoc(doc(db, 'downloads', downloadId), downloadPayload);
           console.log(`[Firebase] Berhasil menyimpan berkas cadangan download dengan ID: ${downloadId}`);
+          
+          // Invalidate Firestore queries cache
+          if (user) {
+            localStorage.removeItem(`bt_my_gallery_${user.uid}`);
+            localStorage.removeItem(`bt_my_gallery_time_${user.uid}`);
+            localStorage.removeItem(`bt_cloud_downloads_all_${user.uid}`);
+            localStorage.removeItem(`bt_cloud_downloads_time_all_${user.uid}`);
+            localStorage.removeItem(`bt_cloud_downloads_mine_${user.uid}`);
+            localStorage.removeItem(`bt_cloud_downloads_time_mine_${user.uid}`);
+            localStorage.removeItem(`bt_cloud_downloads_others_${user.uid}`);
+            localStorage.removeItem(`bt_cloud_downloads_time_others_${user.uid}`);
+          }
+          localStorage.removeItem(`bt_cloud_downloads_all_guest`);
+          localStorage.removeItem(`bt_cloud_downloads_time_all_guest`);
+
           triggerToast(`Avatar ${ext.toUpperCase()} berhasil dicadangkan di Cloud Database! ☁️✨`);
         } catch (dbErr) {
           console.error('[Firebase Error] Gagal menyimpan ke Firestore:', dbErr);
@@ -1468,6 +1777,7 @@ export default function App() {
                 transform: `perspective(1000px) rotateX(${combinedTiltY * -10}deg) rotateY(${combinedTiltX * 10}deg)`,
                 transformStyle: 'preserve-3d',
                 transition: (isDraggingCanvas || selectedStickerId) ? 'none' : 'transform 0.18s cubic-bezier(0.25, 0.8, 0.25, 1)',
+                containerType: 'inline-size'
               }}
               className={`relative aspect-square w-full rounded lg:rounded-xl bg-[#09090b] overflow-hidden border transition-all duration-300 group cursor-move select-none touch-none ${
                 isDraggingFile 
@@ -1499,8 +1809,8 @@ export default function App() {
               {/* Absolute interactive sticker & text overlays on screen */}
               {stickers.map((item) => {
                 const isSelected = item.id === selectedStickerId;
-                // Base size for preview overlay on screen (normalized multiplier)
-                const baseSize = item.scale * 16;
+                // Base size for preview overlay on screen (normalized multiplier as percentage of container width)
+                const baseSizePercentage = item.scale * 15;
                 
                 return (
                   <div
@@ -1567,7 +1877,7 @@ export default function App() {
                       <span
                         style={{
                           fontFamily: item.fontFamily || 'Orbitron',
-                          fontSize: `${baseSize}px`,
+                          fontSize: `${baseSizePercentage}cqw`,
                           ...(item.textStyle === 'neon' 
                               ? {
                                   color: '#fff',
@@ -1627,8 +1937,7 @@ export default function App() {
                       </span>
                     ) : (
                       <svg 
-                        width={baseSize * 1.5} 
-                        height={baseSize * 1.5} 
+                        style={{ width: `${baseSizePercentage * 1.5}cqw`, height: `${baseSizePercentage * 1.5}cqw` }}
                         viewBox="0 0 100 100" 
                         fill="none" 
                         stroke={item.color || neonColor} 
@@ -1978,14 +2287,17 @@ export default function App() {
             }`}>
               <span className="font-extrabold flex items-center gap-1.5 text-[10px]">
                 {activeTab === 'adjust' && <><Settings2 className="w-3.5 h-3.5 text-neon-cyan animate-pulse" /> POSISI FOTO</>}
+                {activeTab === 'crop' && <><Crop className="w-3.5 h-3.5 text-neon-cyan animate-pulse" /> POTONG (CROP) FOTO</>}
                 {activeTab === 'filter' && <><Sliders className="w-3.5 h-3.5 text-neon-cyan" /> FILTER ESTETIK</>}
                 {activeTab === 'color' && <><Cpu className="w-3.5 h-3.5 text-neon-cyan" /> KOREKSI WARNA & BLUR</>}
                 {activeTab === 'stickers' && <><Layers className="w-3.5 h-3.5 text-neon-cyan" /> BADGE & DEKORASI</>}
-                {activeTab === 'text' && <><Type className="w-3.5 h-3.5 text-neon-cyan" /> TEKS ESTETIK</>}
+                {activeTab === 'text' && <><Type className="w-3.5 h-3.5 text-neon-cyan" /> TEKS KUSTOM</>}
+                {activeTab === 'text_preset' && <><Baseline className="w-3.5 h-3.5 text-neon-cyan" /> TEKS ESTETIK</>}
                 {activeTab === 'layers' && <><Layers className="w-3.5 h-3.5 text-neon-cyan" /> MANAJEMEN LAYER</>}
                 {activeTab === 'ai' && <><Sparkles className="w-3.5 h-3.5 text-amber-400 animate-pulse" /> AI GENERATE</>}
                 {activeTab === 'download' && <><Download className="w-3.5 h-3.5 text-neon-cyan animate-bounce" /> FORMAT UNDUH & RESOLUSI</>}
                 {activeTab === 'history' && <><Activity className="w-3.5 h-3.5 text-emerald-400 animate-pulse" /> RIWAYAT PERUBAHAN</>}
+                {activeTab === 'settings' && <><Settings2 className="w-3.5 h-3.5 text-neon-cyan animate-pulse" /> PENGATURAN EFEK GLOBAL</>}
               </span>
               <button 
                 onClick={() => setActiveTab(null)}
@@ -2181,6 +2493,26 @@ export default function App() {
                 />
               )}
 
+              {activeTab === 'crop' && (
+                <ImageAdjuster
+                  settings={imageSettings}
+                  onChangeSettings={setImageSettings}
+                  activeFilterPresetId={filterPresetId}
+                  onSelectFilterPreset={handleSelectFilterPreset}
+                  onResetSettings={() => {
+                    setImageSettings({
+                      ...imageSettings,
+                      maskShape: 'square'
+                    });
+                    triggerToast('Bentuk crop foto dikembalikan ke awal.');
+                  }}
+                  activeSection="crop"
+                  enableParallax={enableParallax}
+                  onToggleParallax={setEnableParallax}
+                  theme={theme}
+                />
+              )}
+
               {activeTab === 'filter' && (
                 <ImageAdjuster
                   settings={imageSettings}
@@ -2247,7 +2579,21 @@ export default function App() {
                   selectedStickerId={selectedStickerId}
                   onSelectSticker={setSelectedStickerId}
                   theme={theme}
-                  modeOnly="text"
+                  modeOnly="text_custom"
+                />
+              )}
+
+              {activeTab === 'text_preset' && (
+                <StickerSelector
+                  stickers={stickers}
+                  onAddSticker={handleAddSticker}
+                  onUpdateSticker={handleUpdateSticker}
+                  onDeleteSticker={handleDeleteSticker}
+                  neonColor={neonColor}
+                  selectedStickerId={selectedStickerId}
+                  onSelectSticker={setSelectedStickerId}
+                  theme={theme}
+                  modeOnly="text_preset"
                 />
               )}
 
@@ -2709,6 +3055,88 @@ export default function App() {
                   )}
                 </div>
               )}
+
+              {activeTab === 'settings' && (
+                <div className="space-y-4">
+                  <div className={`p-4 rounded-xl border flex items-center justify-between transition-all duration-300 ${
+                    theme === 'dark' ? 'border-[#00F0FF]/20 bg-black/40' : 'border-black/5 bg-black/5'
+                  }`}>
+                    <div className="flex flex-col select-none pr-3">
+                      <span className="text-[10px] font-mono text-neon-cyan font-black uppercase tracking-widest flex items-center gap-1.5">
+                        📺 LAYAR SCANLINES retro
+                      </span>
+                      <span className="text-[8.5px] font-sans text-zinc-400 leading-normal mt-1 font-medium">
+                        Aktifkan garis grid pemindaian retro monitor cybernetic di atas avatar Anda.
+                      </span>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setImageSettings({ ...imageSettings, scanlines: !imageSettings.scanlines });
+                        triggerToast(`SISTEM: Efek scanlines ${!imageSettings.scanlines ? 'diaktifkan' : 'dimatikan'}`);
+                      }}
+                      className={`flex-none w-10.5 h-6 rounded-full p-0.5 transition-colors duration-200 focus:outline-none relative ${
+                        imageSettings.scanlines ? 'bg-neon-cyan/80' : theme === 'dark' ? 'bg-zinc-800' : 'bg-black/10'
+                      }`}
+                    >
+                      <div className={`w-5 h-5 rounded-full shadow-md transform duration-200 ${
+                        imageSettings.scanlines 
+                          ? 'translate-x-4.5 bg-neutral-950' 
+                          : theme === 'dark' ? 'translate-x-0 bg-white/80' : 'translate-x-0 bg-white'
+                      }`} />
+                    </button>
+                  </div>
+
+                  <div className={`p-4 rounded-xl border flex items-center justify-between transition-all duration-300 ${
+                    theme === 'dark'
+                      ? 'border-[#00F0FF]/20 bg-cyan-950/10'
+                      : 'border-neon-cyan/25 bg-cyan-100/10'
+                  }`}>
+                    <div className="flex flex-col select-none pr-3">
+                      <span className="text-[10px] font-mono text-neon-cyan font-black uppercase tracking-widest flex items-center gap-1.5">
+                        <span className="w-1.5 h-1.5 rounded-full bg-neon-cyan animate-pulse"></span>
+                        EFEK PARALLAX 3D
+                      </span>
+                      <span className="text-[8.5px] font-sans text-zinc-400 leading-normal mt-1">
+                        Menambahkan kedalaman digital 3D interaktif yang mengikuti pergerakan kursor mouse Anda.
+                      </span>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setEnableParallax(!enableParallax);
+                        triggerToast(`SISTEM: Efek parallax ${!enableParallax ? 'diaktifkan' : 'dimatikan'}`);
+                      }}
+                      className={`flex-none w-10.5 h-6 rounded-full p-0.5 transition-colors duration-200 focus:outline-none relative ${
+                        enableParallax ? 'bg-neon-cyan/80' : theme === 'dark' ? 'bg-zinc-800' : 'bg-black/10'
+                      }`}
+                    >
+                      <div className={`w-5 h-5 rounded-full shadow-md transform duration-200 ${
+                        enableParallax 
+                          ? 'translate-x-4.5 bg-neutral-950' 
+                          : theme === 'dark' ? 'translate-x-0 bg-white/80' : 'translate-x-0 bg-white'
+                      }`} />
+                    </button>
+                  </div>
+
+                  <div className="pt-2 border-t border-dashed border-white/10">
+                    <button
+                      onClick={() => {
+                        setImageSettings({ ...imageSettings, scanlines: false });
+                        setEnableParallax(true);
+                        triggerToast('SISTEM: Pengaturan efek siber telah dikembalikan ke standar.');
+                      }}
+                      className={`w-full py-2 rounded text-[9.5px] font-mono font-bold border transition-all text-center tracking-widest uppercase ${
+                        theme === 'dark'
+                          ? 'bg-white/3 border-white/5 text-rose-400 hover:bg-rose-950/20 hover:border-rose-900/40 hover:text-rose-200'
+                          : 'bg-black/5 border-black/5 text-rose-600 hover:bg-rose-100 hover:border-rose-200 hover:text-rose-800'
+                      }`}
+                    >
+                      🔄 KELUARKAN SEMUA EFEK (RESET)
+                    </button>
+                  </div>
+                </div>
+              )}
             </div>
           </div>
         </motion.div>
@@ -2735,33 +3163,41 @@ export default function App() {
                 <span className="text-[8px] uppercase tracking-wider font-extrabold">UNGGAH</span>
               </button>
 
-              {user?.email === 'bungtemin@gmail.com' && (
-                <button
-                  onClick={() => setActiveTab(activeTab === 'text' ? null : 'text')}
-                  className={`snap-center flex-shrink-0 px-3.5 py-1.5 rounded-xl font-mono text-xs font-bold tracking-widest transition-all duration-150 flex flex-col items-center justify-center space-y-1 min-w-[76px] ${
-                    activeTab === 'text'
-                      ? 'bg-neon-cyan/20 text-neon-cyan border-t-2 border-neon-cyan shadow-[0_0_15px_rgba(0,240,255,0.2)]'
-                      : 'text-zinc-450 hover:text-zinc-200 hover:bg-white/5'
-                  }`}
-                >
-                  <Type className="w-4 h-4" />
-                  <span className="text-[8px] uppercase tracking-wider font-extrabold">TEKS</span>
-                </button>
-              )}
+              <button
+                onClick={() => setActiveTab(activeTab === 'text_preset' ? null : 'text_preset')}
+                className={`snap-center flex-shrink-0 px-3.5 py-1.5 rounded-xl font-mono text-xs font-bold tracking-widest transition-all duration-150 flex flex-col items-center justify-center space-y-1 min-w-[76px] ${
+                  activeTab === 'text_preset'
+                    ? 'bg-neon-cyan/20 text-neon-cyan border-t-2 border-neon-cyan shadow-[0_0_15px_rgba(0,240,255,0.2)]'
+                    : 'text-zinc-450 hover:text-zinc-200 hover:bg-white/5'
+                }`}
+              >
+                <Baseline className="w-4 h-4" />
+                <span className="text-[8px] uppercase tracking-wider font-extrabold">AESTHETIC</span>
+              </button>
 
-              {user?.email === 'bungtemin@gmail.com' && (
-                <button
-                  onClick={() => setActiveTab(activeTab === 'stickers' ? null : 'stickers')}
-                  className={`snap-center flex-shrink-0 px-3.5 py-1.5 rounded-xl font-mono text-xs font-bold tracking-widest transition-all duration-150 flex flex-col items-center justify-center space-y-1 min-w-[76px] ${
-                    activeTab === 'stickers'
-                      ? 'bg-neon-cyan/20 text-neon-cyan border-t-2 border-neon-cyan shadow-[0_0_15px_rgba(0,240,255,0.2)]'
-                      : 'text-zinc-450 hover:text-zinc-200 hover:bg-white/5'
-                  }`}
-                >
-                  <Layers className="w-4 h-4" />
-                  <span className="text-[8px] uppercase tracking-wider font-extrabold">BADGE</span>
-                </button>
-              )}
+              <button
+                onClick={() => setActiveTab(activeTab === 'text' ? null : 'text')}
+                className={`snap-center flex-shrink-0 px-3.5 py-1.5 rounded-xl font-mono text-xs font-bold tracking-widest transition-all duration-150 flex flex-col items-center justify-center space-y-1 min-w-[76px] ${
+                  activeTab === 'text'
+                    ? 'bg-neon-cyan/20 text-neon-cyan border-t-2 border-neon-cyan shadow-[0_0_15px_rgba(0,240,255,0.2)]'
+                    : 'text-zinc-450 hover:text-zinc-200 hover:bg-white/5'
+                }`}
+              >
+                <Type className="w-4 h-4" />
+                <span className="text-[8px] uppercase tracking-wider font-extrabold">TEKS</span>
+              </button>
+
+              <button
+                onClick={() => setActiveTab(activeTab === 'stickers' ? null : 'stickers')}
+                className={`snap-center flex-shrink-0 px-3.5 py-1.5 rounded-xl font-mono text-xs font-bold tracking-widest transition-all duration-150 flex flex-col items-center justify-center space-y-1 min-w-[76px] ${
+                  activeTab === 'stickers'
+                    ? 'bg-neon-cyan/20 text-neon-cyan border-t-2 border-neon-cyan shadow-[0_0_15px_rgba(0,240,255,0.2)]'
+                    : 'text-zinc-450 hover:text-zinc-200 hover:bg-white/5'
+                }`}
+              >
+                <Layers className="w-4 h-4" />
+                <span className="text-[8px] uppercase tracking-wider font-extrabold">BADGE</span>
+              </button>
 
               <button
                 onClick={() => setActiveTab(activeTab === 'filter' ? null : 'filter')}
@@ -2800,6 +3236,18 @@ export default function App() {
               </button>
 
               <button
+                onClick={() => setActiveTab(activeTab === 'crop' ? null : 'crop')}
+                className={`snap-center flex-shrink-0 px-3.5 py-1.5 rounded-xl font-mono text-xs font-bold tracking-widest transition-all duration-150 flex flex-col items-center justify-center space-y-1 min-w-[76px] ${
+                  activeTab === 'crop'
+                    ? 'bg-neon-cyan/20 text-neon-cyan border-t-2 border-neon-cyan shadow-[0_0_15px_rgba(0,240,255,0.2)]'
+                    : 'text-zinc-450 hover:text-zinc-200 hover:bg-white/5'
+                }`}
+              >
+                <Crop className="w-4 h-4" />
+                <span className="text-[8px] uppercase tracking-wider font-extrabold">CROP</span>
+              </button>
+
+              <button
                 onClick={() => setActiveTab(activeTab === 'layers' ? null : 'layers')}
                 className={`snap-center flex-shrink-0 px-3.5 py-1.5 rounded-xl font-mono text-xs font-bold tracking-widest transition-all duration-150 flex flex-col items-center justify-center space-y-1 min-w-[76px] ${
                   activeTab === 'layers'
@@ -2824,18 +3272,6 @@ export default function App() {
               </button>
 
               <button
-                onClick={() => setActiveTab(activeTab === 'ai' ? null : 'ai')}
-                className={`snap-center flex-shrink-0 px-3.5 py-1.5 rounded-xl font-mono text-xs font-bold tracking-widest transition-all duration-150 flex flex-col items-center justify-center space-y-1 min-w-[76px] ${
-                  activeTab === 'ai'
-                    ? 'bg-amber-400/25 text-amber-400 border-t-2 border-amber-400 shadow-[0_0_15px_rgba(251,191,36,0.2)]'
-                    : 'text-amber-500 hover:text-amber-400 hover:bg-amber-955/10'
-                }`}
-              >
-                <Sparkles className="w-4 h-4 animate-pulse" />
-                <span className="text-[8px] uppercase tracking-wider font-extrabold">AI GENERATE</span>
-              </button>
-
-              <button
                 onClick={() => setActiveTab(activeTab === 'download' ? null : 'download')}
                 className={`snap-center flex-shrink-0 px-3.5 py-1.5 rounded-xl font-mono text-xs font-bold tracking-widest transition-all duration-150 flex flex-col items-center justify-center space-y-1 min-w-[76px] ${
                   activeTab === 'download'
@@ -2850,6 +3286,115 @@ export default function App() {
           </div>
         </motion.div>
       )}
+      </AnimatePresence>
+
+      {/* OLAIVE CHIC FLOATING HUB: SETTINGS & AI GENERATIVE */}
+      <AnimatePresence>
+        {currentPage === 'beranda' && !activeTab && (
+          <div className="fixed bottom-20 right-4 md:right-8 z-45" id="olaive-cyber-hub-container">
+            {/* Expanded holographic popover */}
+            <AnimatePresence>
+              {isFloatingHubOpen && (
+                <motion.div
+                  initial={{ opacity: 0, y: 15, scale: 0.95 }}
+                  animate={{ opacity: 1, y: 0, scale: 1 }}
+                  exit={{ opacity: 0, y: 10, scale: 0.95 }}
+                  transition={{ duration: 0.2, ease: "easeOut" }}
+                  className={`absolute bottom-16 right-0 w-60 rounded-2xl border backdrop-blur-xl p-3.5 space-y-3 z-50 flex flex-col shadow-[0_10px_35px_rgba(0,0,0,0.85)] ${
+                    theme === 'dark' 
+                      ? 'bg-[#08080a]/95 border-neon-cyan/40 text-white shadow-[0_0_25px_rgba(0,240,255,0.15)]' 
+                      : 'bg-white/95 border-black/10 text-zinc-900 shadow-[0_10px_30px_rgba(0,0,0,0.15)]'
+                  }`}
+                >
+                  {/* Hologram Lines/Effect Decorator */}
+                  <div className="absolute top-0 left-0 right-0 h-1.5 bg-gradient-to-r from-neon-pink via-[#00F0FF] to-amber-400 rounded-t-2xl animate-pulse" />
+                  
+                  <div className="flex items-center justify-between border-b border-white/5 pb-2">
+                    <div className="flex flex-col">
+                      <span className="text-[10px] font-mono tracking-widest text-neon-cyan font-black uppercase">
+                        💖 OLAIVE HUB
+                      </span>
+                      <span className="text-[8px] font-sans text-zinc-500 font-bold uppercase tracking-wider">
+                        Pusat Pengaturan Efek & AI
+                      </span>
+                    </div>
+                    <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse" />
+                  </div>
+
+                  {/* Buttons Grid */}
+                  <div className="flex flex-col gap-2">
+                    {/* OPTION 1: SETTINGS */}
+                    <button
+                      onClick={() => {
+                        setActiveTab(activeTab === 'settings' ? null : 'settings');
+                        setIsFloatingHubOpen(false);
+                      }}
+                      className={`w-full p-2.5 rounded-xl border font-mono text-[10px] font-extrabold tracking-wider text-left transition-all duration-200 flex items-center justify-between group ${
+                        activeTab === 'settings'
+                          ? 'bg-neon-cyan/15 border-neon-cyan text-neon-cyan'
+                          : theme === 'dark'
+                            ? 'bg-white/5 border-white/5 text-zinc-300 hover:bg-white/8 hover:text-white hover:border-white/10'
+                            : 'bg-black/5 border-black/5 text-zinc-700 hover:bg-black/8 hover:text-zinc-900'
+                      }`}
+                    >
+                      <div className="flex items-center gap-2">
+                        <Settings2 className="w-4 h-4 text-neon-cyan group-hover:rotate-45 transition-transform duration-300" />
+                        <div className="flex flex-col">
+                          <span className="text-[9px] uppercase font-black tracking-widest">⚙️ SETTING EFEK</span>
+                        </div>
+                      </div>
+                      <span className="text-[7.5px] font-sans text-zinc-500 uppercase tracking-widest group-hover:translate-x-1 transition-transform">GO ➔</span>
+                    </button>
+
+                    {/* OPTION 2: AI GENERATIVE */}
+                    <button
+                      onClick={() => {
+                        setActiveTab(activeTab === 'ai' ? null : 'ai');
+                        setIsFloatingHubOpen(false);
+                      }}
+                      className={`w-full p-2.5 rounded-xl border font-mono text-[10px] font-extrabold tracking-wider text-left transition-all duration-200 flex items-center justify-between group ${
+                        activeTab === 'ai'
+                          ? 'bg-amber-400/20 border-amber-400 text-amber-400 font-bold'
+                          : theme === 'dark'
+                            ? 'bg-white/5 border-white/5 text-zinc-300 hover:bg-white/8 hover:text-amber-400 hover:border-amber-400/30'
+                            : 'bg-black/5 border-black/5 text-zinc-750 hover:bg-black/8 hover:text-amber-600'
+                      }`}
+                    >
+                      <div className="flex items-center gap-2">
+                        <Sparkles className="w-4 h-4 text-amber-400 animate-pulse" />
+                        <div className="flex flex-col">
+                          <span className="text-[9px] uppercase font-black tracking-widest">✨ AI GENERATIF</span>
+                        </div>
+                      </div>
+                      <span className="text-[7.5px] font-sans text-zinc-500 uppercase tracking-widest group-hover:translate-x-1 transition-transform">GO ➔</span>
+                    </button>
+                  </div>
+                </motion.div>
+              )}
+            </AnimatePresence>
+
+            {/* floating main circle toggler */}
+            <motion.button
+              whileTap={{ scale: 0.92 }}
+              onClick={() => setIsFloatingHubOpen(!isFloatingHubOpen)}
+              className={`w-12 h-12 rounded-full flex flex-col items-center justify-center transition-all duration-300 border shadow-[0_4px_20px_rgba(0,0,0,0.5)] focus:outline-none relative group ${
+                isFloatingHubOpen
+                  ? 'bg-neon-pink hover:bg-rose-500 text-white border-neon-pink shadow-[0_0_15px_rgba(244,63,94,0.4)]'
+                  : theme === 'dark'
+                    ? 'bg-zinc-950/90 hover:bg-black text-neon-cyan border-neon-cyan/40 hover:border-neon-cyan shadow-[0_0_15px_rgba(0,240,255,0.15)]'
+                    : 'bg-white hover:bg-zinc-50 text-neon-cyan border-black/10'
+              }`}
+              title="Menu OLAIVE (Sistem & AI)"
+            >
+              <div className="absolute inset-0 rounded-full bg-gradient-to-tr from-neon-pink/10 to-neon-cyan/10 opacity-75 animate-ping group-hover:opacity-100 duration-1000 pointer-events-none" />
+              {isFloatingHubOpen ? (
+                <X className="w-5 h-5 shrink-0" />
+              ) : (
+                <Menu className="w-5 h-5 shrink-0 text-neon-cyan" />
+              )}
+            </motion.button>
+          </div>
+        )}
       </AnimatePresence>
 
        {/* CREATIVE QUESTS PAGE TAB */}
@@ -3369,8 +3914,19 @@ export default function App() {
         >
            <X className="w-6 h-6" />
         </button>
-        <div className="flex justify-between items-center mb-6">
+        <div className="flex justify-between items-center mb-6 gap-4">
           <h2 className="text-2xl font-display font-extrabold tracking-tight text-white uppercase">QCC FOTO</h2>
+          <button
+            onClick={() => {
+              fetchCloudDownloads(cloudSubTab, true);
+              triggerToast("Meresegarkan galeri QCC Foto dari cloud... 🔄");
+            }}
+            disabled={isLoadingCloudDownloads}
+            className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-white/5 border border-white/10 text-zinc-300 hover:text-[#00F0FF] hover:border-[#00F0FF]/30 hover:bg-[#00F0FF]/5 font-mono text-[10px] tracking-wider uppercase transition-all duration-300 disabled:opacity-50"
+          >
+            <RefreshCw className={`w-3.5 h-3.5 ${isLoadingCloudDownloads ? 'animate-spin' : ''}`} />
+            REFRESH
+          </button>
         </div>
 
             {isLoadingCloudDownloads ? (
@@ -3585,7 +4141,10 @@ export default function App() {
           </div>
 
           <button
-            onClick={() => fetchMyGallery()}
+            onClick={() => {
+              fetchMyGallery(true);
+              triggerToast("Meresegarkan galeri dari cloud... 🔄");
+            }}
             disabled={isLoadingGallery}
             className="px-3 py-1.5 border border-neon-cyan/30 hover:border-neon-cyan text-neon-cyan hover:bg-cyan-950/20 rounded font-mono text-[9px] transition-all flex items-center gap-2"
           >
@@ -3621,35 +4180,6 @@ export default function App() {
           <div className="flex flex-col sm:grid sm:grid-cols-2 lg:grid-cols-4 gap-6">
             {savedCreations.map((creation) => (
               <div key={creation.id} className="rounded-xl bg-[#0b0b0b]/80 border border-white/10 overflow-hidden flex flex-col group relative w-full">
-                {/* Action Overlay bar */}
-                <div className="absolute top-2 right-2 flex space-x-1.5 z-20 opacity-0 group-hover:opacity-100 transition-opacity duration-205">
-                  <button
-                    onClick={() => {
-                      const link = document.createElement('a');
-                      link.download = `Avatar-Saved-${creation.id}.png`;
-                      link.href = creation.src;
-                      document.body.appendChild(link);
-                      link.click();
-                      document.body.removeChild(link);
-                      triggerToast('Proses unduh ulang berhasil!');
-                    }}
-                    className="p-1.5 bg-black/80 hover:bg-neon-cyan hover:text-black text-neon-cyan rounded border border-neon-cyan/25 font-bold shadow-lg shadow-black"
-                    title="Download Ulang"
-                  >
-                    <Download className="w-3.5 h-3.5" />
-                  </button>
-                  <button
-                    onClick={() => {
-                      setItemToDelete(creation.id);
-                      setIsDeleteModalOpen(true);
-                    }}
-                    className="p-1.5 bg-black/80 hover:bg-red-500 hover:text-white text-zinc-400 rounded border border-white/10 font-bold shadow-lg shadow-black"
-                    title="Hapus dari Cloud"
-                  >
-                    <Trash2 className="w-3.5 h-3.5" />
-                  </button>
-                </div>
-
                 {/* Render Target Image */}
                 <div className="relative aspect-square backdrop-blur-md bg-zinc-950 border-b border-white/5 flex items-center justify-center p-0 group-hover:scale-[1.01] transition-transform duration-300">
                   {creation.src ? (
@@ -3661,6 +4191,35 @@ export default function App() {
                 <div className="p-3 bg-black/30 flex items-center justify-between">
                   <span className="font-mono text-[8px] text-zinc-500 uppercase">{creation.timestamp}</span>
                   <span className="font-mono text-[8.5px] text-neon-cyan px-1.5 rounded bg-cyan-950/20 border border-cyan-500/10 uppercase tracking-widest font-bold">SAVED CLOUD</span>
+                </div>
+
+                {/* Bottom Action buttons bar to replace the hidden hover-overlay */}
+                <div className="p-3 bg-black/40 border-t border-white/5 flex gap-2">
+                  <button
+                    onClick={() => {
+                      const link = document.createElement('a');
+                      link.download = `Avatar-Saved-${creation.id}.png`;
+                      link.href = creation.src;
+                      document.body.appendChild(link);
+                      link.click();
+                      document.body.removeChild(link);
+                      triggerToast('Proses unduh ulang berhasil!');
+                    }}
+                    className="flex-1 py-1.5 bg-neon-cyan/15 hover:bg-neon-cyan hover:text-black border border-neon-cyan/40 text-neon-cyan rounded font-mono text-[9px] font-bold tracking-widest uppercase flex items-center justify-center gap-1 transition-all"
+                    title="Download Ulang"
+                  >
+                    <Download className="w-3 h-3" /> UNDUH
+                  </button>
+                  <button
+                    onClick={() => {
+                      setItemToDelete(creation.id);
+                      setIsDeleteModalOpen(true);
+                    }}
+                    className="px-2.5 py-1.5 bg-red-950/20 hover:bg-red-600 hover:text-white border border-red-500/30 text-rose-500 rounded font-mono text-[9px] font-bold tracking-widest uppercase flex items-center justify-center gap-1 transition-all"
+                    title="Hapus dari Cloud"
+                  >
+                    <Trash2 className="w-3 h-3" /> HAPUS
+                  </button>
                 </div>
               </div>
             ))}

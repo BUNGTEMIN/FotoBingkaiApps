@@ -2,7 +2,7 @@ import React from 'react';
 import { ImageSettings } from '../types';
 import { FILTER_PRESETS } from '../presets';
 import { 
-  RotateCw, ZoomIn, Sun, MoveHorizontal, MoveVertical, FlipHorizontal, FlipVertical
+  RotateCw, ZoomIn, Sun, MoveHorizontal, MoveVertical, FlipHorizontal, FlipVertical, Crop
 } from 'lucide-react';
 
 interface ImageAdjusterProps {
@@ -11,7 +11,7 @@ interface ImageAdjusterProps {
   activeFilterPresetId: string;
   onSelectFilterPreset: (id: string, presetSettings: Partial<ImageSettings>) => void;
   onResetSettings: () => void;
-  activeSection?: 'posisi' | 'filter' | 'warna';
+  activeSection?: 'posisi' | 'filter' | 'warna' | 'crop';
   enableParallax?: boolean;
   onToggleParallax?: (enabled: boolean) => void;
   theme?: 'dark' | 'light';
@@ -28,7 +28,7 @@ export default function ImageAdjuster({
   onToggleParallax,
   theme = 'dark'
 }: ImageAdjusterProps) {
-  const [internalSubTab, setInternalSubTab] = React.useState<'posisi' | 'filter' | 'warna'>('posisi');
+  const [internalSubTab, setInternalSubTab] = React.useState<'posisi' | 'filter' | 'warna' | 'crop'>('posisi');
   
   // Use parent-controlled activeSection if provided, otherwise fallback to internal state
   const activeSubTab = activeSection || internalSubTab;
@@ -201,20 +201,23 @@ export default function ImageAdjuster({
               RESET POSISI
             </button>
           </div>
+        </div>
+      )}
 
-          {/* Custom Mask Shape selector */}
-          <div className="space-y-1 pt-2.5 border-t border-dashed border-white/10">
-            <span className={`text-[9.5px] font-mono block uppercase tracking-wider ${theme === 'dark' ? 'text-zinc-500' : 'text-zinc-600 font-bold'}`}>
+      {activeSubTab === 'crop' && (
+        <div className="space-y-4">
+          <div className="space-y-1">
+            <span className={`text-[10px] font-mono block uppercase tracking-wider ${theme === 'dark' ? 'text-zinc-400' : 'text-zinc-600 font-bold'}`}>
               🎭 Bentuk Crop Foto (Aperture Shape)
             </span>
-            <div className="grid grid-cols-4 gap-1">
+            <div className="grid grid-cols-4 gap-1.5">
               {(['square', 'circle', 'hexagon', 'octagon'] as const).map((shape) => {
-                const isSelected = settings.maskShape === shape;
+                const isSelected = settings.maskShape === shape || (!settings.maskShape && shape === 'square');
                 return (
                   <button
                     key={shape}
                     onClick={() => updateSetting('maskShape', shape)}
-                    className={`py-1.5 px-1 rounded text-[8.5px] font-mono border transition-all text-center capitalize ${
+                    className={`py-2 px-1 rounded text-[9px] font-mono border transition-all text-center capitalize ${
                       isSelected
                         ? 'bg-[#00F0FF]/15 border-neon-cyan text-neon-cyan shadow-[0_0_8px_rgba(0,240,255,0.15)] font-bold'
                         : theme === 'dark'
@@ -229,64 +232,18 @@ export default function ImageAdjuster({
             </div>
           </div>
 
-          {/* CRT Scanline Toggle */}
-          <div className={`p-2 rounded border flex items-center justify-between transition-all duration-300 ${
-            theme === 'dark' ? 'border-[#00F0FF]/15 bg-black/30' : 'border-black/5 bg-black/5'
-          }`}>
-            <div className="flex flex-col select-none pr-3">
-              <span className="text-[9.5px] font-mono text-neon-cyan font-black uppercase tracking-widest flex items-center gap-1.5">
-                📺 LAYAR SCANLINES retro
-              </span>
-              <span className="text-[8px] font-sans text-zinc-500 leading-normal mt-0.5 font-medium">
-                Aktifkan garis grid pemindaian retro monitor cybernetic.
-              </span>
-            </div>
+          <div className="pt-2 border-t border-dashed border-white/10">
             <button
-              type="button"
-              onClick={() => updateSetting('scanlines', !settings.scanlines)}
-              className={`flex-none w-8 h-4.5 rounded-full p-0.5 transition-colors duration-200 focus:outline-none relative ${
-                settings.scanlines ? 'bg-neon-cyan' : theme === 'dark' ? 'bg-zinc-800' : 'bg-black/10'
+              onClick={() => updateSetting('maskShape', 'square')}
+              className={`w-full py-1.5 rounded text-[9px] font-mono font-bold border transition-all text-center tracking-widest ${
+                theme === 'dark'
+                  ? 'bg-white/3 border-white/5 text-rose-400 hover:bg-rose-950/20 hover:border-rose-900/40 hover:text-rose-200'
+                  : 'bg-black/5 border-black/5 text-rose-600 hover:bg-rose-100 hover:border-rose-200 hover:text-rose-800'
               }`}
             >
-              <div className={`w-3.5 h-3.5 rounded-full shadow-md transform duration-200 ${
-                settings.scanlines 
-                  ? 'translate-x-3.5 bg-neutral-950' 
-                  : theme === 'dark' ? 'translate-x-0 bg-white/80' : 'translate-x-0 bg-white'
-              }`} />
+              RESET BENTUK CROP
             </button>
           </div>
-
-          {/* 3D Parallax Tilt Toggle Control */}
-          {onToggleParallax !== undefined && (
-            <div className={`mt-3.5 p-2 rounded border flex items-center justify-between transition-all duration-300 ${
-              theme === 'dark'
-                ? 'border-[#00F0FF]/15 bg-cyan-950/10'
-                : 'border-neon-cyan/25 bg-cyan-100/10'
-            }`}>
-              <div className="flex flex-col select-none pr-3">
-                <span className="text-[9.5px] font-mono text-neon-cyan font-black uppercase tracking-widest flex items-center gap-1.5">
-                  <span className="w-1.5 h-1.5 rounded-full bg-neon-cyan animate-pulse"></span>
-                  EFEK PARALLAX 3D
-                </span>
-                <span className="text-[8px] font-sans text-zinc-500 leading-normal mt-0.5">
-                  Ikuti gerakan kursor & pergerakan halaman untuk kedalaman digital.
-                </span>
-              </div>
-              <button
-                type="button"
-                onClick={() => onToggleParallax(!enableParallax)}
-                className={`flex-none w-8 h-4.5 rounded-full p-0.5 transition-colors duration-200 focus:outline-none relative ${
-                  enableParallax ? 'bg-neon-cyan' : theme === 'dark' ? 'bg-zinc-800' : 'bg-black/10'
-                }`}
-              >
-                <div className={`w-3.5 h-3.5 rounded-full shadow-md transform duration-200 ${
-                  enableParallax 
-                    ? 'translate-x-3.5 bg-neutral-950' 
-                    : theme === 'dark' ? 'translate-x-0 bg-white/80' : 'translate-x-0 bg-white'
-                }`} />
-              </button>
-            </div>
-          )}
         </div>
       )}
 
@@ -440,6 +397,19 @@ export default function ImageAdjuster({
                 className={`w-full h-1 rounded appearance-none cursor-pointer accent-neon-pink ${theme === 'dark' ? 'bg-zinc-900' : 'bg-black/10'}`}
               />
             </div>
+          </div>
+
+          <div className="pt-2 border-t border-dashed border-white/10">
+            <button
+              onClick={onResetSettings}
+              className={`w-full py-1.5 rounded text-[9px] font-mono font-bold border transition-all text-center tracking-widest ${
+                theme === 'dark'
+                  ? 'bg-white/3 border-white/5 text-rose-400 hover:bg-rose-950/20 hover:border-rose-900/40 hover:text-rose-200'
+                  : 'bg-black/5 border-black/5 text-rose-600 hover:bg-rose-100 hover:border-rose-200 hover:text-rose-800'
+              }`}
+            >
+              RESET WARNA & BLUR
+            </button>
           </div>
         </div>
       )}

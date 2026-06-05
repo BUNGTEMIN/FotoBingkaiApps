@@ -341,7 +341,7 @@ export const renderToCanvas = async (
       ctx.translate(xPos, yPos);
       ctx.rotate((item.rotation * Math.PI) / 180);
 
-      const sSize = params.settings.scale * item.scale * 150; // Reference sticker size
+      const sSize = item.scale * 150; // Reference sticker size
 
       if (item.type === 'sticker' && item.stickerId) {
         const path = params.presetStickerSvgPaths[item.stickerId];
@@ -367,10 +367,17 @@ export const renderToCanvas = async (
           ctx.restore();
         }
       } else if (item.type === 'text' && item.text) {
+        const textToDraw = item.text.toUpperCase();
+        item.text = textToDraw; // Simplify by just modifying the item text directly!
+        
         const fFamily = item.fontFamily || 'Orbitron';
         ctx.font = `bold ${Math.round(sSize)}px "${fFamily}", sans-serif`;
         ctx.textAlign = 'center';
         ctx.textBaseline = 'middle';
+        
+        if ('letterSpacing' in ctx) {
+          (ctx as any).letterSpacing = '0.025em';
+        }
         
         const baseColor = item.color || params.neonColor;
         const style = item.textStyle || 'plain';
