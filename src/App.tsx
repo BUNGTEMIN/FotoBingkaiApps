@@ -3,12 +3,12 @@ import {
   Upload, Sparkles, RefreshCw, Sliders, CircleHelp, Download, Maximize2, Edit2,
   FolderOpen, Camera, Laptop, Cpu, Layers, Settings2, Activity, Info, CheckCircle, MoveHorizontal,
   Undo, Redo, Type, ArrowUp, ArrowDown, ChevronsUp, ChevronsDown, Trash2, RotateCw, Move,
-  Lock, Unlock, Image as ImageIcon, Maximize
+  Lock, Unlock, Image as ImageIcon, Maximize, X
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 
 // Firebase and database setup
-import { doc, setDoc, serverTimestamp, collection, getDocs, query, orderBy, deleteDoc, where } from 'firebase/firestore';
+import { doc, setDoc, serverTimestamp, collection, getDocs, query, orderBy, deleteDoc, where, updateDoc, increment } from 'firebase/firestore';
 import { onAuthStateChanged, signInWithPopup, GoogleAuthProvider, signOut, User } from 'firebase/auth';
 import { db, auth, handleFirestoreError, OperationType } from './firebase';
 
@@ -18,6 +18,7 @@ import FrameSelector from './components/FrameSelector';
 import ImageAdjuster from './components/ImageAdjuster';
 import StickerSelector, { FUTURISTIC_FONTS, STICKER_COLORS } from './components/StickerSelector';
 import { LazyImage } from './components/LazyImage';
+import { CloudItem } from './components/CloudItem';
 
 // Types & presets
 import { Frame, ImageSettings, PlacedSticker } from './types';
@@ -99,7 +100,7 @@ export default function App() {
   const [showAuthWarning, setShowAuthWarning] = useState(false);
 
   // Page state: 'beranda' / 'bingkai' / 'misi' / 'galeri' / 'album'
-  const [currentPage, setCurrentPage] = useState<'beranda' | 'bingkai' | 'misi' | 'galeri' | 'album'>('beranda');
+  const [currentPage, setCurrentPage] = useState<'beranda' | 'bingkai' | 'misi' | 'galeri' | 'album' | 'wabot'>('beranda');
   const [savedCreations, setSavedCreations] = useState<{ id: string; src: string; timestamp: string }[]>([]);
 
   // Cloud Firestore downloads state and fetching logic
@@ -142,7 +143,8 @@ export default function App() {
           userId: data.userId || '',
           userName: data.userName || 'Tamu',
           userEmail: data.userEmail || '',
-          userAvatar: data.userAvatar || ''
+          userAvatar: data.userAvatar || '',
+          likes: data.likes || 0
         });
       });
       setCloudDownloads(items);
@@ -173,7 +175,8 @@ export default function App() {
             userId: data.userId || '',
             userName: data.userName || 'Tamu',
             userEmail: data.userEmail || '',
-            userAvatar: data.userAvatar || ''
+            userAvatar: data.userAvatar || '',
+            likes: data.likes || 0
           });
         });
         items.sort((a, b) => b.id.localeCompare(a.id));
@@ -202,16 +205,29 @@ export default function App() {
     }
   };
 
-  useEffect(() => {
-    if (currentPage === 'galeri' || currentPage === 'album') {
-      fetchCloudDownloads(cloudSubTab);
+  const handleLike = async (id: string) => {
+    try {
+      await updateDoc(doc(db, 'downloads', id), {
+        likes: increment(1)
+      });
+      setCloudDownloads(prev => prev.map(item => item.id === id ? {...item, likes: (item.likes || 0) + 1} : item));
+      triggerToast('SISTEM: Suka ditambahkan! ❤️');
+    } catch (err: any) {
+      console.error('Error updating like:', err);
+      triggerToast('SISTEM: Gagal menyukai karya! ❌');
     }
-  }, [currentPage, user, cloudSubTab]);
+  };
 
   // Nufat Live Community Gallery API integration
   const [comGalleryItems, setComGalleryItems] = useState<any[]>([]);
   const [isLoadingComGallery, setIsLoadingComGallery] = useState(false);
   const [comGalleryError, setComGalleryError] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (currentPage === 'galeri' || currentPage === 'album') {
+      fetchCloudDownloads(cloudSubTab);
+    }
+  }, [currentPage, user, cloudSubTab]);
 
   const fetchComGalleryItems = async () => {
     setIsLoadingComGallery(true);
@@ -251,10 +267,60 @@ export default function App() {
   }, [currentPage]);
 
   // State variables
-  const [userImage, setUserImage] = useState<string | null>(DEFAULT_IMAGE);
+  const [userImage, setUserImage] = useState<string | null>(null);
+  const [isLoaded, setIsLoaded] = useState(false);
+
+  useEffect(() => {
+    const savedImage = localStorage.getItem('bt_user_image');
+    if (savedImage) setUserImage(savedImage);
+
+    const savedFrameId = localStorage.getItem('bt_selected_frame_id');
+    // We don't restore selectedFrame here, we let the existing restoration effect (dependent on [customFrames, appwriteFrames]) do it
+
+    setIsLoaded(true);
+  }, []);
+
+  const isInitialMountUserImage = useRef(true);
+  useEffect(() => {
+    if (!isLoaded) return;
+    if (userImage) {
+      localStorage.setItem('bt_user_image', userImage);
+    } else {
+      localStorage.removeItem('bt_user_image');
+    }
+  }, [userImage, isLoaded]);
+
   const [selectedFrame, setSelectedFrame] = useState<Frame | null>(null);
+
+  // Save selected frame ID to localStorage
+  const isInitialMountSelectedFrame = useRef(true);
+  useEffect(() => {
+    if (!isLoaded) return;
+    if (selectedFrame) {
+      localStorage.setItem('bt_selected_frame_id', selectedFrame.id);
+    } else {
+      localStorage.removeItem('bt_selected_frame_id');
+    }
+  }, [selectedFrame, isLoaded]);
   const [customFrames, setCustomFrames] = useState<Frame[]>([]);
   const [appwriteFrames, setAppwriteFrames] = useState<Frame[]>([]);
+
+  // Restore selected frame from local storage
+  useEffect(() => {
+    if (!isLoaded) return;
+    const savedFrameId = localStorage.getItem('bt_selected_frame_id');
+    console.log("DEBUG: Restoring selectedFrame, savedId:", savedFrameId);
+    if (savedFrameId) {
+      const allFrames = [...FRAMES, ...customFrames, ...appwriteFrames];
+      const frame = allFrames.find(f => f.id === savedFrameId);
+      if (frame) {
+        console.log("DEBUG: Restoring selectedFrame, found frame:", frame.id);
+        setSelectedFrame(frame);
+      } else {
+         console.log("DEBUG: Restoring selectedFrame, frame not found in allFrames yet");
+      }
+    }
+  }, [customFrames, appwriteFrames, isLoaded]);
   const [isLoadingAppwrite, setIsLoadingAppwrite] = useState(false);
   const [neonColor, setNeonColor] = useState('#00f2fe'); // default tech cyan
   const [imageSettings, setImageSettings] = useState<ImageSettings>(DEFAULT_SETTINGS);
@@ -517,6 +583,7 @@ export default function App() {
       }
 
       setAppwriteFrames(mappedFrames);
+      localStorage.setItem('bt_appwrite_frames', JSON.stringify(mappedFrames));
       if (mappedFrames.length > 0) {
         triggerToast(`Sistem: Berhasil memuat ${mappedFrames.length} bingkai dari Appwrite!`);
       } else {
@@ -552,6 +619,8 @@ export default function App() {
       const galleryPersisted = localStorage.getItem('bt_my_gallery');
       if (galleryPersisted) {
         const parsed = JSON.parse(galleryPersisted);
+        setSavedCreations(parsed);
+
         const filteredGallery = parsed.filter((g: any) => 
           !(g.caption?.toLowerCase().includes('overload')) && 
           !(g.caption?.toLowerCase().includes('ahah')) &&
@@ -562,10 +631,25 @@ export default function App() {
           localStorage.setItem('bt_my_gallery', JSON.stringify(filteredGallery));
         }
       }
+      const appwritePersisted = localStorage.getItem('bt_appwrite_frames');
+      if (appwritePersisted) {
+        const parsed = JSON.parse(appwritePersisted);
+        setAppwriteFrames(parsed);
+      }
     } catch (e) {
       console.error(e);
     }
   }, []);
+
+  // Set random frame on startup if none is selected
+  useEffect(() => {
+    if (selectedFrame || !isLoaded) return; 
+    const allFrames = [...FRAMES, ...customFrames, ...appwriteFrames];
+    if (allFrames.length > 0) {
+      const randomIndex = Math.floor(Math.random() * allFrames.length);
+      setSelectedFrame(allFrames[randomIndex]);
+    }
+  }, [customFrames, appwriteFrames, isLoaded, selectedFrame]);
 
   // Listen to Auth State changes for Auto Login with Google
   useEffect(() => {
@@ -1325,7 +1409,7 @@ export default function App() {
                         key={frame.id}
                         onClick={() => {
                           setSelectedFrame(frame);
-                          triggerToast(`Bingkai "${frame.name}" dipilih`);
+                          // triggerToast(`Bingkai "${frame.name}" dipilih`);
                         }}
                         className={`flex-none w-[56px] h-[56px] p-1 rounded transition-all duration-200 relative overflow-hidden flex items-center justify-center border ${
                           isSelected 
@@ -3193,8 +3277,14 @@ export default function App() {
 
       {/* BINGKAI CATALOG DIRECTORY PAGE */}
     {currentPage === 'bingkai' && (
-      <div className="flex-1 max-w-7xl w-full mx-auto p-4 sm:p-6 lg:p-8 space-y-8">
-        <div className="text-center max-w-xl mx-auto space-y-2 relative">
+      <div className="flex-1 max-w-7xl w-full mx-auto p-4 sm:p-6 lg:p-8 space-y-8 relative">
+        <button
+           onClick={() => setCurrentPage('beranda')}
+           className="absolute top-4 right-4 p-2 text-white/50 hover:text-white z-50"
+        >
+           <X className="w-6 h-6" />
+        </button>
+        <div className="text-center max-w-xl mx-auto space-y-2">
           <div className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded bg-[#00F0FF]/10 text-neon-cyan border border-[#00F0FF]/25 font-mono text-[9px] tracking-widest uppercase mb-1">
             <Layers className="w-3.5 h-3.5 animate-pulse" /> DAFTAR BINGKAI AKTIF
           </div>
@@ -3216,7 +3306,7 @@ export default function App() {
           </div>
         </div>
 
-        <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4">
+        <div className="flex flex-col sm:grid sm:grid-cols-2 lg:grid-cols-4 gap-4">
           {displayFrames.map((frame) => {
             const isSelected = frame.id === selectedFrame?.id;
             return (
@@ -3225,7 +3315,7 @@ export default function App() {
                 onClick={() => {
                   setSelectedFrame(frame);
                   setCurrentPage('beranda');
-                  triggerToast(`SISTEM: Bingkai "${frame.name}" aktif!`);
+                  // triggerToast(`SISTEM: Bingkai "${frame.name}" aktif!`);
                 }}
                 className={`group cursor-pointer rounded-xl bg-[#0b0b0b] border p-4 flex flex-col items-center space-y-3.5 transition-all duration-300 relative overflow-hidden ${
                   isSelected
@@ -3268,99 +3358,60 @@ export default function App() {
 
     {/* COMMUNITY WORKS WEB GALLERY PAGE */}
     {currentPage === 'galeri' && (
-      <div className="flex-1 max-w-7xl w-full mx-auto p-4 sm:p-6 lg:p-8 space-y-8">
-        <div className="flex flex-col md:flex-row md:items-center md:justify-between border-b border-white/10 pb-6 gap-4">
-          <div className="space-y-2">
-            <div className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded bg-[#39ff14]/10 text-neon-green border border-[#39ff14]/25 font-mono text-[9px] tracking-widest uppercase mb-1">
-              <Sparkles className="w-3.5 h-3.5 text-neon-green animate-pulse" /> CLOUD & COMMUNITY GALLERY
-            </div>
-            <h2 className="text-2xl font-display font-extrabold tracking-tight text-white uppercase">
-              GALERI KREASI MULTI-USER
-            </h2>
-            <p className="text-xs text-zinc-400">
-              Lihat seluruh hasil unduhan twibbon, baik karya Anda sendiri maupun karya dari pengguna lain secara real-time.
-            </p>
-          </div>
+      <div className="flex-1 max-w-7xl w-full mx-auto p-4 sm:p-6 lg:p-8 space-y-6 relative">
+        <button
+           onClick={() => setCurrentPage('beranda')}
+           className="absolute top-4 right-4 p-2 text-white/50 hover:text-white z-50"
+        >
+           <X className="w-6 h-6" />
+        </button>
+        {/* Simple List (Tanpa Header Besar) */}
+        <div className="flex flex-wrap gap-2 border-b border-white/5 pb-4">
+          <button
+            onClick={() => setCloudSubTab('all')}
+            className={`px-4 py-2 rounded-lg font-mono text-[9px] uppercase tracking-wider transition-all font-bold ${
+              cloudSubTab === 'all'
+                ? 'bg-white text-zinc-950'
+                : 'bg-zinc-900 text-zinc-400 hover:text-zinc-200 hover:bg-zinc-850'
+            }`}
+          >
+            Semua Karya Cloud {cloudSubTab === 'all' ? `(${cloudDownloads.length})` : ''}
+          </button>
+          <button
+            onClick={() => setCloudSubTab('mine')}
+            className={`px-4 py-2 rounded-lg font-mono text-[9px] uppercase tracking-wider transition-all font-bold flex items-center gap-1.5 ${
+              cloudSubTab === 'mine'
+                ? 'bg-neon-cyan text-zinc-950 shadow-[0_0_10px_rgba(0,240,255,0.2)]'
+                : 'bg-zinc-900 text-zinc-400 hover:text-zinc-200 hover:bg-zinc-850'
+            }`}
+          >
+            👤 Galeri Saya {cloudSubTab === 'all' ? `(${cloudDownloads.filter(item => {
+              const currentUid = auth.currentUser?.uid || user?.uid;
+              return currentUid && item.userId === currentUid;
+            }).length})` : cloudSubTab === 'mine' ? `(${cloudDownloads.length})` : ''}
+          </button>
+          <button
+            onClick={() => setCloudSubTab('others')}
+            className={`px-4 py-2 rounded-lg font-mono text-[9px] uppercase tracking-wider transition-all font-bold flex items-center gap-1.5 ${
+              cloudSubTab === 'others'
+                ? 'bg-purple-600 text-white'
+                : 'bg-zinc-900 text-zinc-400 hover:text-zinc-200 hover:bg-zinc-850'
+            }`}
+          >
+            🌐 Galeri Orang Lain {cloudSubTab === 'all' ? `(${cloudDownloads.filter(item => {
+              const currentUid = auth.currentUser?.uid || user?.uid;
+              return !currentUid || item.userId !== currentUid;
+            }).length})` : cloudSubTab === 'others' ? `(${cloudDownloads.length})` : ''}
+          </button>
 
-          <div className="flex flex-wrap gap-2 shrink-0">
-            <button
-              onClick={() => {
-                setGalleryTab('cloud');
-                fetchCloudDownloads();
-              }}
-              className={`px-3 py-2 rounded font-mono text-[10px] uppercase font-bold tracking-wider flex items-center gap-1.5 transition-all border ${
-                galleryTab === 'cloud'
-                  ? 'bg-neon-cyan/20 border-neon-cyan text-white shadow-[0_0_15px_rgba(0,240,255,0.25)]'
-                  : 'bg-zinc-950 border-white/10 text-zinc-400 hover:text-zinc-200'
-              }`}
-            >
-              <Activity className="w-3.5 h-3.5" /> Cloud Database (Real-time)
-            </button>
-            <button
-              onClick={() => {
-                setGalleryTab('nufat');
-                fetchComGalleryItems();
-              }}
-              className={`px-3 py-2 rounded font-mono text-[10px] uppercase font-bold tracking-wider flex items-center gap-1.5 transition-all border ${
-                galleryTab === 'nufat'
-                  ? 'bg-neon-green/20 border-neon-green text-white shadow-[0_0_15px_rgba(57,255,20,0.25)]'
-                  : 'bg-zinc-950 border-white/10 text-zinc-400 hover:text-zinc-200'
-              }`}
-            >
-              <RefreshCw className="w-3.5 h-3.5" /> Live API Wabot Nufat
-            </button>
-          </div>
+          <button
+            onClick={() => fetchCloudDownloads()}
+            disabled={isLoadingCloudDownloads}
+            className="ml-auto px-3 py-1.5 text-zinc-400 hover:text-white rounded border border-white/5 bg-zinc-950 font-mono text-[9.5px] uppercase tracking-wider font-bold flex items-center gap-1.5 active:scale-95 disabled:opacity-50"
+          >
+            <RefreshCw className={`w-3.5 h-3.5 ${isLoadingCloudDownloads ? 'animate-spin text-neon-cyan' : 'text-zinc-400'}`} /> SINKRONISASI
+          </button>
         </div>
-
-        {/* Tab 1: Cloud Downloads Category views ("Saya" vs "Orang Lain") */}
-        {galleryTab === 'cloud' && (
-          <div className="space-y-6">
-            <div className="flex flex-wrap gap-2 border-b border-white/5 pb-4">
-              <button
-                onClick={() => setCloudSubTab('all')}
-                className={`px-4 py-2 rounded-lg font-mono text-[9px] uppercase tracking-wider transition-all font-bold ${
-                  cloudSubTab === 'all'
-                    ? 'bg-white text-zinc-950'
-                    : 'bg-zinc-900 text-zinc-400 hover:text-zinc-200 hover:bg-zinc-850'
-                }`}
-              >
-                Semua Karya Cloud {cloudSubTab === 'all' ? `(${cloudDownloads.length})` : ''}
-              </button>
-              <button
-                onClick={() => setCloudSubTab('mine')}
-                className={`px-4 py-2 rounded-lg font-mono text-[9px] uppercase tracking-wider transition-all font-bold flex items-center gap-1.5 ${
-                  cloudSubTab === 'mine'
-                    ? 'bg-neon-cyan text-zinc-950 shadow-[0_0_10px_rgba(0,240,255,0.2)]'
-                    : 'bg-zinc-900 text-zinc-400 hover:text-zinc-200 hover:bg-zinc-850'
-                }`}
-              >
-                👤 Galeri Saya {cloudSubTab === 'all' ? `(${cloudDownloads.filter(item => {
-                  const currentUid = auth.currentUser?.uid || user?.uid;
-                  return currentUid && item.userId === currentUid;
-                }).length})` : cloudSubTab === 'mine' ? `(${cloudDownloads.length})` : ''}
-              </button>
-              <button
-                onClick={() => setCloudSubTab('others')}
-                className={`px-4 py-2 rounded-lg font-mono text-[9px] uppercase tracking-wider transition-all font-bold flex items-center gap-1.5 ${
-                  cloudSubTab === 'others'
-                    ? 'bg-purple-600 text-white'
-                    : 'bg-zinc-900 text-zinc-400 hover:text-zinc-200 hover:bg-zinc-850'
-                }`}
-              >
-                🌐 Galeri Orang Lain {cloudSubTab === 'all' ? `(${cloudDownloads.filter(item => {
-                  const currentUid = auth.currentUser?.uid || user?.uid;
-                  return !currentUid || item.userId !== currentUid;
-                }).length})` : cloudSubTab === 'others' ? `(${cloudDownloads.length})` : ''}
-              </button>
-
-              <button
-                onClick={() => fetchCloudDownloads()}
-                disabled={isLoadingCloudDownloads}
-                className="ml-auto px-3 py-1.5 text-zinc-400 hover:text-white rounded border border-white/5 bg-zinc-950 font-mono text-[9.5px] uppercase tracking-wider font-bold flex items-center gap-1.5 active:scale-95 disabled:opacity-50"
-              >
-                <RefreshCw className={`w-3.5 h-3.5 ${isLoadingCloudDownloads ? 'animate-spin text-neon-cyan' : 'text-zinc-400'}`} /> SINKRONISASI
-              </button>
-            </div>
 
             {isLoadingCloudDownloads ? (
               <div className="py-24 text-center space-y-4">
@@ -3396,114 +3447,46 @@ export default function App() {
                 }
 
                 return (
-                  <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
+                  <div className="flex flex-col sm:grid sm:grid-cols-2 lg:grid-cols-4 gap-6">
                     {filteredCloud.map((item) => {
                       const currentUid = auth.currentUser?.uid || user?.uid;
                       const matchesUser = currentUid && item.userId === currentUid;
+                      
                       return (
-                        <div key={item.id} className="rounded-xl bg-[#0b0b0b] border border-white/10 overflow-hidden flex flex-col group hover:border-[#00F0FF]/30 transition-all duration-300 shadow-xl">
-                          {/* User Header */}
-                          <div className="p-3 bg-black/40 border-b border-white/5 flex items-center justify-between">
-                            <div className="flex items-center space-x-2 min-w-0">
-                              <img
-                                referrerPolicy="no-referrer"
-                                src={item.userAvatar || 'https://images.unsplash.com/photo-1535713875002-d1d0cf377fde?auto=format&fit=crop&w=80&q=80'}
-                                className="w-5 h-5 rounded-full border border-neon-cyan/40"
-                                alt="U"
-                              />
-                              <span className="font-mono text-[10px] text-zinc-300 font-bold truncate max-w-[110px]" title={item.userEmail}>
-                                {item.userName}
-                              </span>
-                            </div>
-                            {matchesUser ? (
-                              <span className="font-mono text-[8px] bg-[#00F0FF]/10 text-neon-cyan px-1.5 py-0.5 rounded border border-[#00F0FF]/20 font-bold uppercase tracking-wide">
-                                SAYA 👤
-                              </span>
-                            ) : (
-                              <span className="font-mono text-[8px] bg-purple-500/15 text-purple-400 px-1.5 py-0.5 rounded border border-purple-500/20 font-bold uppercase tracking-wide">
-                                KELUARGA 🌐
-                              </span>
-                            )}
-                          </div>
-
-                          {/* Image Thumbnail */}
-                          <div className="relative aspect-square bg-zinc-950 flex items-center justify-center p-0 overflow-hidden border-b border-white/5">
-                            <LazyImage
-                              src={item.imageUrl}
-                              alt={item.fileName}
-                              className="w-full h-full object-cover transition-transform duration-500 group-hover:scale-105 pointer-events-none select-none"
-                            />
-                            <div className="absolute bottom-2 left-2 bg-black/85 px-1.5 py-0.5 rounded border border-white/10 font-mono text-[8px] text-neon-cyan tracking-wider">
-                              FORMAT: {item.format.toUpperCase()}
-                            </div>
-                          </div>
-
-                          {/* Details & Actions */}
-                          <div className="p-4 flex-1 flex flex-col justify-between space-y-3.5">
-                            <div className="space-y-1">
-                              <h4 className="font-mono text-[10.5px] font-bold text-zinc-200 truncate" title={item.fileName}>
-                                {item.fileName}
-                              </h4>
-                              <p className="text-[9px] text-zinc-500 font-mono leading-none">
-                                Dimuat: {item.downloadedAt}
-                              </p>
-                            </div>
-
-                            <div className="space-y-2 pt-1 border-t border-white/5">
-                              <div className="grid grid-cols-2 gap-2">
-                                <button
-                                  type="button"
-                                  onClick={() => {
-                                    setUserImage(item.imageUrl);
-                                    setCurrentPage('beranda');
-                                    triggerToast('Workspace dimuat ulang! Gunakan bingkai baru pada foto ini. 🔄✨');
-                                  }}
-                                  className="py-1.5 border border-white/10 hover:border-neon-cyan/50 bg-zinc-900/60 hover:bg-zinc-900 text-zinc-300 hover:text-white rounded font-mono text-[9px] uppercase font-bold transition-all"
-                                  title="Gunakan foto ini kembali di Canvas Editor"
-                                >
-                                  EDIT ULANG 🔄
-                                </button>
-                                <button
-                                  type="button"
-                                  onClick={() => {
-                                    const a = document.createElement('a');
-                                    a.href = item.imageUrl;
-                                    a.download = item.fileName || 'unduhan-cloud.jpg';
-                                    document.body.appendChild(a);
-                                    a.click();
-                                    document.body.removeChild(a);
-                                    triggerToast('Unduhan berjalan lancar! 📥🛸');
-                                  }}
-                                  className="py-1.5 border border-white/10 hover:border-neon-green/50 bg-zinc-900/60 hover:bg-zinc-900 text-zinc-350 hover:text-white rounded font-mono text-[9px] uppercase font-bold transition-all"
-                                >
-                                  UNDUH 📥
-                                </button>
-                              </div>
-
-                              {matchesUser && (
-                                <button
-                                  type="button"
-                                  onClick={() => deleteCloudDownload(item.id)}
-                                  className="w-full py-1 text-[8.5px] border border-red-500/20 text-red-400 hover:bg-red-500/10 font-mono uppercase font-bold rounded transition-all active:scale-[0.98]"
-                                >
-                                  SALURKAN / HAPUS AWAN 🗑️
-                                </button>
-                              )}
-                            </div>
-                          </div>
-                        </div>
+                        <CloudItem
+                          key={item.id}
+                          item={item}
+                          matchesUser={!!matchesUser}
+                          onEdit={() => {
+                            setUserImage(item.imageUrl);
+                            setCurrentPage('beranda');
+                            triggerToast('Workspace dimuat ulang! Gunakan bingkai baru pada foto ini. 🔄✨');
+                          }}
+                          onDownload={() => {
+                            const a = document.createElement('a');
+                            a.href = item.imageUrl;
+                            a.download = item.fileName || 'unduhan-cloud.jpg';
+                            document.body.appendChild(a);
+                            a.click();
+                            document.body.removeChild(a);
+                            triggerToast('Unduhan berjalan lancar! 📥🛸');
+                          }}
+                          onDelete={matchesUser ? () => deleteCloudDownload(item.id) : undefined}
+                          onLike={() => handleLike(item.id)}
+                        />
                       );
                     })}
                   </div>
                 );
               })()
             )}
-          </div>
-        )}
+      </div>
+    )}
 
-        {/* Tab 2: Nufat Live API images */}
-        {galleryTab === 'nufat' && (
-          <div className="space-y-6">
+    {/* WABOT LIVE API (Instagram Style on Mobile) */}
+    {currentPage === 'wabot' && (
+      <div className="flex-1 w-full mx-auto p-0 sm:p-6 lg:p-8 space-y-0 sm:space-y-6 max-w-7xl pb-16 sm:pb-8">
+        <div className="space-y-0 sm:space-y-6 w-full">
             {isLoadingComGallery ? (
               <div className="py-24 text-center space-y-4">
                 <div className="w-10 h-10 border-2 border-neon-cyan border-t-transparent rounded-full animate-spin mx-auto"></div>
@@ -3527,9 +3510,9 @@ export default function App() {
             ) : null}
 
             {/* Community works Grid list */}
-            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-y-8 sm:gap-6 w-full max-w-full">
               {(comGalleryItems.length > 0 ? comGalleryItems : COMMUNITY_GALLERY).map((post) => (
-                <div key={post.id} className="rounded-xl bg-[#0b0b0b] border border-white/10 overflow-hidden flex flex-col group hover:border-[#00F0FF]/30 transition-all duration-300 shadow-xl">
+                <div key={post.id} className="rounded-none sm:rounded-xl bg-[#0b0b0b] border-y sm:border border-white/10 sm:border-white/10 overflow-hidden flex flex-col group hover:border-[#00F0FF]/30 transition-all duration-300 sm:shadow-xl w-full">
                   {/* User Handle Info bar */}
                   <div className="p-3 bg-black/40 border-b border-white/5 flex items-center justify-between">
                     <div className="flex items-center space-x-2">
@@ -3639,13 +3622,18 @@ export default function App() {
               ))}
             </div>
           </div>
-        )}
-      </div>
+        </div>
     )}
 
     {/* MY SAVED CREATIONS PERSISTANT ALBUM COBA PAGE */}
     {currentPage === 'album' && (
-      <div className="flex-1 max-w-7xl w-full mx-auto p-4 sm:p-6 lg:p-8 space-y-8">
+      <div className="flex-1 max-w-7xl w-full mx-auto p-4 sm:p-6 lg:p-8 space-y-8 relative">
+        <button
+           onClick={() => setCurrentPage('beranda')}
+           className="absolute top-4 right-4 p-2 text-white/50 hover:text-white z-50"
+        >
+           <X className="w-6 h-6" />
+        </button>
         <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
           <div className="space-y-1">
             <div className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded bg-[#00F0FF]/10 text-neon-cyan border border-[#00F0FF]/25 font-mono text-[9px] tracking-widest uppercase mb-1">
@@ -3694,9 +3682,9 @@ export default function App() {
             </button>
           </div>
         ) : (
-          <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-6">
+          <div className="flex flex-col sm:grid sm:grid-cols-2 lg:grid-cols-4 gap-6">
             {savedCreations.map((creation) => (
-              <div key={creation.id} className="rounded-xl bg-[#0b0b0b]/80 border border-white/10 overflow-hidden flex flex-col group relative">
+              <div key={creation.id} className="rounded-xl bg-[#0b0b0b]/80 border border-white/10 overflow-hidden flex flex-col group relative w-full">
                 {/* Action Overlay bar */}
                 <div className="absolute top-2 right-2 flex space-x-1.5 z-20 opacity-0 group-hover:opacity-100 transition-opacity duration-205">
                   <button
@@ -3751,9 +3739,6 @@ export default function App() {
       <footer className="mt-auto border-t border-zinc-900 bg-[#060609] py-4 text-center font-mono text-[10px] text-zinc-600 block">
         <div className="max-w-7xl mx-auto px-4 flex flex-col sm:flex-row items-center justify-between gap-2.5">
           <span />
-          <span className="flex items-center gap-1">
-            <CheckCircle className="w-3 h-3 text-neon-green" /> WORKSPACE CORE V3.0 STATUS: CONNECTED
-          </span>
         </div>
       </footer>
 

@@ -3,8 +3,8 @@ import { Menu, X, ShieldAlert, Sparkles, Laptop, Disc, Cpu, Award, Sun, Moon, Lo
 import { motion, AnimatePresence } from 'motion/react';
 
 interface BungteminHeaderProps {
-  currentPage: 'beranda' | 'bingkai' | 'misi' | 'galeri' | 'album';
-  onNavigate: (page: 'beranda' | 'bingkai' | 'misi' | 'galeri' | 'album') => void;
+  currentPage: 'beranda' | 'bingkai' | 'misi' | 'galeri' | 'album' | 'wabot';
+  onNavigate: (page: 'beranda' | 'bingkai' | 'misi' | 'galeri' | 'album' | 'wabot') => void;
   theme: 'dark' | 'light';
   onToggleTheme: () => void;
   user: any;
@@ -97,6 +97,13 @@ export default function BungteminHeader({
             >
               ALBUM COBA
               <span className={`absolute bottom-0 left-0 w-full h-0.5 bg-neon-cyan origin-left transition-transform duration-300 ${currentPage === 'album' ? 'scale-x-100' : 'scale-x-0 group-hover:scale-x-100'}`} />
+            </button>
+            <button 
+              onClick={() => onNavigate('wabot')}
+              className={`${currentPage === 'wabot' ? 'text-neon-green font-bold' : (theme === 'dark' ? 'text-zinc-400 hover:text-neon-green' : 'text-zinc-600 hover:text-neon-green')} transition-colors relative py-1 group flex items-center gap-1`}
+            >
+              WABOT
+              <span className={`absolute bottom-0 left-0 w-full h-0.5 bg-neon-green origin-left transition-transform duration-300 ${currentPage === 'wabot' ? 'scale-x-100' : 'scale-x-0 group-hover:scale-x-100'}`} />
             </button>
           </nav>
 
@@ -250,6 +257,19 @@ export default function BungteminHeader({
                 >
                   <span className={`block text-[9px] ${theme === 'dark' ? 'text-zinc-500' : 'text-zinc-450'}`}>Koleksi</span>
                   <span className={`text-xs font-semibold ${theme === 'dark' ? 'text-zinc-200' : 'text-zinc-800'}`}>ALBUM</span>
+                </button>
+                <button 
+                  onClick={() => { onNavigate('wabot'); setIsOpen(false); }}
+                  className={`col-span-2 p-3 rounded border text-center transition-all ${
+                    currentPage === 'wabot' 
+                      ? 'border-neon-green bg-green-950/20' 
+                      : theme === 'dark' 
+                        ? 'bg-white/3 border-white/10 hover:border-neon-green' 
+                        : 'bg-zinc-50 border-zinc-200 text-zinc-800 hover:border-neon-green hover:bg-zinc-100'
+                  }`}
+                >
+                  <span className={`block text-[9px] ${theme === 'dark' ? 'text-zinc-500' : 'text-zinc-450'}`}>Live API</span>
+                  <span className={`text-xs font-semibold ${theme === 'dark' ? 'text-zinc-200' : 'text-zinc-800'}`}>WABOT</span>
                 </button>
               </div>
 
