@@ -267,47 +267,30 @@ export default function App() {
   }, [currentPage]);
 
   // State variables
-  const [userImage, setUserImage] = useState<string | null>(null);
-  const [isLoaded, setIsLoaded] = useState(false);
+  const [userImage, setUserImage] = useState<string | null>(() => localStorage.getItem('bt_user_image'));
 
+  // Save changes to localStorage only if they are not null (or handle nulls explicitly without clearing initial values)
   useEffect(() => {
-    const savedImage = localStorage.getItem('bt_user_image');
-    if (savedImage) setUserImage(savedImage);
-
-    const savedFrameId = localStorage.getItem('bt_selected_frame_id');
-    // We don't restore selectedFrame here, we let the existing restoration effect (dependent on [customFrames, appwriteFrames]) do it
-
-    setIsLoaded(true);
-  }, []);
-
-  const isInitialMountUserImage = useRef(true);
-  useEffect(() => {
-    if (!isLoaded) return;
     if (userImage) {
       localStorage.setItem('bt_user_image', userImage);
     } else {
       localStorage.removeItem('bt_user_image');
     }
-  }, [userImage, isLoaded]);
+  }, [userImage]);
 
   const [selectedFrame, setSelectedFrame] = useState<Frame | null>(null);
 
   // Save selected frame ID to localStorage
-  const isInitialMountSelectedFrame = useRef(true);
   useEffect(() => {
-    if (!isLoaded) return;
     if (selectedFrame) {
       localStorage.setItem('bt_selected_frame_id', selectedFrame.id);
-    } else {
-      localStorage.removeItem('bt_selected_frame_id');
     }
-  }, [selectedFrame, isLoaded]);
+  }, [selectedFrame]);
   const [customFrames, setCustomFrames] = useState<Frame[]>([]);
   const [appwriteFrames, setAppwriteFrames] = useState<Frame[]>([]);
 
   // Restore selected frame from local storage
   useEffect(() => {
-    if (!isLoaded) return;
     const savedFrameId = localStorage.getItem('bt_selected_frame_id');
     console.log("DEBUG: Restoring selectedFrame, savedId:", savedFrameId);
     if (savedFrameId) {
@@ -320,7 +303,7 @@ export default function App() {
          console.log("DEBUG: Restoring selectedFrame, frame not found in allFrames yet");
       }
     }
-  }, [customFrames, appwriteFrames, isLoaded]);
+  }, [customFrames, appwriteFrames]);
   const [isLoadingAppwrite, setIsLoadingAppwrite] = useState(false);
   const [neonColor, setNeonColor] = useState('#00f2fe'); // default tech cyan
   const [imageSettings, setImageSettings] = useState<ImageSettings>(DEFAULT_SETTINGS);
@@ -643,13 +626,13 @@ export default function App() {
 
   // Set random frame on startup if none is selected
   useEffect(() => {
-    if (selectedFrame || !isLoaded) return; 
+    if (selectedFrame) return; 
     const allFrames = [...FRAMES, ...customFrames, ...appwriteFrames];
     if (allFrames.length > 0) {
       const randomIndex = Math.floor(Math.random() * allFrames.length);
       setSelectedFrame(allFrames[randomIndex]);
     }
-  }, [customFrames, appwriteFrames, isLoaded, selectedFrame]);
+  }, [customFrames, appwriteFrames, selectedFrame]);
 
   // Listen to Auth State changes for Auto Login with Google
   useEffect(() => {
