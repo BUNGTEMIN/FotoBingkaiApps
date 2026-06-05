@@ -42,10 +42,11 @@ service cloud.firestore {
 
     // Downloads Collection rules
     match /downloads/{downloadId} {
-      allow get: if isValidId(downloadId);
+      allow get: if true;
       allow list: if true; // Allow listing to support "My Gallery" & "Others' Gallery" views from cloud data
       allow create: if isValidId(downloadId) && isValidDownload(incoming());
-      allow update, delete: if false; // Immutable history
+      allow update: if false; // Immutable history
+      allow delete: if request.auth != null && resource.data.userId == request.auth.uid;
     }
   }
 }

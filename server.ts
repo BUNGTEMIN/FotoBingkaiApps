@@ -232,6 +232,46 @@ You must return a valid JSON object matching this structure EXACTLY:
     }
   });
 
+  // Appwrite proxy to bypass CORS/mixed-content issues
+  app.get("/api/appwrite/files", async (req, res) => {
+    try {
+      const endpoint = process.env.VITE_APPWRITE_ENDPOINT || 'https://cloud.appwrite.io/v1';
+      const projectId = process.env.VITE_APPWRITE_PROJECT_ID;
+      const bucketId = process.env.VITE_APPWRITE_BUCKET_ID;
+      
+      if (!projectId || !bucketId || projectId === 'YOUR_PROJECT_ID' || bucketId === 'YOUR_BUCKET_ID') {
+        return res.status(400).json({ error: "Appwrite configuration missing" });
+      }
+
+      const response = await fetch(`${endpoint}/storage/buckets/${bucketId}/files`, {
+        headers: {
+          'X-Appwrite-Project': projectId,
+          'Content-Type': 'application/json'
+        }
+      });
+      
+      if (!response.ok) {
+        const errText = await response.text();
+        return res.status(response.status).json({ error: `Appwrite error: ${response.statusText} - ${errText}` });
+      }
+      
+      const data = await response.json();
+      
+      // We will also append the fileView endpoint so the frontend doesn't need to guess it
+      if (data.files && Array.isArray(data.files)) {
+        data.files = data.files.map((file: any) => ({
+          ...file,
+          fileViewUrl: `${endpoint}/storage/buckets/${bucketId}/files/${file.$id}/view?project=${projectId}`
+        }));
+      }
+
+      res.json(data);
+    } catch (error: any) {
+       console.error("[Proxy Appwrite Error]", error);
+       res.status(500).json({ error: error?.message || "Internal server error" });
+    }
+  });
+
   // GET Route to fetch external nufat images with Bearer Authorization
   app.get("/api/external-images", async (req, res) => {
     try {

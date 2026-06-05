@@ -35,6 +35,16 @@ export const FUTURISTIC_FONTS = [
   { id: 'Space Grotesk', name: 'Space Minimal' },
 ];
 
+export const TEXT_PRESETS = [
+  { id: 'double-neon', name: 'Double Neon', text: 'CYBERPUNK', style: 'double-neon', fontFamily: 'Orbitron', color: '#00f2fe' },
+  { id: 'neon-glow', name: 'Neon Glow', text: 'CORE-NET', style: 'neon', fontFamily: 'Orbitron', color: '#39ff14' },
+  { id: 'retro-3d', name: 'Classic 3D', text: 'OUTRUN', style: '3d', fontFamily: 'Press Start 2P', color: '#f35588' },
+  { id: 'chrome-luxe', name: 'Chrome Luxe', text: 'E L I T E', style: 'chrome', fontFamily: 'Syncopate', color: '#ffffff' },
+  { id: 'hologram', name: 'Hologram-X', text: 'PHANTOM', style: 'hologram', fontFamily: 'Revalia', color: '#00f2fe' },
+  { id: 'curved', name: 'Arc Bend', text: 'CHAMPIONS', style: 'curved', fontFamily: 'Rajdhani', color: '#f59e0b' },
+  { id: 'glitch-hack', name: 'Glitch Hack', text: 'SYS_ERROR', style: 'glitch', fontFamily: 'Share Tech Mono', color: '#f35588' },
+] as const;
+
 export default function StickerSelector({
   stickers,
   onAddSticker,
@@ -49,7 +59,7 @@ export default function StickerSelector({
   const [inputText, setInputText] = useState('');
   const [textColor, setTextColor] = useState('#00f2fe');
   const [selectedFont, setSelectedFont] = useState('Orbitron');
-  const [selectedStyle, setSelectedStyle] = useState<'neon' | 'chrome' | 'glitch' | 'hologram' | 'plain'>('neon');
+  const [selectedStyle, setSelectedStyle] = useState<'neon' | 'chrome' | 'glitch' | 'hologram' | 'plain' | '3d' | 'double-neon' | 'curved'>('neon');
 
   const handleAddPresetSticker = (sticker: PresetSticker) => {
     const newSticker: PlacedSticker = {
@@ -87,6 +97,78 @@ export default function StickerSelector({
     setInputText('');
   };
 
+  const handleAddPresetText = (preset: typeof TEXT_PRESETS[number]) => {
+    const newText: PlacedSticker = {
+      id: `placed-text-preset-${Date.now()}`,
+      type: 'text',
+      text: preset.text,
+      fontFamily: preset.fontFamily,
+      textStyle: preset.style,
+      x: 50,
+      y: 65,
+      scale: 1.25,
+      rotation: 0,
+      color: preset.color
+    };
+    onAddSticker(newText);
+    onSelectSticker(newText.id);
+  };
+
+  const getPreviewStyleForPreset = (preset: typeof TEXT_PRESETS[number]) => {
+    const color = preset.color;
+    switch (preset.style) {
+      case 'double-neon':
+        return {
+          fontFamily: preset.fontFamily,
+          color: '#ffffff',
+          textShadow: `-1px -1px 4px #00f2fe, 1px 1px 4px #f35588, 0 0 2px ${color}`,
+        };
+      case 'neon':
+        return {
+          fontFamily: preset.fontFamily,
+          color: '#ffffff',
+          textShadow: `0 0 5px ${color}, 0 0 10px ${color}`,
+        };
+      case '3d':
+        return {
+          fontFamily: preset.fontFamily,
+          color: '#ffffff',
+          textShadow: `1px 1px 0 ${color}, 2px 2px 0 ${color}, 2.5px 2.5px 0 #000`,
+        };
+      case 'chrome':
+        return {
+          fontFamily: preset.fontFamily,
+          color: '#e5e7eb',
+          textShadow: '0.5px 0.5px 2px #000000',
+        };
+      case 'hologram':
+        return {
+          fontFamily: preset.fontFamily,
+          color: '#00f2fe',
+          textShadow: '0 0 4px #f35588',
+        };
+      case 'curved':
+        return {
+          fontFamily: preset.fontFamily,
+          color: '#ffffff',
+          textShadow: `0 0 3px ${color}`,
+          borderBottom: `1px dashed ${color}`,
+        };
+      case 'glitch':
+        return {
+          fontFamily: preset.fontFamily,
+          color: '#ffffff',
+          textShadow: '-1px 0 0 #0ff, 1px 0 0 #f0f',
+        };
+      default:
+        return {
+          fontFamily: (preset as any).fontFamily,
+          color: '#ffffff',
+          textShadow: `0 0 2px ${color}`,
+        };
+    }
+  };
+
   return (
     <div className="space-y-3">
       <div className="space-y-3">
@@ -122,10 +204,53 @@ export default function StickerSelector({
 
         {(!modeOnly) && <hr className={theme === 'dark' ? 'border-white/5' : 'border-black/5'} />}
 
+        {/* Preset Typography & 3D Text Section */}
+        {(!modeOnly || modeOnly === 'text') && (
+          <div className="space-y-1.5">
+            <div className="flex items-center justify-between">
+              <span className="text-[9px] text-zinc-500 font-mono font-bold block uppercase tracking-wider">Koleksi Tipografi & Teks 3D</span>
+              <span className="text-[7.5px] font-mono text-neon-cyan bg-neon-cyan/10 px-1 border border-neon-cyan/20 rounded uppercase animate-pulse">Ready To Click</span>
+            </div>
+            
+            <div className="grid grid-cols-2 gap-1.5 select-none max-h-[175px] overflow-y-auto pr-1 scrollbar-thin">
+              {TEXT_PRESETS.map((preset) => (
+                <button
+                  key={preset.id}
+                  type="button"
+                  onClick={() => handleAddPresetText(preset)}
+                  className={`p-2 border rounded-lg text-left transition-all active:scale-[0.97] flex flex-col justify-between group overflow-hidden relative ${
+                    theme === 'dark'
+                      ? 'bg-zinc-950 border-white/5 hover:border-neon-cyan/40 hover:bg-zinc-900'
+                      : 'bg-zinc-50 border-black/5 hover:border-neon-cyan/40 hover:bg-white/70'
+                  }`}
+                >
+                  {/* Background laser neon lines */}
+                  <div className="absolute inset-0 bg-[radial-gradient(ellipse_at_top_right,_var(--tw-gradient-stops))] from-neon-cyan/5 via-transparent to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-300 pointer-events-none" />
+                  
+                  <div className="text-[7.5px] font-mono font-extrabold text-zinc-500 group-hover:text-neon-cyan transition-colors z-10">
+                    {preset.name}
+                  </div>
+                  
+                  <div className="mt-1 pb-1 flex items-center justify-center min-h-[22px] w-full overflow-hidden text-center z-10">
+                    <span 
+                      style={getPreviewStyleForPreset(preset)}
+                      className="text-[9px] font-extrabold tracking-wider select-none leading-none inline-block break-all"
+                    >
+                      {preset.text}
+                    </span>
+                  </div>
+                </button>
+              ))}
+            </div>
+
+            <div className={`my-2 border-t ${theme === 'dark' ? 'border-white/5' : 'border-black/5'}`} />
+          </div>
+        )}
+
         {/* Custom Text Overlay Generation */}
         {(!modeOnly || modeOnly === 'text') && (
           <form onSubmit={handleAddCustomText} className="space-y-2">
-            <span className="text-[9px] text-zinc-500 font-mono font-bold block uppercase tracking-wider">Teks Estetik Khusus</span>
+            <span className="text-[9px] text-zinc-500 font-mono font-bold block uppercase tracking-wider">Atau Tulis Teks Kustom Anda</span>
             
             {/* Style Picker */}
             <div className="flex gap-1 overflow-x-auto pb-1 scrollbar-none">
@@ -134,7 +259,10 @@ export default function StickerSelector({
                 { id: 'neon', label: 'Neon' },
                 { id: 'glitch', label: 'Glitch' },
                 { id: 'chrome', label: 'Chrome' },
-                { id: 'hologram', label: 'Hologram' }
+                { id: 'hologram', label: 'Holo' },
+                { id: '3d', label: '3D' },
+                { id: 'double-neon', label: 'D-Neon' },
+                { id: 'curved', label: 'Kurva' }
               ].map((style) => (
                 <button
                   key={style.id}

@@ -14,7 +14,7 @@ export interface PlacedSticker {
   type: 'sticker' | 'text';
   text?: string;
   fontFamily?: string; // e.g. 'Orbitron', 'Space Grotesk'
-  textStyle?: 'neon' | 'chrome' | 'glitch' | 'hologram' | 'plain';
+  textStyle?: 'neon' | 'chrome' | 'glitch' | 'hologram' | 'plain' | '3d' | 'double-neon' | 'curved';
   stickerId?: string; // id from preset stickers
   x: number; // percentage (0 - 100)
   y: number; // percentage (0 - 100)

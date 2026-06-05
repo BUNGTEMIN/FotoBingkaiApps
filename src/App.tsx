@@ -22,7 +22,7 @@ import { LazyImage } from './components/LazyImage';
 // Types & presets
 import { Frame, ImageSettings, PlacedSticker } from './types';
 import { FRAMES, FILTER_PRESETS, PRESET_STICKERS } from './presets';
-import { renderToCanvas, resolveApiUrl } from './canvasUtils';
+import { renderToCanvas, resolveApiUrl, compressImage } from './canvasUtils';
 import { storage, BUCKET_ID } from './appwrite';
 
 const DEFAULT_IMAGE = 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?auto=format&fit=crop&w=600&q=80';
@@ -475,28 +475,62 @@ export default function App() {
   };
 
   // Fetch custom frames from Appwrite
-  useEffect(() => {
-    const fetchAppwriteFrames = async () => {
-      if (!BUCKET_ID) return;
-      setIsLoadingAppwrite(true);
+  const fetchAppwriteFrames = async () => {
+    if (!BUCKET_ID) {
+      console.warn("Appwrite BUCKET_ID is missing. Skipping Appwrite frames fetch.");
+      triggerToast("Sistem Peringatan: BUCKET_ID Appwrite belum diatur.");
+      return;
+    }
+    setIsLoadingAppwrite(true);
+    try {
+      let mappedFrames: Frame[] = [];
       try {
+        // Try proxy first to bypass CORS
+        const proxyRes = await fetch("/api/appwrite/files");
+        if (proxyRes.ok) {
+          const proxyData = await proxyRes.json();
+          mappedFrames = (proxyData.files || [])
+            .filter((file: any) => file.mimeType && file.mimeType.includes('image'))
+            .map((file: any) => ({
+              id: `aw_${file.$id}`,
+              name: (file.name || '').split('.')[0] || 'Appwrite Frame',
+              src: file.fileViewUrl || storage.getFileView(BUCKET_ID, file.$id).toString(),
+              category: 'Appwrite',
+              type: 'url'
+            }));
+        } else {
+          throw new Error("Proxy failed");
+        }
+      } catch (proxyErr) {
+        // Fallback to client SDK
+        console.warn("Proxy fallback to client SDK for Appwrite:", proxyErr);
         const fileList = await storage.listFiles(BUCKET_ID);
-        const mappedFrames: Frame[] = fileList.files
+        mappedFrames = fileList.files
           .filter(file => file.mimeType.includes('image'))
           .map(file => ({
             id: `aw_${file.$id}`,
-            name: file.name.split('.')[0] || 'Appwrite Frame',
+            name: (file.name || '').split('.')[0] || 'Appwrite Frame',
             src: storage.getFileView(BUCKET_ID, file.$id).toString(),
             category: 'Appwrite',
             type: 'url'
           }));
-        setAppwriteFrames(mappedFrames);
-      } catch (error) {
-        // console.error("Failed to load frames from Appwrite:", error);
-      } finally {
-        setIsLoadingAppwrite(false);
       }
-    };
+
+      setAppwriteFrames(mappedFrames);
+      if (mappedFrames.length > 0) {
+        triggerToast(`Sistem: Berhasil memuat ${mappedFrames.length} bingkai dari Appwrite!`);
+      } else {
+        triggerToast("Sistem: Folder Appwrite Anda saat ini kosong/tidak memiliki file bingkai gambar.");
+      }
+    } catch (error) {
+      console.error("Failed to load frames from Appwrite:", error);
+      triggerToast("Sistem: Gagal memuat bingkai Appwrite. Periksa koneksi atau ID Proyek.");
+    } finally {
+      setIsLoadingAppwrite(false);
+    }
+  };
+
+  useEffect(() => {
     fetchAppwriteFrames();
   }, []);
 
@@ -676,38 +710,35 @@ export default function App() {
   }, [userImage, selectedFrame, neonColor, imageSettings, stickers, downloadSize]);
 
   // Handle uploaded files
-  const handleImageFile = (file: File) => {
+  const handleImageFile = async (file: File) => {
     if (!file.type.startsWith('image/')) {
       triggerToast('Peringatan: File harus berupa gambar.');
       return;
     }
 
     setIsLoading(true);
-    setStatusMessage('MEMBACA GAMBAR...');
+    setStatusMessage('MEMBACA & MENGKOMPRESI GAMBAR...');
     
-    const reader = new FileReader();
-    reader.onload = (e) => {
-      if (typeof e.target?.result === 'string') {
-        setUserImage(e.target.result);
-        const startSettings = {
-          ...DEFAULT_SETTINGS,
-          scale: 1.0,
-        };
-        // Reset positioning settings for fresh images
-        setImageSettings(startSettings);
-        resetHistoryStack(startSettings);
-        setFilterPresetId('none');
-        setIsLoading(false);
-        setStatusMessage('GAMBAR UNGGAHAN TERPASANG');
-        triggerToast('Foto berhasil diunggah!');
-      }
-    };
-    reader.onerror = () => {
+    try {
+      const compressedDataUrl = await compressImage(file);
+      setUserImage(compressedDataUrl);
+      const startSettings = {
+        ...DEFAULT_SETTINGS,
+        scale: 1.0,
+      };
+      // Reset positioning settings for fresh images
+      setImageSettings(startSettings);
+      resetHistoryStack(startSettings);
+      setFilterPresetId('none');
+      setIsLoading(false);
+      setStatusMessage('GAMBAR UNGGAHAN TERPASANG');
+      triggerToast('Foto berhasil diunggah dan dikompresi!');
+    } catch (error) {
+      console.error(error);
       setIsLoading(false);
       setStatusMessage('SISTEM ERROR');
-      triggerToast('Gagal memuat gambar.');
-    };
-    reader.readAsDataURL(file);
+      triggerToast('Gagal memproses gambar.');
+    }
   };
 
   const onFileSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -1469,6 +1500,26 @@ export default function App() {
                                   WebkitTextStroke: '1px rgba(255,255,255,0.8)',
                                   filter: 'drop-shadow(0px 0px 5px #0ff)'
                                 }
+                              : item.textStyle === '3d'
+                              ? {
+                                  color: '#fff',
+                                  textShadow: `1.5px 1.5px 0 ${item.color || neonColor}, 3px 3px 0 ${item.color || neonColor}, 4.5px 4.5px 0 ${item.color || neonColor}, 6px 6px 0 ${item.color || neonColor}, 7.5px 7.5px 0 #000`,
+                                  WebkitTextStroke: '1px #000',
+                                }
+                              : item.textStyle === 'double-neon'
+                              ? {
+                                  color: '#fff',
+                                  textShadow: `-3px -3px 15px #00f2fe, 3px 3px 15px #f35588, 0 0 5px ${item.color || neonColor}`,
+                                  WebkitTextStroke: `1px ${item.color || neonColor}`
+                                }
+                              : item.textStyle === 'curved'
+                              ? {
+                                  color: '#fff',
+                                  textShadow: `0 0 8px ${item.color || neonColor}`,
+                                  WebkitTextStroke: `1px #000`,
+                                  borderBottom: `2px dashed ${item.color || neonColor}`,
+                                  borderRadius: '50% 50% 0 0'
+                                }
                               : {
                                   color: '#fff',
                                   textShadow: `0 0 8px ${item.color || neonColor}`,
@@ -1749,13 +1800,16 @@ export default function App() {
                 {activeSelectedSticker.type === 'text' && (
                   <div className="space-y-1.5">
                     <span className={`text-[9.5px] font-mono font-bold block uppercase tracking-wide ${theme === 'dark' ? 'text-zinc-400' : 'text-zinc-650'}`}>Pilih Preset Gaya Teks:</span>
-                    <div className="grid grid-cols-5 gap-1 select-none">
+                    <div className="grid grid-cols-4 gap-1 select-none">
                       {[
                         { id: 'plain', label: 'Polos' },
                         { id: 'neon', label: 'Neon' },
                         { id: 'glitch', label: 'Glitch' },
                         { id: 'chrome', label: 'Chrome' },
-                        { id: 'hologram', label: 'Hologram' }
+                        { id: 'hologram', label: 'Holo' },
+                        { id: '3d', label: '3D' },
+                        { id: 'double-neon', label: 'D-Neon' },
+                        { id: 'curved', label: 'Melengkung' }
                       ].map((style) => (
                         <button
                           key={style.id}
@@ -3139,7 +3193,7 @@ export default function App() {
       {/* BINGKAI CATALOG DIRECTORY PAGE */}
     {currentPage === 'bingkai' && (
       <div className="flex-1 max-w-7xl w-full mx-auto p-4 sm:p-6 lg:p-8 space-y-8">
-        <div className="text-center max-w-xl mx-auto space-y-2">
+        <div className="text-center max-w-xl mx-auto space-y-2 relative">
           <div className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded bg-[#00F0FF]/10 text-neon-cyan border border-[#00F0FF]/25 font-mono text-[9px] tracking-widest uppercase mb-1">
             <Layers className="w-3.5 h-3.5 animate-pulse" /> DAFTAR BINGKAI AKTIF
           </div>
@@ -3149,6 +3203,16 @@ export default function App() {
           <p className="text-xs text-zinc-400">
             Pilih bingkai kustom atau resmi di bawah ini untuk langsung diterapkan di ruang kerja editor Beranda.
           </p>
+          <div className="pt-2">
+            <button
+               onClick={fetchAppwriteFrames}
+               disabled={isLoadingAppwrite}
+               className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded bg-zinc-900 border border-zinc-700 text-zinc-300 hover:text-white hover:border-neon-cyan hover:bg-neon-cyan/10 font-mono text-[10px] tracking-wider uppercase transition-all"
+             >
+               <RefreshCw className={`w-3 h-3 ${isLoadingAppwrite ? 'animate-spin' : ''}`} /> 
+               {isLoadingAppwrite ? 'Menyinkronkan...' : 'Sinkronkan Appwrite'}
+             </button>
+          </div>
         </div>
 
         <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4">
@@ -3179,10 +3243,10 @@ export default function App() {
                       dangerouslySetInnerHTML={{ __html: frame.renderSvg(neonColor) }}
                     />
                   ) : frame.src ? (
-                    <img
+                    <LazyImage
                       src={resolveApiUrl(frame.src)}
                       alt={frame.name}
-                      className="w-full h-full object-contain filter brightness-95 pointer-events-none"
+                      className="w-full h-full object-contain filter brightness-95 pointer-events-none bg-transparent"
                     />
                   ) : null}
                   <div className="absolute inset-0 bg-transparent group-hover:bg-cyan-950/10 transition-colors pointer-events-none" />
@@ -3678,7 +3742,7 @@ export default function App() {
                 {/* Render Target Image */}
                 <div className="relative aspect-square backdrop-blur-md bg-zinc-950 border-b border-white/5 flex items-center justify-center p-0 group-hover:scale-[1.01] transition-transform duration-300">
                   {creation.src ? (
-                    <img src={creation.src} alt="Kreasiku" className="w-full h-full object-cover pointer-events-none select-none" />
+                    <LazyImage src={creation.src} alt="Kreasiku" className="w-full h-full object-cover pointer-events-none select-none bg-transparent" />
                   ) : null}
                   <div className="absolute inset-0 bg-transparent group-hover:bg-black/10 transition-colors pointer-events-none" />
                 </div>

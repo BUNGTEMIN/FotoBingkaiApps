@@ -1,6 +1,54 @@
 import { Frame, ImageSettings, PlacedSticker } from './types';
 
-// Helper to resolve relative API routes to direct full-stack backend URL if hosted on a static domain
+// Helper to compress image before loading to canvas
+export const compressImage = async (file: File, maxSizeMB: number = 2, maxWidthOrHeight: number = 2048): Promise<string> => {
+  return new Promise((resolve, reject) => {
+    // If the file is already small enough, we can still process it to ensure it fits dimensions, 
+    // but maybe the user just wants the data url. Let's do a reliable canvas-based compression.
+    const reader = new FileReader();
+    reader.readAsDataURL(file);
+    reader.onload = (event) => {
+      const img = new Image();
+      img.src = event.target?.result as string;
+      img.onload = () => {
+        let width = img.width;
+        let height = img.height;
+
+        if (width > maxWidthOrHeight || height > maxWidthOrHeight) {
+          if (width > height) {
+            height = Math.round((height * maxWidthOrHeight) / width);
+            width = maxWidthOrHeight;
+          } else {
+            width = Math.round((width * maxWidthOrHeight) / height);
+            height = maxWidthOrHeight;
+          }
+        }
+
+        const canvas = document.createElement('canvas');
+        canvas.width = width;
+        canvas.height = height;
+        const ctx = canvas.getContext('2d');
+        if (!ctx) {
+          resolve(img.src);
+          return;
+        }
+        
+        ctx.drawImage(img, 0, 0, width, height);
+
+        // Quality setting logic based on file size assumption
+        // Actually we just output jpeg 0.8 which is generally good compression
+        // We'll preserve PNG if file type is png and we want transparency, but JPEG is smaller.
+        const outputType = file.type === 'image/png' ? 'image/png' : 'image/jpeg';
+        const quality = outputType === 'image/jpeg' ? 0.8 : undefined;
+        
+        const dataUrl = canvas.toDataURL(outputType, quality);
+        resolve(dataUrl);
+      };
+      img.onerror = (err) => reject(err);
+    };
+    reader.onerror = (err) => reject(err);
+  });
+};
 export const resolveApiUrl = (apiPath: string): string => {
   if (apiPath.startsWith('http://') || apiPath.startsWith('https://')) return apiPath;
   const host = window.location.hostname;
@@ -388,6 +436,73 @@ export const renderToCanvas = async (
           ctx.lineWidth = 1;
           ctx.strokeStyle = '#ffffff';
           ctx.strokeText(item.text, 0, 0);
+        } else if (style === '3d') {
+          // 3D Text effect
+          const steps = Math.min(Math.round(sSize / 10), 10);
+          ctx.shadowBlur = 0;
+          for (let i = steps; i > 0; i--) {
+            ctx.fillStyle = i === 1 ? '#ffffff' : baseColor;
+            ctx.fillText(item.text, i * 1.5, i * 1.5);
+            if (i > 1) {
+              ctx.strokeStyle = '#000000';
+              ctx.lineWidth = 1;
+              ctx.strokeText(item.text, i * 1.5, i * 1.5);
+            }
+          }
+          ctx.lineWidth = 2;
+          ctx.strokeStyle = '#000';
+          ctx.strokeText(item.text, 1.5, 1.5);
+        } else if (style === 'double-neon') {
+          // Double Neon
+          ctx.shadowColor = '#00f2fe'; // cyan
+          ctx.shadowBlur = 15;
+          ctx.fillStyle = '#ffffff';
+          ctx.fillText(item.text, -3, -3);
+          
+          ctx.shadowColor = '#f35588'; // pink
+          ctx.shadowBlur = 15;
+          ctx.fillText(item.text, 3, 3);
+
+          ctx.shadowBlur = 0;
+          ctx.lineWidth = 2;
+          ctx.strokeStyle = baseColor;
+          ctx.strokeText(item.text, 0, 0);
+        } else if (style === 'curved') {
+          // Curved text
+          ctx.shadowColor = baseColor;
+          ctx.shadowBlur = 8;
+          ctx.fillStyle = '#ffffff';
+          
+          const textWidth = ctx.measureText(item.text).width;
+          const radius = Math.max(textWidth * 0.8, Math.max(sSize, 50)); 
+          const angleStart = -Math.PI / 2; // top 
+          const totalAngle = textWidth / radius;
+          const startAngle = angleStart - totalAngle / 2;
+          
+          ctx.save();
+          // Adjust so text still feels somewhat centered along its primary row
+          ctx.translate(0, radius - sSize/2);
+          for(let i=0; i<item.text.length; i++) {
+            const char = item.text[i];
+            const charWidth = ctx.measureText(char).width;
+            const angleStep = charWidth / radius;
+            
+            ctx.save();
+            let currentAngle = startAngle + (ctx.measureText(item.text.substring(0, i)).width / radius) + angleStep/2;
+            ctx.rotate(currentAngle - Math.PI/2 + Math.PI/2);
+            ctx.translate(0, -radius);
+            
+            ctx.shadowColor = baseColor;
+            ctx.shadowBlur = 5;
+            ctx.fillText(char, 0, 0);
+            
+            ctx.shadowBlur = 0;
+            ctx.strokeStyle = '#000';
+            ctx.lineWidth = 2;
+            ctx.strokeText(char, 0, 0);
+            ctx.restore();
+          }
+          ctx.restore();
         } else {
           // Default Plain text with slight shadow and underline
           ctx.shadowColor = baseColor;
