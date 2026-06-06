@@ -2,7 +2,8 @@ import React from 'react';
 import { ImageSettings } from '../types';
 import { FILTER_PRESETS } from '../presets';
 import { 
-  RotateCw, ZoomIn, Sun, MoveHorizontal, MoveVertical, FlipHorizontal, FlipVertical, Crop
+  RotateCw, ZoomIn, Sun, MoveHorizontal, MoveVertical, FlipHorizontal, FlipVertical, Crop,
+  Globe, Terminal, ArrowRight, Shuffle, Check, Cpu, Sparkles, RefreshCw
 } from 'lucide-react';
 
 interface ImageAdjusterProps {
@@ -30,6 +31,105 @@ export default function ImageAdjuster({
 }: ImageAdjusterProps) {
   const [internalSubTab, setInternalSubTab] = React.useState<'posisi' | 'filter' | 'warna' | 'crop'>('posisi');
   
+  // External Aesthetic API Simulator states
+  const [selectedApiEndpoint, setSelectedApiEndpoint] = React.useState<string>('cyber-synthwave');
+  const [isFetchingApi, setIsFetchingApi] = React.useState<boolean>(false);
+  const [apiResponse, setApiResponse] = React.useState<any | null>(null);
+  const [apiSuccessMsg, setApiSuccessMsg] = React.useState<string>('');
+
+  const API_ENDPOINTS_DATA: Record<string, any> = {
+    'cyber-synthwave': {
+      status: "success",
+      endpoint: "/v2/aesthetics/cyber-synthwave",
+      timestamp: 1782390820,
+      aestheticName: "Neon Dream Synthwave",
+      author: "Olaive AI Studio Engine",
+      parameters: {
+        brightness: 115,
+        contrast: 130,
+        saturate: 160,
+        hueRotate: 315,
+        blur: 0.5,
+        noise: true,
+        recommendedGlowColor: "#ff007f",
+        recommendedNeonColor: "#00f2fe"
+      }
+    },
+    'imperial-gold': {
+      status: "success",
+      endpoint: "/v2/aesthetics/imperial-gold",
+      timestamp: 1782390915,
+      aestheticName: "Neon Gold Luxury",
+      author: "Olaive AI Studio Engine",
+      parameters: {
+        brightness: 112,
+        contrast: 138,
+        saturate: 145,
+        hueRotate: 42,
+        blur: 0,
+        noise: false,
+        recommendedGlowColor: "#ffd700",
+        recommendedNeonColor: "#ffaa00"
+      }
+    },
+    'matrix-digital': {
+      status: "success",
+      endpoint: "/v2/aesthetics/matrix-digital",
+      timestamp: 1782391050,
+      aestheticName: "Emerald Matrix Glitch",
+      author: "Olaive AI Studio Engine",
+      parameters: {
+        brightness: 100,
+        contrast: 140,
+        saturate: 110,
+        hueRotate: 125,
+        blur: 1,
+        noise: true,
+        recommendedGlowColor: "#00ff66",
+        recommendedNeonColor: "#39ff14"
+      }
+    }
+  };
+
+  const handleFetchExternalAestheticApi = () => {
+    setIsFetchingApi(true);
+    setApiResponse(null);
+    setApiSuccessMsg('');
+
+    setTimeout(() => {
+      const data = API_ENDPOINTS_DATA[selectedApiEndpoint];
+      setApiResponse(data);
+      setIsFetchingApi(false);
+      setApiSuccessMsg('KONTEN HASIL API BERHASIL DIPROSES!');
+    }, 1200);
+  };
+
+  const handleApplyApiAesthetic = () => {
+    if (!apiResponse) return;
+    const params = apiResponse.parameters;
+    onChangeSettings({
+      ...settings,
+      brightness: params.brightness,
+      contrast: params.contrast,
+      saturate: params.saturate,
+      hueRotate: params.hueRotate,
+      blur: params.blur,
+      noise: params.noise
+    });
+    
+    // Trigger callback if we want, or just update the filter
+    if (params.recommendedNeonColor) {
+      onSelectFilterPreset('none', {
+        brightness: params.brightness,
+        contrast: params.contrast,
+        saturate: params.saturate,
+        hueRotate: params.hueRotate,
+        blur: params.blur,
+        noise: params.noise
+      });
+    }
+  };
+
   // Use parent-controlled activeSection if provided, otherwise fallback to internal state
   const activeSubTab = activeSection || internalSubTab;
 
@@ -248,7 +348,7 @@ export default function ImageAdjuster({
       )}
 
       {activeSubTab === 'filter' && (
-        <div className="space-y-2">
+        <div className="space-y-3">
           <div className={`grid grid-cols-2 gap-1.5 max-h-[160px] overflow-y-auto pr-0.5 scrollbar-thin ${
             theme === 'dark' ? 'scrollbar-thumb-white/10' : 'scrollbar-thumb-black/10'
           }`}>
@@ -293,6 +393,109 @@ export default function ImageAdjuster({
                 </button>
               );
             })}
+          </div>
+
+          {/* External API Aesthetic Generator simulator panel */}
+          <div className="p-2.5 rounded-xl border border-dashed border-purple-500/25 bg-black/45 space-y-2.5 shadow-[0_0_15px_rgba(168,85,247,0.02)]">
+            <div className="flex items-center justify-between">
+              <span className="text-[9px] text-purple-400 font-mono font-bold block uppercase tracking-wider flex items-center gap-1">
+                <Globe className="w-3 h-3 text-purple-400 animate-pulse" /> EXTERNAL AESTHETIC API
+              </span>
+              <span className="text-[7.5px] font-mono text-zinc-500 bg-zinc-950 px-1.5 border border-zinc-800 rounded uppercase">
+                Dynamic Response
+              </span>
+            </div>
+
+            <div className="space-y-1.5">
+              <label className="text-[8px] text-zinc-500 font-mono block uppercase">PILIH ENDPOINT LAYANAN ESTETIKA:</label>
+              <div className="flex gap-1.5">
+                <select
+                  value={selectedApiEndpoint}
+                  onChange={(e) => { setSelectedApiEndpoint(e.target.value); setApiResponse(null); setApiSuccessMsg(''); }}
+                  className={`flex-1 py-1 px-2 rounded text-[9.5px] font-mono focus:outline-none focus:border-purple-500 ${
+                    theme === 'dark'
+                      ? 'bg-zinc-950 border border-white/5 text-zinc-300'
+                      : 'bg-white border border-black/10 text-zinc-900 font-medium'
+                  }`}
+                >
+                  <option value="cyber-synthwave">GET /v2/aesthetics/cyber-synthwave</option>
+                  <option value="imperial-gold">GET /v2/aesthetics/imperial-gold</option>
+                  <option value="matrix-digital">GET /v2/aesthetics/matrix-digital</option>
+                </select>
+
+                <button
+                  type="button"
+                  onClick={handleFetchExternalAestheticApi}
+                  disabled={isFetchingApi}
+                  className="bg-purple-600 text-white font-mono font-bold text-[9px] py-1 px-2.5 rounded hover:bg-white hover:text-black transition-all disabled:opacity-50 shrink-0 flex items-center gap-1"
+                >
+                  {isFetchingApi ? (
+                    <>
+                      <RefreshCw className="w-2.5 h-2.5 animate-spin" />
+                      FETCHING...
+                    </>
+                  ) : (
+                    <>
+                      <Cpu className="w-2.5 h-2.5" />
+                      GRAB API
+                    </>
+                  )}
+                </button>
+              </div>
+            </div>
+
+            {/* Fetching Progress Indicator */}
+            {isFetchingApi && (
+              <div className="space-y-1">
+                <div className="flex justify-between items-center px-1">
+                  <span className="text-[7.5px] font-mono text-zinc-500 animate-pulse uppercase">Connecting: secure.aesthetic-api.org...</span>
+                  <span className="text-[7.5px] font-mono text-purple-400">SYNCING</span>
+                </div>
+                <div className="h-1 w-full bg-zinc-950 rounded-full overflow-hidden relative border border-white/5">
+                  <div className="absolute top-0 bottom-0 left-0 bg-gradient-to-r from-purple-500 to-pink-500 rounded-full animate-progress-mock" style={{ width: '40%' }}></div>
+                </div>
+              </div>
+            )}
+
+            {/* Real aesthetic API response JSON mockup */}
+            {apiResponse && (
+              <div className="space-y-1.5 animate-fadeIn">
+                <div className="flex items-center justify-between">
+                  <span className="text-[8px] text-zinc-500 font-mono block uppercase">RESPON API OUTLINE (ESTHETIC JSON):</span>
+                  <span className="text-[8px] font-mono font-black text-green-400 animate-pulse flex items-center gap-0.5">
+                    ● CODE 200 OK
+                  </span>
+                </div>
+                <div className="relative rounded-lg bg-zinc-950 p-2 border border-zinc-850 max-h-[145px] overflow-y-auto scrollbar-thin">
+                  {/* Subtle Copy Accent */}
+                  <span className="absolute top-1 right-2 text-[7px] font-mono text-zinc-650 bg-zinc-900 border border-zinc-800 px-1 py-0.5 rounded uppercase">
+                    APPLICATION/JSON
+                  </span>
+                  <pre className="font-mono text-[8px] text-zinc-300 leading-normal select-text whitespace-pre-wrap">
+                    {JSON.stringify(apiResponse, null, 2)}
+                  </pre>
+                </div>
+
+                <button
+                  type="button"
+                  onClick={() => {
+                    handleApplyApiAesthetic();
+                    // Show message inside panel
+                    setApiSuccessMsg('ESTETIKA API BERHASIL DITERAPKAN PADA BERKAS FAKTOR GAMBAR AKTIF! ✨');
+                  }}
+                  className="w-full bg-gradient-to-r from-purple-500 via-pink-500 to-indigo-500 text-white font-mono font-bold text-[9.5px] py-1.5 px-3 rounded-lg hover:brightness-110 transition-all flex items-center justify-center gap-1.5 shadow-[0_0_12px_rgba(168,85,247,0.3)] animate-pulse"
+                >
+                  <Sparkles className="w-3.5 h-3.5 text-white" />
+                  TERAPKAN PARAMATER API KE CANVAS
+                </button>
+              </div>
+            )}
+
+            {apiSuccessMsg && (
+              <p className="text-[8.5px] text-center font-mono font-bold text-green-400 bg-green-950/20 py-1 px-2 rounded border border-green-900/30 animate-pulse truncate uppercase">
+                {apiSuccessMsg}
+              </p>
+            )}
           </div>
         </div>
       )}

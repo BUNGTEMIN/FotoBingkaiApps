@@ -1,11 +1,12 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef, useMemo } from 'react';
 import { 
   Upload, Sparkles, RefreshCw, Sliders, CircleHelp, Download, Maximize2, Edit2,
   FolderOpen, Camera, Laptop, Cpu, Layers, Settings2, Activity, Info, CheckCircle, MoveHorizontal,
   Undo, Redo, Type, ArrowUp, ArrowDown, ChevronsUp, ChevronsDown, Trash2, RotateCw, Move, Baseline,
-  Lock, Unlock, Image as ImageIcon, Maximize, X, Crop, Menu
+  Lock, Unlock, Image as ImageIcon, Maximize, X, Crop, Menu, FlipHorizontal, FlipVertical
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
+import axios from 'axios';
 
 // Firebase and database setup
 import { doc, setDoc, serverTimestamp, collection, getDocs, query, orderBy, deleteDoc, where, updateDoc, increment, addDoc } from 'firebase/firestore';
@@ -484,9 +485,25 @@ export default function App() {
     setIsLoadingComGallery(true);
     setComGalleryError(null);
     try {
-      const res = await fetch(resolveApiUrl('/api/external-images'));
-      if (!res.ok) throw new Error('Gagal mengambil daftar kreasi dari Wabot Nufat API');
-      const data = await res.json();
+      const host = window.location.hostname;
+      const isFirebaseHost = host.includes('qcc-online.web.app') || host.includes('web.app') || host.includes('firebaseapp.com') || host.includes('nufat.id');
+      
+      let data = [];
+      if (isFirebaseHost) {
+        console.log("[Firebase Direct Fetch] Fetching external creations directly via axios...");
+        const token = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJ1c2VybmFtZSI6ImFkbWluIiwiaWF0IjoxNzgwNTIxNTkwLCJleHAiOjE3ODA4ODE1OTB9.5Y4tvFGl8HDg7VqM5aOEEJgN9xiXd89otAtPmSGx1B0";
+        const response = await axios.get("https://wabot.nufat.id/imagelist_nufat/api", {
+          headers: {
+            "Authorization": `Bearer ${token}`,
+            "Accept": "application/json"
+          }
+        });
+        data = response.data;
+      } else {
+        const res = await fetch(resolveApiUrl('/api/external-images'));
+        if (!res.ok) throw new Error('Gagal mengambil daftar kreasi dari Wabot Nufat API');
+        data = await res.json();
+      }
       
       const formatted = data.map((item: any, idx: number) => ({
         id: item.id && item.id.startsWith('nufat') ? item.id : `nufat-creation-${item.id || idx}`,
@@ -539,6 +556,17 @@ export default function App() {
   }, [selectedFrame]);
   const [customFrames, setCustomFrames] = useState<Frame[]>([]);
   const [appwriteFrames, setAppwriteFrames] = useState<Frame[]>([]);
+
+  // Stable randomized presentation of frame templates
+  const displayFrames = useMemo(() => {
+    const combined = [...FRAMES, ...appwriteFrames, ...customFrames];
+    const arr = [...combined];
+    for (let i = arr.length - 1; i > 0; i--) {
+      const j = Math.floor(Math.random() * (i + 1));
+      [arr[i], arr[j]] = [arr[j], arr[i]];
+    }
+    return arr;
+  }, [appwriteFrames, customFrames]);
 
   // Restore selected frame from local storage
   useEffect(() => {
@@ -599,6 +627,7 @@ export default function App() {
   // AI Generator local states
   const [aiPrompt, setAiPrompt] = useState('');
   const [aiMode, setAiMode] = useState<'image' | 'frame' | 'slogan'>('image');
+  const [aiEngine, setAiEngine] = useState<'gemini' | 'nufat'>('gemini');
   const [isGeneratingAI, setIsGeneratingAI] = useState(false);
   const [aiError, setAiError] = useState<string | null>(null);
   
@@ -608,6 +637,8 @@ export default function App() {
   // UI states
   const [isLoading, setIsLoading] = useState(false);
   const [statusMessage, setStatusMessage] = useState('SISTEM SIAP');
+  const [hdExportProgress, setHdExportProgress] = useState<number | null>(null);
+  const [hdExportStatus, setHdExportStatus] = useState<string>('');
   const [isDraggingCanvas, setIsDraggingCanvas] = useState(false);
   const [isDraggingFile, setIsDraggingFile] = useState(false);
   const [showToast, setShowToast] = useState(false);
@@ -803,15 +834,29 @@ export default function App() {
     }
   };
 
-  // Fetch frames from new proxy
+  // Fetch frames from new proxy or direct via axios if on qcc-online.web.app
   const fetchAppwriteFrames = async () => {
     setIsLoadingAppwrite(true);
     try {
-      const response = await fetch(resolveApiUrl("/api/appwrite-frames"));
-      if (!response.ok) throw new Error("Failed to fetch frames via proxy");
-      const data = await response.json();
+      const host = window.location.hostname;
+      const isFirebaseHost = host.includes('qcc-online.web.app') || host.includes('web.app') || host.includes('firebaseapp.com') || host.includes('nufat.id');
       
-      const mappedFrames: Frame[] = Array.isArray(data) ? data : [];
+      let mappedFrames: Frame[] = [];
+      if (isFirebaseHost) {
+        console.log("[Firebase Direct Fetch] Fetching frames directly via axios...");
+        const response = await axios.get("https://nudb.bungtemin.net/bingkai/api", {
+          headers: {
+            "Accept": "application/json"
+          }
+        });
+        const data = response.data;
+        mappedFrames = Array.isArray(data) ? data : [];
+      } else {
+        const response = await fetch(resolveApiUrl("/api/appwrite-frames"));
+        if (!response.ok) throw new Error("Failed to fetch frames via proxy");
+        const data = await response.json();
+        mappedFrames = Array.isArray(data) ? data : [];
+      }
 
       setAppwriteFrames(mappedFrames);
       localStorage.setItem('bt_appwrite_frames', JSON.stringify(mappedFrames));
@@ -857,15 +902,13 @@ export default function App() {
     }
   }, []);
 
-  // Set random frame on startup if none is selected
+  // Set random frame on startup if none is selected from the randomized displayFrames
   useEffect(() => {
     if (selectedFrame) return; 
-    const allFrames = [...FRAMES, ...customFrames, ...appwriteFrames];
-    if (allFrames.length > 0) {
-      const randomIndex = Math.floor(Math.random() * allFrames.length);
-      setSelectedFrame(allFrames[randomIndex]);
+    if (displayFrames.length > 0) {
+      setSelectedFrame(displayFrames[0]);
     }
-  }, [customFrames, appwriteFrames, selectedFrame]);
+  }, [displayFrames, selectedFrame]);
 
   // Listen to Auth State changes for Auto Login with Google
   useEffect(() => {
@@ -1384,7 +1427,7 @@ export default function App() {
     }
   };
 
-  // AI Generation actions using Google Gemini API on server proxy
+  // AI Generation actions using Google Gemini API or Webspy Nufat API on server proxy
   const handleGenerateAIImage = async () => {
     if (!aiPrompt.trim()) {
       setAiError('Silakan masukkan deskripsi atau prompt terlebih dahulu.');
@@ -1396,18 +1439,18 @@ export default function App() {
       const response = await fetch(resolveApiUrl('/api/ai/image'), {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ prompt: aiPrompt }),
+        body: JSON.stringify({ prompt: aiPrompt, engine: aiEngine }),
       });
       const data = await response.json();
       if (!response.ok || data.error) {
         throw new Error(data.error || 'Gagal menghasilkan gambar');
       }
       setUserImage(data.image);
-      triggerToast('SISTEM: Foto avatar AI berhasil dipasang!');
+      triggerToast(`SISTEM: Avatar AI (${aiEngine === 'nufat' ? 'Webspy Nufat' : 'Gemini 3.5'}) berhasil dipasang! 🎨✨`);
       setAiPrompt('');
     } catch (err: any) {
       console.error(err);
-      setAiError(err.message || 'Gagal generate gambar. Cek API Key Anda.');
+      setAiError(err.message || 'Gagal generate gambar. Cek API Key atau akses API Anda.');
     } finally {
       setIsGeneratingAI(false);
     }
@@ -1532,128 +1575,161 @@ export default function App() {
 
     setIsLoading(true);
     setStatusMessage('MENGEKSPOR HD...');
-    triggerToast('Memproses file HD...', 2000);
+    setHdExportProgress(0);
+    setHdExportStatus('Menginisialisasi kompilator render HD...');
+    triggerToast('Memulai rendering kualitas tinggi...', 2000);
 
-    setTimeout(async () => {
+    const sleep = (ms: number) => new Promise(resolve => setTimeout(resolve, ms));
+
+    try {
+      await sleep(350);
+      setHdExportProgress(15);
+      setHdExportStatus('Memetakan koordinat elemen dan stiker...');
+
+      // Formulate pathsMap for SVG rendering
+      const pathsMap: Record<string, string> = {};
+      PRESET_STICKERS.forEach((st) => {
+        pathsMap[st.id] = st.svgPath || '';
+      });
+
+      await sleep(350);
+      setHdExportProgress(35);
+      setHdExportStatus('Mengunduh & memuat aset grafis resolusi HD...');
+
+      await sleep(350);
+      setHdExportProgress(60);
+      setHdExportStatus(`Merender canvas utama (${downloadSize}x${downloadSize}px)...`);
+
+      // 1. Force render specifically for download with exact properties and stickers included
+      await renderToCanvas(canvas, {
+        userImageSrc: userImage,
+        frame: selectedFrame,
+        neonColor,
+        settings: imageSettingsRef.current,
+        stickers,
+        presetStickerSvgPaths: pathsMap,
+        size: downloadSize,
+        isDownloading: true // Include stickers
+      });
+
+      await sleep(350);
+      setHdExportProgress(80);
+      setHdExportStatus('Menyusun representasi piksel dan format gambar...');
+
+      const link = document.createElement('a');
+      const ext = downloadFormat;
+      const mimeType = ext === 'png' ? 'image/png' : ext === 'webp' ? 'image/webp' : 'image/jpeg';
+      
+      const fileName = `Avatar-Bingkai-Futuristik-${Date.now()}.${ext}`;
+      link.download = fileName;
+      const dataUrl = canvas.toDataURL(mimeType, mimeType === 'image/png' ? undefined : 0.95);
+      link.href = dataUrl;
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+
+      await sleep(250);
+      setHdExportProgress(90);
+      setHdExportStatus('Mengkompresi data thumbnail untuk sinkronisasi galeri cloud...');
+
+      // Compress and prepare compact base64 representation for Firebase Firestore storage
+      let firebaseBase64 = dataUrl;
       try {
-        // Formulate pathsMap for SVG rendering
-        const pathsMap: Record<string, string> = {};
-        PRESET_STICKERS.forEach((st) => {
-          pathsMap[st.id] = st.svgPath || '';
-        });
-
-        // 1. Force render specifically for download with exact properties and stickers included
-        await renderToCanvas(canvas, {
-          userImageSrc: userImage,
-          frame: selectedFrame,
-          neonColor,
-          settings: imageSettingsRef.current,
-          stickers,
-          presetStickerSvgPaths: pathsMap,
-          size: downloadSize,
-          isDownloading: true // Include stickers
-        });
-
-        const link = document.createElement('a');
-        const ext = downloadFormat;
-        const mimeType = ext === 'png' ? 'image/png' : ext === 'webp' ? 'image/webp' : 'image/jpeg';
-        
-        const fileName = `Avatar-Bingkai-Futuristik-${Date.now()}.${ext}`;
-        link.download = fileName;
-        const dataUrl = canvas.toDataURL(mimeType, mimeType === 'image/png' ? undefined : 0.95);
-        link.href = dataUrl;
-        document.body.appendChild(link);
-        link.click();
-        document.body.removeChild(link);
-
-        // Compress and prepare compact base64 representation for Firebase Firestore storage (ensure < 1MB limit is structurally enforced)
-        let firebaseBase64 = dataUrl;
-        try {
-          const scale = Math.min(1, 800 / canvas.width);
-          const tempCanvas = document.createElement('canvas');
-          tempCanvas.width = canvas.width * scale;
-          tempCanvas.height = canvas.height * scale;
-          const tempCtx = tempCanvas.getContext('2d');
-          if (tempCtx) {
-            tempCtx.drawImage(canvas, 0, 0, tempCanvas.width, tempCanvas.height);
-            firebaseBase64 = tempCanvas.toDataURL('image/jpeg', 0.85);
-          }
-        } catch (compressErr) {
-          console.warn('Gagal kompresi thumbnail Firebase, menggunakan data asli:', compressErr);
+        const scale = Math.min(1, 800 / canvas.width);
+        const tempCanvas = document.createElement('canvas');
+        tempCanvas.width = canvas.width * scale;
+        tempCanvas.height = canvas.height * scale;
+        const tempCtx = tempCanvas.getContext('2d');
+        if (tempCtx) {
+          tempCtx.drawImage(canvas, 0, 0, tempCanvas.width, tempCanvas.height);
+          firebaseBase64 = tempCanvas.toDataURL('image/jpeg', 0.85);
         }
-
-        // Auto save to cloud gallery using optimized small image representation
-        saveToGallery(firebaseBase64);
-
-        // 2. Restore preview render (hide duplicate stickers on canvas to avoid HTML overlap)
-        await renderToCanvas(canvas, {
-          userImageSrc: userImage,
-          frame: selectedFrame,
-          neonColor,
-          settings: imageSettingsRef.current,
-          stickers,
-          presetStickerSvgPaths: pathsMap,
-          size: downloadSize,
-          isDownloading: false // Exclude stickers from canvas preview
-        });
-
-        setIsLoading(false);
-        setStatusMessage('SUKSES DIUNDUH');
-        triggerToast(`Avatar ${ext.toUpperCase()} berhasil diunduh! Tersimpan juga di Album. 🎉`);
-
-        // Upload download event data to Firebase Firestore
-        const downloadId = `dl_${Date.now()}_${Math.random().toString(36).substring(2, 7)}`;
-        
-        try {
-          const downloadPayload: any = {
-            id: downloadId,
-            fileName: fileName,
-            imageUrl: firebaseBase64,
-            format: ext,
-            size: downloadSize,
-            downloadedAt: serverTimestamp()
-          };
-
-          if (user) {
-            downloadPayload.userId = user.uid;
-            downloadPayload.userName = user.displayName || 'Pengguna';
-            downloadPayload.userEmail = user.email || '';
-            downloadPayload.userAvatar = user.photoURL || '';
-          }
-
-          await setDoc(doc(db, 'downloads', downloadId), downloadPayload);
-          console.log(`[Firebase] Berhasil menyimpan berkas cadangan download dengan ID: ${downloadId}`);
-          
-          // Invalidate Firestore queries cache
-          if (user) {
-            localStorage.removeItem(`bt_my_gallery_${user.uid}`);
-            localStorage.removeItem(`bt_my_gallery_time_${user.uid}`);
-            localStorage.removeItem(`bt_cloud_downloads_all_${user.uid}`);
-            localStorage.removeItem(`bt_cloud_downloads_time_all_${user.uid}`);
-            localStorage.removeItem(`bt_cloud_downloads_mine_${user.uid}`);
-            localStorage.removeItem(`bt_cloud_downloads_time_mine_${user.uid}`);
-            localStorage.removeItem(`bt_cloud_downloads_others_${user.uid}`);
-            localStorage.removeItem(`bt_cloud_downloads_time_others_${user.uid}`);
-          }
-          localStorage.removeItem(`bt_cloud_downloads_all_guest`);
-          localStorage.removeItem(`bt_cloud_downloads_time_all_guest`);
-
-          triggerToast(`Avatar ${ext.toUpperCase()} berhasil dicadangkan di Cloud Database! ☁️✨`);
-        } catch (dbErr) {
-          console.error('[Firebase Error] Gagal menyimpan ke Firestore:', dbErr);
-          try {
-            handleFirestoreError(dbErr, OperationType.CREATE, `downloads/${downloadId}`);
-          } catch (formattedErr) {
-            // Log formatted error object for backend tracking
-          }
-        }
-      } catch (err) {
-        console.error(err);
-        setIsLoading(false);
-        setStatusMessage('GAGAL EKSPOR');
-        alert('Gagal mendownload karena masalah keamanan CORS server internal. Silahkan ganti ke frame model "FUTURISTIK" kami yang beresolusi super tajam tanpa CORS!');
+      } catch (compressErr) {
+        console.warn('Gagal kompresi thumbnail Firebase, menggunakan data asli:', compressErr);
       }
-    }, 800);
+
+      await sleep(200);
+      setHdExportProgress(95);
+      setHdExportStatus('Menyinkronkan data koleksi Anda di Firebase...');
+
+      // Auto save to cloud gallery using optimized small image representation
+      saveToGallery(firebaseBase64);
+
+      // 2. Restore preview render (hide duplicate stickers on canvas to avoid HTML overlap)
+      await renderToCanvas(canvas, {
+        userImageSrc: userImage,
+        frame: selectedFrame,
+        neonColor,
+        settings: imageSettingsRef.current,
+        stickers,
+        presetStickerSvgPaths: pathsMap,
+        size: downloadSize,
+        isDownloading: false // Exclude stickers from canvas preview
+      });
+
+      await sleep(250);
+      setHdExportProgress(100);
+      setHdExportStatus('Proses rendering selesai sempurna!');
+      await sleep(250);
+
+      setIsLoading(false);
+      setHdExportProgress(null);
+      setStatusMessage('SUKSES DIUNDUH');
+      triggerToast(`Avatar ${ext.toUpperCase()} berhasil diunduh! Tersimpan juga di Album. 🎉`);
+
+      // Upload download event data to Firebase Firestore
+      const downloadId = `dl_${Date.now()}_${Math.random().toString(36).substring(2, 7)}`;
+      
+      try {
+        const downloadPayload: any = {
+          id: downloadId,
+          fileName: fileName,
+          imageUrl: firebaseBase64,
+          format: ext,
+          size: downloadSize,
+          downloadedAt: serverTimestamp()
+        };
+
+        if (user) {
+          downloadPayload.userId = user.uid;
+          downloadPayload.userName = user.displayName || 'Pengguna';
+          downloadPayload.userEmail = user.email || '';
+          downloadPayload.userAvatar = user.photoURL || '';
+        }
+
+        await setDoc(doc(db, 'downloads', downloadId), downloadPayload);
+        console.log(`[Firebase] Berhasil menyimpan berkas cadangan download dengan ID: ${downloadId}`);
+        
+        // Invalidate Firestore queries cache
+        if (user) {
+          localStorage.removeItem(`bt_my_gallery_${user.uid}`);
+          localStorage.removeItem(`bt_my_gallery_time_${user.uid}`);
+          localStorage.removeItem(`bt_cloud_downloads_all_${user.uid}`);
+          localStorage.removeItem(`bt_cloud_downloads_time_all_${user.uid}`);
+          localStorage.removeItem(`bt_cloud_downloads_mine_${user.uid}`);
+          localStorage.removeItem(`bt_cloud_downloads_time_mine_${user.uid}`);
+          localStorage.removeItem(`bt_cloud_downloads_others_${user.uid}`);
+          localStorage.removeItem(`bt_cloud_downloads_time_others_${user.uid}`);
+        }
+        localStorage.removeItem(`bt_cloud_downloads_all_guest`);
+        localStorage.removeItem(`bt_cloud_downloads_time_all_guest`);
+
+        triggerToast(`Avatar ${ext.toUpperCase()} berhasil dicadangkan di Cloud Database! ☁️✨`);
+      } catch (dbErr) {
+        console.error('[Firebase Error] Gagal menyimpan ke Firestore:', dbErr);
+        try {
+          handleFirestoreError(dbErr, OperationType.CREATE, `downloads/${downloadId}`);
+        } catch (formattedErr) {
+          // Log formatted error object for backend tracking
+        }
+      }
+    } catch (err) {
+      console.error(err);
+      setIsLoading(false);
+      setHdExportProgress(null);
+      setStatusMessage('GAGAL EKSPOR');
+      alert('Gagal mendownload karena masalah keamanan CORS server internal. Silahkan ganti ke frame model "FUTURISTIK" kami yang beresolusi super tajam tanpa CORS!');
+    }
   };
 
   // Toast Notification triggers
@@ -1668,7 +1744,6 @@ export default function App() {
   const dateNow = new Date().toISOString().substring(0, 10);
   
   // Quest validation calculations
-  const displayFrames = [...FRAMES, ...appwriteFrames, ...customFrames];
   const quest1Completed = userImage !== null && userImage !== DEFAULT_IMAGE;
   const quest2Completed = selectedFrame !== null;
   const quest3Completed = filterPresetId !== 'none';
@@ -1802,7 +1877,7 @@ export default function App() {
               {/* Real HD Drawing Canvas */}
               <canvas 
                 ref={canvasRef} 
-                className={`w-full h-full object-contain pointer-events-none relative z-10 ${isGlitching ? 'glitch-active' : ''}`} 
+                className={`w-full h-full aspect-square object-cover pointer-events-none relative z-10 ${isGlitching ? 'glitch-active' : ''}`} 
                 style={{ transform: 'translateZ(0px)', transformStyle: 'preserve-3d' }}
               />
 
@@ -1878,6 +1953,8 @@ export default function App() {
                         style={{
                           fontFamily: item.fontFamily || 'Orbitron',
                           fontSize: `${baseSizePercentage}cqw`,
+                          letterSpacing: item.letterSpacing ? `${item.letterSpacing}px` : 'normal',
+                          mixBlendMode: item.blendMode || 'normal',
                           ...(item.textStyle === 'neon' 
                               ? {
                                   color: '#fff',
@@ -1935,9 +2012,27 @@ export default function App() {
                       >
                         {item.text}
                       </span>
+                    ) : item.imageUrl ? (
+                      <img
+                        src={item.imageUrl}
+                        alt="Stiker Kustom"
+                        referrerPolicy="no-referrer"
+                        style={{ 
+                          width: `${baseSizePercentage * 1.5}cqw`, 
+                          height: `${baseSizePercentage * 1.5}cqw`,
+                          opacity: item.opacity !== undefined ? item.opacity : 1,
+                          transform: `scaleX(${item.flipH ? -1 : 1}) scaleY(${item.flipV ? -1 : 1})`,
+                          mixBlendMode: item.blendMode || 'normal'
+                        }}
+                        className="object-contain drop-shadow-[0_0_8px_rgba(0,240,255,0.4)] block select-none pointer-events-none"
+                      />
                     ) : (
                       <svg 
-                        style={{ width: `${baseSizePercentage * 1.5}cqw`, height: `${baseSizePercentage * 1.5}cqw` }}
+                        style={{ 
+                          width: `${baseSizePercentage * 1.5}cqw`, 
+                          height: `${baseSizePercentage * 1.5}cqw`,
+                          mixBlendMode: item.blendMode || 'normal'
+                        }}
                         viewBox="0 0 100 100" 
                         fill="none" 
                         stroke={item.color || neonColor} 
@@ -2154,103 +2249,308 @@ export default function App() {
 
               {/* Scrollable Editor Parameters */}
               <div className="p-4 space-y-4 max-h-[50vh] overflow-y-auto pr-2 scrollbar-thin">
-                {activeSelectedSticker.type === 'text' && (
-                  <div className="space-y-1.5 relative">
-                    <span className={`text-[9.5px] font-mono font-bold block uppercase tracking-wide flex items-center justify-between ${theme === 'dark' ? 'text-zinc-400' : 'text-zinc-650'}`}>
-                      <span>Ubah Isi Teks / Pesan:</span>
-                      <Type className="w-3 h-3 text-neon-cyan" />
-                    </span>
-                    <div className="relative group">
-                      <input
-                        type="text"
-                        value={activeSelectedSticker.text || ''}
-                        onChange={(e) => handleUpdateSticker(activeSelectedSticker.id, { text: e.target.value.toUpperCase() })}
-                        className={`w-full py-3 px-4 rounded-xl font-mono text-sm uppercase focus:outline-none focus:ring-1 focus:ring-neon-cyan transition-all shadow-inner ${
-                          theme === 'dark' 
-                            ? 'bg-black/50 border border-[#00F0FF]/30 text-white placeholder-white/20 focus:bg-black/80 focus:shadow-[0_0_15px_rgba(0,240,255,0.15)]' 
-                            : 'bg-white border border-black/10 text-zinc-900 font-black focus:border-[#00F0FF] focus:shadow-[0_0_15px_rgba(0,240,255,0.2)]'
-                        }`}
-                        placeholder="MASUKKAN TEKS"
-                      />
-                    </div>
-                  </div>
-                )}
-
-                {activeSelectedSticker.type === 'text' && (
-                  <div className="space-y-1.5">
-                    <span className={`text-[9.5px] font-mono font-bold block uppercase tracking-wide ${theme === 'dark' ? 'text-zinc-400' : 'text-zinc-650'}`}>Pilih Font Futuristik:</span>
-                    <div className="grid grid-cols-2 gap-1 select-none max-h-[85px] overflow-y-auto pr-1">
-                      {FUTURISTIC_FONTS.map((font) => (
+                {activeSelectedSticker.imageUrl ? (
+                  /* EXCLUSIVE PNG IMAGE STICKER PARAMETERS */
+                  <div className="space-y-4 font-mono select-none">
+                    {/* Scale / Ukuran */}
+                    <div className="space-y-1">
+                      <div className="flex justify-between items-center text-[10px]">
+                        <span className={`${theme === 'dark' ? 'text-zinc-400' : 'text-zinc-650'} font-bold`}>SKALA / UKURAN:</span>
+                        <span className="text-[#00F0FF] font-black">{Math.round(activeSelectedSticker.scale * 100)}%</span>
+                      </div>
+                      <div className="flex items-center gap-2">
+                        <input
+                          type="range"
+                          min="0.1"
+                          max="3.0"
+                          step="0.05"
+                          value={activeSelectedSticker.scale}
+                          onChange={(e) => handleUpdateSticker(activeSelectedSticker.id, { scale: parseFloat(e.target.value) })}
+                          className="flex-1 h-1.5 rounded-lg appearance-none cursor-pointer bg-zinc-800 accent-[#00F0FF]"
+                        />
                         <button
-                          key={font.id}
                           type="button"
-                          onClick={() => handleUpdateSticker(activeSelectedSticker.id, { fontFamily: font.id })}
-                          className={`py-1.5 px-2 rounded-lg text-left border text-[10px] transition-all truncate ${
-                            activeSelectedSticker.fontFamily === font.id
-                              ? 'border-neon-cyan bg-cyan-950/25 text-white font-black'
-                              : theme === 'dark'
-                                ? 'border-white/5 bg-zinc-950 text-zinc-400 hover:text-zinc-200 hover:border-white/10'
-                                : 'border-black/5 bg-black/5 text-zinc-700 hover:text-zinc-950 hover:bg-black/[0.08]'
+                          onClick={() => handleUpdateSticker(activeSelectedSticker.id, { scale: 1.0 })}
+                          className="px-2 py-0.5 text-[8px] border border-white/10 rounded-md bg-white/5 hover:bg-white/10 text-zinc-350 transition-colors uppercase font-bold"
+                        >
+                          RESET
+                        </button>
+                      </div>
+                    </div>
+
+                    {/* Rotation / Putar */}
+                    <div className="space-y-1">
+                      <div className="flex justify-between items-center text-[10px]">
+                        <span className={`${theme === 'dark' ? 'text-zinc-400' : 'text-zinc-650'} font-bold`}>ROTASI:</span>
+                        <span className="text-[#00F0FF] font-black">{activeSelectedSticker.rotation}°</span>
+                      </div>
+                      <div className="flex items-center gap-2">
+                        <input
+                          type="range"
+                          min="0"
+                          max="360"
+                          step="1"
+                          value={activeSelectedSticker.rotation}
+                          onChange={(e) => handleUpdateSticker(activeSelectedSticker.id, { rotation: parseInt(e.target.value) })}
+                          className="flex-1 h-1.5 rounded-lg appearance-none cursor-pointer bg-zinc-800 accent-[#00F0FF]"
+                        />
+                        <button
+                          type="button"
+                          onClick={() => handleUpdateSticker(activeSelectedSticker.id, { rotation: 0 })}
+                          className="px-2 py-0.5 text-[8px] border border-white/10 rounded-md bg-white/5 hover:bg-white/10 text-zinc-350 transition-colors uppercase font-bold"
+                        >
+                          0°
+                        </button>
+                      </div>
+                      <div className="grid grid-cols-3 gap-1">
+                        {[90, 180, 270].map(deg => (
+                          <button
+                            key={deg}
+                            type="button"
+                            onClick={() => {
+                              const next = (activeSelectedSticker.rotation + deg) % 360;
+                              handleUpdateSticker(activeSelectedSticker.id, { rotation: next });
+                            }}
+                            className="py-1 text-[8px] border border-white/10 rounded bg-white/5 hover:bg-white/10 text-zinc-300 transition-all font-black text-center"
+                          >
+                            +{deg}°
+                          </button>
+                        ))}
+                      </div>
+                    </div>
+
+                    {/* Opacity / Transparency */}
+                    <div className="space-y-1">
+                      <div className="flex justify-between items-center text-[10px]">
+                        <span className={`${theme === 'dark' ? 'text-zinc-400' : 'text-zinc-650'} font-bold`}>TRANSPARANSI (OPACITY):</span>
+                        <span className="text-[#00F0FF] font-black">{Math.round((activeSelectedSticker.opacity !== undefined ? activeSelectedSticker.opacity : 1) * 100)}%</span>
+                      </div>
+                      <div className="flex items-center gap-2">
+                        <input
+                          type="range"
+                          min="0.1"
+                          max="1.0"
+                          step="0.05"
+                          value={activeSelectedSticker.opacity !== undefined ? activeSelectedSticker.opacity : 1}
+                          onChange={(e) => handleUpdateSticker(activeSelectedSticker.id, { opacity: parseFloat(e.target.value) })}
+                          className="flex-1 h-1.5 rounded-lg appearance-none cursor-pointer bg-zinc-800 accent-[#00F0FF]"
+                        />
+                        <button
+                          type="button"
+                          onClick={() => handleUpdateSticker(activeSelectedSticker.id, { opacity: 1.0 })}
+                          className="px-2 py-0.5 text-[8px] border border-white/10 rounded-md bg-white/5 hover:bg-white/10 text-zinc-350 transition-colors uppercase font-bold"
+                        >
+                          FULL
+                        </button>
+                      </div>
+                    </div>
+
+                    {/* Flip Horizontal / Vertical */}
+                    <div className="space-y-1.5">
+                      <span className={`${theme === 'dark' ? 'text-zinc-400' : 'text-zinc-650'} text-[9.5px] font-bold block`}>BALIK GABAR (FLIP):</span>
+                      <div className="grid grid-cols-2 gap-2">
+                        <button
+                          type="button"
+                          onClick={() => handleUpdateSticker(activeSelectedSticker.id, { flipH: !activeSelectedSticker.flipH })}
+                          className={`py-2 px-3 text-[9px] border rounded-xl flex items-center justify-center gap-1.5 transition-all font-black ${
+                            activeSelectedSticker.flipH
+                              ? 'border-[#00F0FF] bg-[#00F0FF]/15 text-[#00F0FF]'
+                              : theme === 'dark' ? 'border-white/5 bg-zinc-900 text-zinc-450 hover:bg-zinc-850 hover:text-white' : 'border-black/5 bg-black/5 text-zinc-700 hover:bg-black/10'
                           }`}
                         >
-                          <span style={{ fontFamily: font.id }}>{font.name}</span>
+                          <FlipHorizontal className="w-3.5 h-3.5" />
+                          <span>HORIZONTAL</span>
                         </button>
-                      ))}
-                    </div>
-                  </div>
-                )}
-
-                {activeSelectedSticker.type === 'text' && (
-                  <div className="space-y-1.5">
-                    <span className={`text-[9.5px] font-mono font-bold block uppercase tracking-wide ${theme === 'dark' ? 'text-zinc-400' : 'text-zinc-650'}`}>Pilih Preset Gaya Teks:</span>
-                    <div className="grid grid-cols-4 gap-1 select-none">
-                      {[
-                        { id: 'plain', label: 'Polos' },
-                        { id: 'neon', label: 'Neon' },
-                        { id: 'glitch', label: 'Glitch' },
-                        { id: 'chrome', label: 'Chrome' },
-                        { id: 'hologram', label: 'Holo' },
-                        { id: '3d', label: '3D' },
-                        { id: 'double-neon', label: 'D-Neon' },
-                        { id: 'curved', label: 'Melengkung' }
-                      ].map((style) => (
                         <button
-                          key={style.id}
                           type="button"
-                          onClick={() => handleUpdateSticker(activeSelectedSticker.id, { textStyle: style.id as any })}
-                          className={`py-2 px-1 rounded-lg text-center border text-[8px] uppercase tracking-widest font-black transition-all ${
-                            (activeSelectedSticker.textStyle || 'plain') === style.id
-                              ? 'border-pink-500 bg-pink-500/20 text-white shadow-[0_0_8px_rgba(236,72,153,0.3)]'
-                              : theme === 'dark'
-                                ? 'border-white/5 bg-zinc-950 text-zinc-500 hover:text-zinc-300 hover:border-white/10'
-                                : 'border-black/5 bg-black/5 text-zinc-600 hover:text-zinc-900 hover:bg-black/10'
+                          onClick={() => handleUpdateSticker(activeSelectedSticker.id, { flipV: !activeSelectedSticker.flipV })}
+                          className={`py-2 px-3 text-[9px] border rounded-xl flex items-center justify-center gap-1.5 transition-all font-black ${
+                            activeSelectedSticker.flipV
+                              ? 'border-pink-500 bg-pink-500/15 text-pink-500 shadow-[0_0_8px_rgba(236,72,153,0.2)]'
+                              : theme === 'dark' ? 'border-white/5 bg-zinc-900 text-zinc-450 hover:bg-zinc-850 hover:text-white' : 'border-black/5 bg-black/5 text-zinc-700 hover:bg-black/10'
                           }`}
                         >
-                          {style.label}
+                          <FlipVertical className="w-3.5 h-3.5" />
+                          <span>VERTIKAL</span>
                         </button>
-                      ))}
+                      </div>
+                    </div>
+
+                    {/* Blend Mode Selection */}
+                    <div className="space-y-1.5 pt-3 border-t border-dashed border-white/5">
+                      <span className={`${theme === 'dark' ? 'text-zinc-400' : 'text-zinc-650'} text-[10px] font-black block`}>EFEK BLEND (BLEND MODE):</span>
+                      <select
+                        value={activeSelectedSticker.blendMode || 'normal'}
+                        onChange={(e) => handleUpdateSticker(activeSelectedSticker.id, { blendMode: e.target.value as any })}
+                        className={`w-full py-2 px-3 rounded-xl text-xs font-mono focus:outline-none focus:ring-1 focus:ring-[#00f2fe] ${
+                          theme === 'dark'
+                            ? 'bg-zinc-900 border border-white/10 text-white'
+                            : 'bg-white border border-black/15 text-zinc-900 font-extrabold'
+                        }`}
+                      >
+                        {['normal', 'multiply', 'screen', 'overlay', 'darken', 'lighten', 'color-dodge', 'color-burn', 'hard-light', 'soft-light', 'difference', 'exclusion', 'hue', 'saturation', 'color', 'luminosity'].map(mode => (
+                          <option key={mode} value={mode}>{mode.toUpperCase()}</option>
+                        ))}
+                      </select>
+                      <p className="text-[8px] text-zinc-500 leading-relaxed font-sans mt-1">
+                        💡 Tips: Pilih 'MULTIPLY', 'OVERLAY', atau 'SCREEN' untuk menyatukan stiker dengan tekstur foto di bawahnya seperti poster profesional!
+                      </p>
                     </div>
                   </div>
-                )}
+                ) : (
+                  /* STANDARD TEXT AND PRESIT NEON STICKERS PARAMETERS */
+                  <>
+                    {activeSelectedSticker.type === 'text' && (
+                      <div className="space-y-1.5 relative">
+                        <span className={`text-[9.5px] font-mono font-bold block uppercase tracking-wide flex items-center justify-between ${theme === 'dark' ? 'text-zinc-400' : 'text-zinc-650'}`}>
+                          <span>Ubah Isi Teks / Pesan:</span>
+                          <Type className="w-3 h-3 text-neon-cyan" />
+                        </span>
+                        <div className="relative group">
+                          <input
+                            type="text"
+                            value={activeSelectedSticker.text || ''}
+                            onChange={(e) => handleUpdateSticker(activeSelectedSticker.id, { text: e.target.value.toUpperCase() })}
+                            className={`w-full py-3 px-4 rounded-xl font-mono text-sm uppercase focus:outline-none focus:ring-1 focus:ring-neon-cyan transition-all shadow-inner ${
+                              theme === 'dark' 
+                                ? 'bg-black/50 border border-[#00F0FF]/30 text-white placeholder-white/20 focus:bg-black/80 focus:shadow-[0_0_15px_rgba(0,240,255,0.15)]' 
+                                : 'bg-white border border-black/10 text-zinc-900 font-black focus:border-[#00F0FF] focus:shadow-[0_0_15px_rgba(0,240,255,0.2)]'
+                            }`}
+                            placeholder="MASUKKAN TEKS"
+                          />
+                        </div>
+                      </div>
+                    )}
 
-                {/* Color swatch selection */}
-                <div className={`space-y-1.5 pt-3 border-t border-dashed ${theme === 'dark' ? 'border-white/5' : 'border-black/5'}`}>
-                  <span className={`text-[9.5px] font-mono font-bold block uppercase tracking-wide ${theme === 'dark' ? 'text-zinc-400' : 'text-zinc-650'}`}>Pilih Warna Neon Elemen:</span>
-                  <div className="flex space-x-2">
-                    {STICKER_COLORS.map((color) => (
-                      <button
-                        key={color}
-                        onClick={() => handleUpdateSticker(activeSelectedSticker.id, { color })}
-                        className={`w-6 h-6 rounded-full border transition-all ${
-                          activeSelectedSticker.color === color 
-                            ? 'border-neon-cyan scale-110 shadow-[0_0_8px_rgba(0,240,255,0.45)]' 
-                            : 'border-white/5 hover:scale-105'
-                        }`}
-                        style={{ backgroundColor: color }}
-                      />
-                    ))}
-                  </div>
-                </div>
+                    {activeSelectedSticker.type === 'text' && (
+                      <div className="space-y-1.5">
+                        <span className={`text-[9.5px] font-mono font-bold block uppercase tracking-wide ${theme === 'dark' ? 'text-zinc-400' : 'text-zinc-650'}`}>Pilih Font Futuristik:</span>
+                        <div className="grid grid-cols-2 gap-1 select-none max-h-[85px] overflow-y-auto pr-1">
+                          {FUTURISTIC_FONTS.map((font) => (
+                            <button
+                              key={font.id}
+                              type="button"
+                              onClick={() => handleUpdateSticker(activeSelectedSticker.id, { fontFamily: font.id })}
+                              className={`py-1.5 px-2 rounded-lg text-left border text-[10px] transition-all truncate ${
+                                activeSelectedSticker.fontFamily === font.id
+                                  ? 'border-neon-cyan bg-cyan-950/25 text-white font-black'
+                                  : theme === 'dark'
+                                    ? 'border-white/5 bg-zinc-950 text-zinc-400 hover:text-zinc-200 hover:border-white/10'
+                                    : 'border-black/5 bg-black/5 text-zinc-700 hover:text-zinc-950 hover:bg-black/[0.08]'
+                              }`}
+                            >
+                              <span style={{ fontFamily: font.id }}>{font.name}</span>
+                            </button>
+                          ))}
+                        </div>
+                      </div>
+                    )}
+
+                    {activeSelectedSticker.type === 'text' && (
+                      <div className="space-y-1.5">
+                        <span className={`text-[9.5px] font-mono font-bold block uppercase tracking-wide ${theme === 'dark' ? 'text-zinc-400' : 'text-zinc-650'}`}>Pilih Preset Gaya Teks:</span>
+                        <div className="grid grid-cols-4 gap-1 select-none">
+                          {[
+                            { id: 'plain', label: 'Polos' },
+                            { id: 'neon', label: 'Neon' },
+                            { id: 'glitch', label: 'Glitch' },
+                            { id: 'chrome', label: 'Chrome' },
+                            { id: 'hologram', label: 'Holo' },
+                            { id: '3d', label: '3D' },
+                            { id: 'double-neon', label: 'D-Neon' },
+                            { id: 'curved', label: 'Melengkung' }
+                          ].map((style) => (
+                            <button
+                              key={style.id}
+                              type="button"
+                              onClick={() => handleUpdateSticker(activeSelectedSticker.id, { textStyle: style.id as any })}
+                              className={`py-2 px-1 rounded-lg text-center border text-[8px] uppercase tracking-widest font-black transition-all ${
+                                (activeSelectedSticker.textStyle || 'plain') === style.id
+                                  ? 'border-pink-500 bg-pink-500/20 text-white shadow-[0_0_8px_rgba(236,72,153,0.3)]'
+                                  : theme === 'dark'
+                                    ? 'border-white/5 bg-zinc-950 text-zinc-500 hover:text-zinc-300 hover:border-white/10'
+                                    : 'border-black/5 bg-black/5 text-zinc-600 hover:text-zinc-900 hover:bg-black/10'
+                              }`}
+                            >
+                              {style.label}
+                            </button>
+                          ))}
+                        </div>
+                      </div>
+                    )}
+
+                    {/* Scale and Rotation for badge elements as well */}
+                    <div className="space-y-3 font-mono select-none pt-3 border-t border-dashed border-white/5">
+                      <div className="space-y-1">
+                        <div className="flex justify-between items-center text-[9.5px]">
+                          <span className={`${theme === 'dark' ? 'text-zinc-400' : 'text-zinc-650'} font-bold`}>SKALA ELEMEN:</span>
+                          <span className="text-[#00F0FF] font-black">{Math.round(activeSelectedSticker.scale * 100)}%</span>
+                        </div>
+                        <input
+                          type="range"
+                          min="0.1"
+                          max="3.0"
+                          step="0.05"
+                          value={activeSelectedSticker.scale}
+                          onChange={(e) => handleUpdateSticker(activeSelectedSticker.id, { scale: parseFloat(e.target.value) })}
+                          className="w-full h-1 cursor-pointer bg-zinc-850 accent-[#00F0FF]"
+                        />
+                      </div>
+                      
+                      <div className="space-y-1">
+                        <div className="flex justify-between items-center text-[9.5px]">
+                          <span className={`${theme === 'dark' ? 'text-zinc-400' : 'text-zinc-650'} font-bold`}>ROTASI ELEMEN:</span>
+                          <span className="text-[#00F0FF] font-black">{activeSelectedSticker.rotation}°</span>
+                        </div>
+                        <input
+                          type="range"
+                          min="0"
+                          max="360"
+                          step="1"
+                          value={activeSelectedSticker.rotation}
+                          onChange={(e) => handleUpdateSticker(activeSelectedSticker.id, { rotation: parseInt(e.target.value) })}
+                          className="w-full h-1 cursor-pointer bg-zinc-850 accent-[#00F0FF]"
+                        />
+                      </div>
+
+                      <div className="space-y-1.5 pb-2">
+                        <span className={`${theme === 'dark' ? 'text-zinc-400' : 'text-zinc-650'} text-[9.5px] font-bold block`}>EFEK BLEND (BLEND MODE):</span>
+                        <select
+                          value={activeSelectedSticker.blendMode || 'normal'}
+                          onChange={(e) => handleUpdateSticker(activeSelectedSticker.id, { blendMode: e.target.value as any })}
+                          className={`w-full py-1 px-2.5 rounded-lg text-[10px] font-mono focus:outline-none focus:ring-1 focus:ring-[#00F0FF] ${
+                            theme === 'dark'
+                              ? 'bg-zinc-900 border border-white/5 text-white'
+                              : 'bg-white border border-black/10 text-zinc-900'
+                          }`}
+                        >
+                          {['normal', 'multiply', 'screen', 'overlay', 'darken', 'lighten', 'difference', 'color-dodge', 'hue', 'saturation', 'color', 'luminosity'].map(mode => (
+                            <option key={mode} value={mode}>{mode.toUpperCase()}</option>
+                          ))}
+                        </select>
+                      </div>
+                    </div>
+
+                    {/* Color swatch selection */}
+                    <div className={`space-y-1.5 pt-3 border-t border-dashed ${theme === 'dark' ? 'border-white/5' : 'border-black/5'}`}>
+                      <span className={`text-[9.5px] font-mono font-bold block uppercase tracking-wide ${theme === 'dark' ? 'text-zinc-400' : 'text-zinc-650'}`}>Pilih Warna Neon Elemen:</span>
+                      <div className="flex space-x-2">
+                        {STICKER_COLORS.map((color) => (
+                          <button
+                            key={color}
+                            onClick={() => handleUpdateSticker(activeSelectedSticker.id, { color })}
+                            className={`w-6 h-6 rounded-full border transition-all ${
+                              activeSelectedSticker.color === color 
+                                ? 'border-neon-cyan scale-110 shadow-[0_0_8px_rgba(0,240,255,0.45)]' 
+                                : 'border-white/5 hover:scale-105'
+                            }`}
+                            style={{ backgroundColor: color }}
+                          />
+                        ))}
+                      </div>
+                    </div>
+                  </>
+                )}
               </div>
 
               {/* Panel Footer Navigation Helper */}
@@ -2271,7 +2571,7 @@ export default function App() {
             initial={{ opacity: 0, y: 35, scale: 0.96, x: '-50%' }}
             animate={{ opacity: 1, y: 0, scale: 1, x: '-50%' }}
             exit={{ opacity: 0, y: 25, scale: 0.96, x: '-50%' }}
-            transition={{ type: 'spring', damping: 26, stiffness: 340 }}
+            transition={{ type: 'spring', damping: 30, stiffness: 300 }}
             className="fixed bottom-[64px] left-1/2 w-full max-w-lg px-4 z-40"
           >
             <div className={`backdrop-blur-xl rounded-2xl border transition-all duration-300 overflow-hidden flex flex-col h-auto max-h-[85vh] ${
@@ -2291,6 +2591,7 @@ export default function App() {
                 {activeTab === 'filter' && <><Sliders className="w-3.5 h-3.5 text-neon-cyan" /> FILTER ESTETIK</>}
                 {activeTab === 'color' && <><Cpu className="w-3.5 h-3.5 text-neon-cyan" /> KOREKSI WARNA & BLUR</>}
                 {activeTab === 'stickers' && <><Layers className="w-3.5 h-3.5 text-neon-cyan" /> BADGE & DEKORASI</>}
+                {activeTab === 'png_stickers' && <><ImageIcon className="w-3.5 h-3.5 text-neon-cyan animate-pulse" /> GRABBER STIKER PNG</>}
                 {activeTab === 'text' && <><Type className="w-3.5 h-3.5 text-neon-cyan" /> TEKS KUSTOM</>}
                 {activeTab === 'text_preset' && <><Baseline className="w-3.5 h-3.5 text-neon-cyan" /> TEKS ESTETIK</>}
                 {activeTab === 'layers' && <><Layers className="w-3.5 h-3.5 text-neon-cyan" /> MANAJEMEN LAYER</>}
@@ -2556,45 +2857,83 @@ export default function App() {
               )}
 
               {activeTab === 'stickers' && (
-                <StickerSelector
-                  stickers={stickers}
-                  onAddSticker={handleAddSticker}
-                  onUpdateSticker={handleUpdateSticker}
-                  onDeleteSticker={handleDeleteSticker}
-                  neonColor={neonColor}
-                  selectedStickerId={selectedStickerId}
-                  onSelectSticker={setSelectedStickerId}
-                  theme={theme}
-                  modeOnly="sticker"
-                />
+                <motion.div
+                  initial={{ scale: 0.95, opacity: 0 }}
+                  animate={{ scale: 1, opacity: 1 }}
+                  transition={{ type: "spring", stiffness: 300, damping: 25 }}
+                >
+                  <StickerSelector
+                    stickers={stickers}
+                    onAddSticker={handleAddSticker}
+                    onUpdateSticker={handleUpdateSticker}
+                    onDeleteSticker={handleDeleteSticker}
+                    neonColor={neonColor}
+                    selectedStickerId={selectedStickerId}
+                    onSelectSticker={setSelectedStickerId}
+                    theme={theme}
+                    modeOnly="sticker_vector"
+                  />
+                </motion.div>
+              )}
+
+              {activeTab === 'png_stickers' && (
+                <motion.div
+                  initial={{ scale: 0.95, opacity: 0 }}
+                  animate={{ scale: 1, opacity: 1 }}
+                  transition={{ type: "spring", stiffness: 300, damping: 25 }}
+                >
+                  <StickerSelector
+                    stickers={stickers}
+                    onAddSticker={handleAddSticker}
+                    onUpdateSticker={handleUpdateSticker}
+                    onDeleteSticker={handleDeleteSticker}
+                    neonColor={neonColor}
+                    selectedStickerId={selectedStickerId}
+                    onSelectSticker={setSelectedStickerId}
+                    theme={theme}
+                    modeOnly="png_sticker"
+                  />
+                </motion.div>
               )}
 
               {activeTab === 'text' && (
-                <StickerSelector
-                  stickers={stickers}
-                  onAddSticker={handleAddSticker}
-                  onUpdateSticker={handleUpdateSticker}
-                  onDeleteSticker={handleDeleteSticker}
-                  neonColor={neonColor}
-                  selectedStickerId={selectedStickerId}
-                  onSelectSticker={setSelectedStickerId}
-                  theme={theme}
-                  modeOnly="text_custom"
-                />
+                <motion.div
+                  initial={{ scale: 0.95, opacity: 0 }}
+                  animate={{ scale: 1, opacity: 1 }}
+                  transition={{ type: "spring", stiffness: 300, damping: 25 }}
+                >
+                  <StickerSelector
+                    stickers={stickers}
+                    onAddSticker={handleAddSticker}
+                    onUpdateSticker={handleUpdateSticker}
+                    onDeleteSticker={handleDeleteSticker}
+                    neonColor={neonColor}
+                    selectedStickerId={selectedStickerId}
+                    onSelectSticker={setSelectedStickerId}
+                    theme={theme}
+                    modeOnly="text_custom"
+                  />
+                </motion.div>
               )}
 
               {activeTab === 'text_preset' && (
-                <StickerSelector
-                  stickers={stickers}
-                  onAddSticker={handleAddSticker}
-                  onUpdateSticker={handleUpdateSticker}
-                  onDeleteSticker={handleDeleteSticker}
-                  neonColor={neonColor}
-                  selectedStickerId={selectedStickerId}
-                  onSelectSticker={setSelectedStickerId}
-                  theme={theme}
-                  modeOnly="text_preset"
-                />
+                <motion.div
+                  initial={{ scale: 0.95, opacity: 0 }}
+                  animate={{ scale: 1, opacity: 1 }}
+                  transition={{ type: "spring", stiffness: 300, damping: 25 }}
+                >
+                  <StickerSelector
+                    stickers={stickers}
+                    onAddSticker={handleAddSticker}
+                    onUpdateSticker={handleUpdateSticker}
+                    onDeleteSticker={handleDeleteSticker}
+                    neonColor={neonColor}
+                    selectedStickerId={selectedStickerId}
+                    onSelectSticker={setSelectedStickerId}
+                    theme={theme}
+                    modeOnly="text_preset"
+                  />
+                </motion.div>
               )}
 
               {activeTab === 'layers' && (
@@ -2845,6 +3184,46 @@ export default function App() {
                       💬 SLOGAN AI
                     </button>
                   </div>
+
+                  {aiMode === 'image' && (
+                    <div className="space-y-1.5 p-2 rounded-xl bg-black/35 border border-white/5 shadow-sm">
+                      <span className={`text-[8.5px] font-mono tracking-wider block uppercase ${
+                        theme === 'dark' ? 'text-zinc-500' : 'text-zinc-600 font-bold'
+                      }`}>
+                        ⚙️ ENGINE GENERATOR AI:
+                      </span>
+                      <div className="flex gap-1.5">
+                        <button
+                          type="button"
+                          onClick={() => { setAiEngine('gemini'); setAiError(null); }}
+                          className={`flex-1 py-1 px-1.5 rounded-lg border text-[9px] font-bold tracking-wider uppercase transition-all flex items-center justify-center gap-1 ${
+                            aiEngine === 'gemini'
+                              ? 'border-amber-450/40 bg-amber-400/10 text-amber-300 font-black shadow-[0_0_8px_rgba(251,191,36,0.1)]'
+                              : theme === 'dark'
+                                ? 'border-white/5 bg-zinc-900/40 text-zinc-550 hover:text-zinc-300 hover:border-white/10'
+                                : 'border-black/5 bg-black/5 text-zinc-500 hover:text-zinc-850 hover:bg-black/10'
+                          }`}
+                        >
+                          <Sparkles className="w-2.5 h-2.5 text-amber-400" />
+                          GEMINI 3.5 AI
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => { setAiEngine('nufat'); setAiError(null); }}
+                          className={`flex-1 py-1 px-1.5 rounded-lg border text-[9px] font-bold tracking-wider uppercase transition-all flex items-center justify-center gap-1 ${
+                            aiEngine === 'nufat'
+                              ? 'border-[#00F0FF]/40 bg-[#00F0FF]/10 text-[#00F0FF] font-black shadow-[0_0_8px_rgba(0,240,255,0.15)]'
+                              : theme === 'dark'
+                                ? 'border-white/5 bg-zinc-900/40 text-zinc-550 hover:text-zinc-300 hover:border-white/10'
+                                : 'border-black/5 bg-black/5 text-zinc-500 hover:text-zinc-850 hover:bg-black/10'
+                          }`}
+                        >
+                          <Cpu className="w-2.5 h-2.5 text-cyan-400" />
+                          WEBSPY NUFAT API
+                        </button>
+                      </div>
+                    </div>
+                  )}
 
                   <div className="space-y-1">
                     <label className={`text-[9px] font-mono tracking-wider block uppercase ${
@@ -3197,6 +3576,18 @@ export default function App() {
               >
                 <Layers className="w-4 h-4" />
                 <span className="text-[8px] uppercase tracking-wider font-extrabold">BADGE</span>
+              </button>
+
+              <button
+                onClick={() => setActiveTab(activeTab === 'png_stickers' ? null : 'png_stickers')}
+                className={`snap-center flex-shrink-0 px-3.5 py-1.5 rounded-xl font-mono text-xs font-bold tracking-widest transition-all duration-150 flex flex-col items-center justify-center space-y-1 min-w-[76px] ${
+                  activeTab === 'png_stickers'
+                    ? 'bg-[#00F0FF]/25 text-[#00F0FF] border-t-2 border-[#00F0FF] shadow-[0_0_15px_rgba(0,240,255,0.25)]'
+                    : 'text-zinc-450 hover:text-zinc-200 hover:bg-white/5'
+                }`}
+              >
+                <ImageIcon className="w-4 h-4 text-[#00F0FF]" />
+                <span className="text-[8px] uppercase tracking-wider font-extrabold">PNG STIKER</span>
               </button>
 
               <button
@@ -4322,6 +4713,75 @@ export default function App() {
               </div>
             </motion.div>
           </div>
+        )}
+      </AnimatePresence>
+
+      {/* High Definition Canvas Rendering & Export Progress Overlay */}
+      <AnimatePresence>
+        {hdExportProgress !== null && (
+          <motion.div
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-zinc-950/95 backdrop-blur-md"
+          >
+            <motion.div
+              initial={{ scale: 0.9, y: 15 }}
+              animate={{ scale: 1, y: 0 }}
+              exit={{ scale: 0.9, y: 15 }}
+              className="relative w-full max-w-sm p-6 rounded-2xl bg-zinc-900 border border-zinc-800/80 shadow-[0_0_35px_rgba(0,240,255,0.15)] flex flex-col items-center"
+            >
+              {/* Corner Accents */}
+              <div className="absolute top-0 left-0 w-4 h-4 border-t-2 border-l-2 border-neon-cyan"></div>
+              <div className="absolute top-0 right-0 w-4 h-4 border-t-2 border-r-2 border-neon-cyan"></div>
+              <div className="absolute bottom-0 left-0 w-4 h-4 border-b-2 border-l-2 border-neon-cyan"></div>
+              <div className="absolute bottom-0 right-0 w-4 h-4 border-b-2 border-r-2 border-neon-cyan"></div>
+
+              {/* Glowing Indicator Core */}
+              <div className="relative mb-6 mt-2 flex items-center justify-center">
+                <div className="absolute inset-x-0 w-16 h-16 rounded-full bg-neon-cyan/10 animate-ping"></div>
+                <div className="relative w-16 h-16 rounded-full border border-neon-cyan/25 flex items-center justify-center bg-zinc-950">
+                  <Cpu className="w-8 h-8 text-neon-cyan animate-spin" />
+                </div>
+              </div>
+
+              {/* Title & Status */}
+              <h3 className="font-display text-md font-extrabold tracking-wider text-white text-center uppercase mb-1">
+                MEMPROSES EXPORT 4K/HD
+              </h3>
+              <p className="font-mono text-[9px] tracking-widest text-neon-cyan text-center uppercase mb-5 animate-pulse">
+                SISTEM UTAMA RENDERING PIXEL AKTIF
+              </p>
+
+              {/* Progress Text */}
+              <p className="font-sans text-[11px] text-zinc-400 text-center capitalize mb-4 min-h-[3ch] px-2 leading-relaxed">
+                {hdExportStatus}
+              </p>
+
+              {/* Progress Bar Track */}
+              <div className="w-full bg-zinc-950/80 rounded-full border border-zinc-800 p-1 mb-2">
+                <div className="relative h-3 w-full rounded-full bg-zinc-900 overflow-hidden">
+                  {/* Animated Progress Fill */}
+                  <motion.div
+                    initial={{ width: "0%" }}
+                    animate={{ width: `${hdExportProgress}%` }}
+                    transition={{ duration: 0.25, ease: "easeOut" }}
+                    className="h-full rounded-full bg-gradient-to-r from-[#00F0FF] via-cyan-500 to-indigo-500 shadow-[0_0_12px_rgba(0,240,255,0.4)]"
+                  />
+                </div>
+              </div>
+
+              {/* Progress Labels */}
+              <div className="w-full flex justify-between items-center px-1">
+                <span className="font-mono text-[8px] text-zinc-500 uppercase tracking-widest">
+                  ALGORITMA: HD-COMPILE
+                </span>
+                <span className="font-mono text-xs text-neon-cyan font-bold tracking-widest">
+                  {hdExportProgress}%
+                </span>
+              </div>
+            </motion.div>
+          </motion.div>
         )}
       </AnimatePresence>
 

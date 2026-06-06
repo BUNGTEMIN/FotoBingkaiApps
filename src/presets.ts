@@ -93,6 +93,66 @@ export const FILTER_PRESETS: FilterPreset[] = [
       saturate: 125,
       hueRotate: 15,
     }
+  },
+  {
+    id: 'retro-gold',
+    name: 'Neon Gold Luxury',
+    description: 'Tampilan tajam dengan rona emas berkelas & kontras mewah',
+    settings: {
+      brightness: 110,
+      contrast: 135,
+      saturate: 145,
+      hueRotate: 40,
+    },
+    glowColor: '#ffd700'
+  },
+  {
+    id: 'sapphire',
+    name: 'Sapphire Electric',
+    description: 'Warna biru kristal safir yang elektrik & fiksi ilmiah tajam',
+    settings: {
+      brightness: 105,
+      contrast: 125,
+      saturate: 150,
+      hueRotate: 200,
+    },
+    glowColor: '#00d2ff'
+  },
+  {
+    id: 'vaporwave',
+    name: 'Vaporwave Dream',
+    description: 'Rona fantasi pastel merah muda & ungu yang santai',
+    settings: {
+      brightness: 115,
+      contrast: 105,
+      saturate: 155,
+      hueRotate: 300,
+    },
+    glowColor: '#ff71ce'
+  },
+  {
+    id: 'emerald-glitch',
+    name: 'Emerald Matrix',
+    description: 'Rona hijau zamrud berkilau dengan efek matriks siber',
+    settings: {
+      brightness: 100,
+      contrast: 130,
+      saturate: 120,
+      hueRotate: 120,
+    },
+    glowColor: '#00ff66'
+  },
+  {
+    id: 'solar-flare',
+    name: 'Solar Cyber Orange',
+    description: 'Semburan jingga energi matahari yang membara & tangguh',
+    settings: {
+      brightness: 110,
+      contrast: 140,
+      saturate: 175,
+      hueRotate: 20,
+    },
+    glowColor: '#ff6b00'
   }
 ];
 

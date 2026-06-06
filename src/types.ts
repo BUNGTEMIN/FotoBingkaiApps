@@ -14,14 +14,20 @@ export interface PlacedSticker {
   type: 'sticker' | 'text';
   text?: string;
   fontFamily?: string; // e.g. 'Orbitron', 'Space Grotesk'
-  textStyle?: 'neon' | 'chrome' | 'glitch' | 'hologram' | 'plain' | '3d' | 'double-neon' | 'curved';
+  textStyle?: 'neon' | 'chrome' | 'glitch' | 'hologram' | 'plain' | '3d' | 'double-neon' | 'curved' | 'glassmorphism' | 'futuristic' | 'claymorphism' | 'funny' | 'brutalist' | 'sunset' | 'cosmic' | 'neo-mint' | 'terracotta' | 'nordic';
+  letterSpacing?: number; // Added letter spacing property
   stickerId?: string; // id from preset stickers
+  imageUrl?: string; // custom upload or external URL for image-based PNG stickers
   x: number; // percentage (0 - 100)
   y: number; // percentage (0 - 100)
   scale: number;
   rotation: number; // degrees (0 - 360)
   color?: string;
   isLocked?: boolean;
+  blendMode?: 'normal' | 'multiply' | 'screen' | 'overlay' | 'darken' | 'lighten' | 'color-dodge' | 'color-burn' | 'hard-light' | 'soft-light' | 'difference' | 'exclusion' | 'hue' | 'saturation' | 'color' | 'luminosity';
+  opacity?: number; // range 0 to 1
+  flipH?: boolean;
+  flipV?: boolean;
 }
 
 export interface PresetSticker {

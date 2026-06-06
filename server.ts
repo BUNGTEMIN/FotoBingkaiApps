@@ -41,14 +41,35 @@ async function startServer() {
   // API Routes
   app.post("/api/ai/image", async (req, res) => {
     try {
-      const { prompt } = req.body;
+      const { prompt, engine } = req.body;
       if (!prompt) {
         return res.status(400).json({ error: "Prompt is required" });
+      }
+
+      if (engine === "nufat") {
+        console.log(`[Engine Nufat] Generating from webspy.nufat.id API with prompt: ${prompt}`);
+        const nufatApiUrl = `https://webspy.nufat.id/api/img?prompt=${encodeURIComponent(prompt)}`;
+        
+        try {
+          const response = await fetch(nufatApiUrl);
+          if (response.ok) {
+            const contentType = response.headers.get("content-type") || "image/jpeg";
+            const arrayBuffer = await response.arrayBuffer();
+            const buffer = Buffer.from(arrayBuffer);
+            const base64Bytes = buffer.toString("base64");
+            
+            const dataUrl = `data:${contentType};base64,${base64Bytes}`;
+            return res.json({ image: dataUrl });
+          }
+          console.warn(`[Engine Nufat] API failed with status ${response.status}. Defaulting to Gemini.`);
+        } catch (err) {
+          console.error(`[Engine Nufat] API error: ${err}. Defaulting to Gemini.`);
+        }
       }
       
       if (!ai) {
         return res.status(503).json({ 
-          error: "Sistem AI belum siap. Silakan pasang GEMINI_API_KEY di Settings > Secrets." 
+          error: "Sistem AI belum siap. Silakan pasang GEMINI_API_KEY di Settings > Secrets atau ganti ke Engine Webspy Nufat." 
         });
       }
 
@@ -705,6 +726,36 @@ You must return a valid JSON object matching this structure EXACTLY:
         category: "Hacker"
       }
     ]);
+  });
+
+  // GET Route to fetch PNG sticker list from external API
+  app.get("/api/external-png-list", async (req, res) => {
+    try {
+      console.log(`[Proxy PNG List] Fetching from external API...`);
+      const response = await fetch("https://dev.bungtemin.net/api/drive/list");
+      
+      if (!response.ok) {
+        throw new Error(`Failed to fetch: ${response.statusText}`);
+      }
+      
+      const payload: any = await response.json();
+      
+      // The API returns { success: true, folderId: '...', count: 1, data: [...] }
+      // Or it might be a direct array
+      const list = Array.isArray(payload) ? payload : (payload && Array.isArray(payload.data) ? payload.data : []);
+      
+      const normalized = list.map((item: any, idx: number) => ({
+        id: item.id || `remote-${idx}-${Date.now()}`,
+        name: item.name || `Sticker ${idx}`,
+        url: item.src || item.url || item.link,
+        desc: item.description || item.desc || "External PNG sticker"
+      }));
+
+      return res.json(normalized);
+    } catch (err: any) {
+      console.warn("[Proxy PNG List] Failed, returning empty list:", err?.message);
+      return res.json([]);
+    }
   });
 
   // Vite server connection

@@ -55,7 +55,10 @@ export const resolveApiUrl = (apiPath: string): string => {
   // Use absolute backend URL ONLY if hosted on an external static domain (like Firebase/web.app)
   // If we are already on localhost or the native Cloud Run url (*.run.app), we can safely use relative paths.
   if (!host.includes('localhost') && !host.includes('127.0.0.1') && !host.includes('.run.app')) {
-    const cloudRunBaseUrl = 'https://ais-pre-h437zomktk5zw36hxyzbwi-844303505958.asia-southeast1.run.app';
+    const isDevMode = import.meta.env.DEV;
+    const cloudRunBaseUrl = isDevMode
+      ? 'https://ais-dev-h437zomktk5zw36hxyzbwi-844303505958.asia-southeast1.run.app'
+      : 'https://ais-pre-h437zomktk5zw36hxyzbwi-844303505958.asia-southeast1.run.app';
     return `${cloudRunBaseUrl}${apiPath}`;
   }
   return apiPath;
@@ -70,7 +73,10 @@ export const loadImage = (src: string, isCrossOrigin = true): Promise<HTMLImageE
     
     // Only proxy actual http/https external URLs that point to different origins
     // Wait, if it's already an absolute URL to our own backend, we don't need to proxy it twice.
-    if (src.startsWith('http') && !src.includes(window.location.hostname)) {
+    const host = window.location.hostname;
+    const isFirebaseHost = host.includes('qcc-online.web.app') || host.includes('web.app') || host.includes('firebaseapp.com') || host.includes('nufat.id');
+
+    if (src.startsWith('http') && !src.includes(window.location.hostname) && !isFirebaseHost) {
       finalSrc = resolveApiUrl(`/api/proxy-image?url=${encodeURIComponent(src)}`);
       isUsingProxy = true;
     }
@@ -343,28 +349,38 @@ export const renderToCanvas = async (
 
       const sSize = item.scale * 150; // Reference sticker size
 
-      if (item.type === 'sticker' && item.stickerId) {
-        const path = params.presetStickerSvgPaths[item.stickerId];
-        if (path) {
-          ctx.strokeStyle = item.color || params.neonColor;
-          ctx.lineWidth = 4;
-          ctx.lineCap = 'round';
-          ctx.lineJoin = 'round';
-          
-          // Render simple SVG Path beautifully scaled
-          const p = new Path2D(path);
-          ctx.save();
-          ctx.scale(sSize/100, sSize/100);
-          ctx.translate(-50, -50); // center path
-          ctx.stroke(p);
-          
-          // Add double glowing stroke path
-          ctx.shadowColor = item.color || params.neonColor;
-          ctx.shadowBlur = 10;
-          ctx.strokeStyle = '#ffffff';
-          ctx.lineWidth = 1.5;
-          ctx.stroke(p);
-          ctx.restore();
+      if (item.type === 'sticker') {
+        if (item.stickerId) {
+          const path = params.presetStickerSvgPaths[item.stickerId];
+          if (path) {
+            ctx.strokeStyle = item.color || params.neonColor;
+            ctx.lineWidth = 4;
+            ctx.lineCap = 'round';
+            ctx.lineJoin = 'round';
+            
+            // Render simple SVG Path beautifully scaled
+            const p = new Path2D(path);
+            ctx.save();
+            ctx.scale(sSize/100, sSize/100);
+            ctx.translate(-50, -50); // center path
+            ctx.stroke(p);
+            
+            // Add double glowing stroke path
+            ctx.shadowColor = item.color || params.neonColor;
+            ctx.shadowBlur = 10;
+            ctx.strokeStyle = '#ffffff';
+            ctx.lineWidth = 1.5;
+            ctx.stroke(p);
+            ctx.restore();
+          }
+        } else if (item.imageUrl) {
+          try {
+            // Load and draw image sticker
+            const stickerImg = await loadImage(item.imageUrl, true);
+            ctx.drawImage(stickerImg, -sSize / 2, -sSize / 2, sSize, sSize);
+          } catch (err) {
+            console.error('Gagal memuat stiker gambar kustom pada canvas:', err);
+          }
         }
       } else if (item.type === 'text' && item.text) {
         const textToDraw = item.text.toUpperCase();
