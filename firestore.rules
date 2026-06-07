@@ -55,5 +55,14 @@ service cloud.firestore {
       allow create: if request.auth != null && request.auth.uid == request.resource.data.userId;
       allow update: if false;
     }
+
+    // AI Effect Originals & Variants
+    match /ai_effect_originals/{docId} {
+      allow read, write: if true;
+    }
+
+    match /ai_effect_variants/{docId} {
+      allow read, write: if true;
+    }
   }
 }

@@ -1,6 +1,7 @@
 import { initializeApp } from 'firebase/app';
 import { getAuth } from 'firebase/auth';
 import { initializeFirestore } from 'firebase/firestore';
+import { getStorage } from 'firebase/storage';
 import firebaseConfig from '../firebase-applet-config.json';
 
 // Initialize Firebase
@@ -9,6 +10,7 @@ export const db = initializeFirestore(app, {
   experimentalForceLongPolling: true,
 }, (firebaseConfig as any).firestoreDatabaseId); /* CRITICAL: The app will break without this line */
 export const auth = getAuth();
+export const fbStorage = getStorage(app);
 
 // Error handler interfaces aligned with firebase-integration skill
 export enum OperationType {

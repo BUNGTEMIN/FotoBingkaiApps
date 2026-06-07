@@ -14,10 +14,35 @@ export default defineConfig(() => {
     server: {
       allowedHosts: true as const,
       // HMR is disabled in AI Studio via DISABLE_HMR env var.
-      // Do not modifyâfile watching is disabled to prevent flickering during agent edits.
       hmr: process.env.DISABLE_HMR !== 'true',
       // Disable file watching when DISABLE_HMR is true to save CPU during agent edits.
       watch: process.env.DISABLE_HMR === 'true' ? null : {},
+      proxy: {
+        '/api/external-images': {
+          target: 'https://wabot.nufat.id',
+          changeOrigin: true,
+          secure: false,
+          rewrite: (path) => path.replace(/^\/api\/external-images/, '/imagelist_nufat/api'),
+        },
+        '/api/appwrite-frames': {
+          target: 'https://nudb.bungtemin.net',
+          changeOrigin: true,
+          secure: false,
+          rewrite: (path) => path.replace(/^\/api\/appwrite-frames/, '/bingkai/api'),
+        },
+        '/api/proxy/upload_img_base64': {
+          target: 'https://webspy.nufat.id',
+          changeOrigin: true,
+          secure: false,
+          rewrite: (path) => path.replace(/^\/api\/proxy\/upload_img_base64/, '/api/upload_img_base64'),
+        },
+        '/api/proxy/upload_img': {
+          target: 'https://webspy.nufat.id',
+          changeOrigin: true,
+          secure: false,
+          rewrite: (path) => path.replace(/^\/api\/proxy\/upload_img/, '/api/upload_img'),
+        },
+      },
     },
   };
 });

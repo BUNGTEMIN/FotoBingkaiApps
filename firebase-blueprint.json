@@ -48,12 +48,66 @@
         }
       },
       "required": ["id", "fileName", "imageUrl", "format", "size", "downloadedAt"]
+    },
+    "ai_effect_original": {
+      "title": "AI Effect Original",
+      "description": "Original image referenced by an image ID",
+      "type": "object",
+      "properties": {
+        "parentId": {
+          "type": "string",
+          "description": "The custom parent image ID"
+        },
+        "src": {
+          "type": "string",
+          "description": "The full source data URL or public storage URL"
+        },
+        "timestamp": {
+          "type": "string",
+          "format": "date-time",
+          "description": "Server timestamp of creation"
+        }
+      },
+      "required": ["parentId", "src"]
+    },
+    "ai_effect_variant": {
+      "title": "AI Effect Variant",
+      "description": "Generated AI style variant of an original image",
+      "type": "object",
+      "properties": {
+        "parentId": {
+          "type": "string",
+          "description": "Associated original image ID"
+        },
+        "url": {
+          "type": "string",
+          "description": "Storage URL or public URL of the variant"
+        },
+        "prompt": {
+          "type": "string",
+          "description": "The prompt used for styling"
+        },
+        "timestamp": {
+          "type": "string",
+          "format": "date-time",
+          "description": "Server timestamp of variation creation"
+        }
+      },
+      "required": ["parentId", "url", "prompt"]
     }
   },
   "firestore": {
     "downloads/{downloadId}": {
       "schema": "download",
       "description": "A collection containing records of downloaded images"
+    },
+    "ai_effect_originals/{docId}": {
+      "schema": "ai_effect_original",
+      "description": "Original user images for AI processing"
+    },
+    "ai_effect_variants/{docId}": {
+      "schema": "ai_effect_variant",
+      "description": "Generated stylistic AI variants of user images"
     }
   }
 }
