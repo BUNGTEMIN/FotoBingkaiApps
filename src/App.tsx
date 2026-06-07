@@ -27,7 +27,7 @@ import { DeleteConfirmationModal } from './components/DeleteConfirmationModal';
 import { Frame, ImageSettings, PlacedSticker } from './types';
 import { FRAMES, FILTER_PRESETS, PRESET_STICKERS } from './presets';
 import { renderToCanvas, resolveApiUrl, compressImage, ensureFullSvg } from './canvasUtils';
-import { storage, BUCKET_ID, databases, DATABASE_ID, COLLECTION_ID, Query, ID } from './appwrite';
+import { storage, BUCKET_ID, databases, DATABASE_ID, COLLECTION_ID, Query, ID, ensureAppwriteBucketExists } from './appwrite';
 
 // Helper functions to resolve API endpoints dynamically.
 // In dev environments/AI Studio container, they route through Vite's built-in dev proxy.
@@ -1277,17 +1277,49 @@ export default function App() {
           let downloadUrl = '';
 
           try {
-            if (!BUCKET_ID) {
+            const userPrefix = user?.email ? user.email.split('@')[0].toLowerCase().replace(/[^a-z0-9_.-]/g, '') : '';
+            let activeBucketId = userPrefix || BUCKET_ID;
+
+            if (!activeBucketId) {
               throw new Error('VITE_APPWRITE_BUCKET_ID belum dikonfigurasi di panel Secrets sayang!');
             }
             const fileId = ID.unique();
-            const uploadResult = await storage.createFile(BUCKET_ID, fileId, file);
-            const viewUrlObj = storage.getFileView(BUCKET_ID, uploadResult.$id) as any;
-            downloadUrl = typeof viewUrlObj === 'string' ? viewUrlObj : (viewUrlObj?.href || viewUrlObj?.toString() || '');
-            directUploadSuccess = !!downloadUrl;
-            if (directUploadSuccess && uploadResult?.$id) {
-              setLastAppwriteFileId(uploadResult.$id);
-              localStorage.setItem('bt_last_appwrite_file_id', uploadResult.$id);
+            let uploadResult;
+            try {
+              let bucketReady = true;
+              if (userPrefix && activeBucketId !== BUCKET_ID) {
+                // Pastikan bucket sudah ada atau dibuat secara dinamis sebelum mengunggah sayang
+                bucketReady = await ensureAppwriteBucketExists(activeBucketId, `Bucket ${userPrefix}`);
+              }
+              
+              if (!bucketReady && BUCKET_ID) {
+                console.warn(`[Appwrite] Bucket pribadi '${userPrefix}' tidak siap. Mengalihkan ke standard bucket: ${BUCKET_ID}`);
+                activeBucketId = BUCKET_ID;
+              }
+
+              console.log(`[Appwrite] Mencoba mengunggah ke target bucket: ${activeBucketId}`);
+              uploadResult = await storage.createFile(activeBucketId, fileId, file);
+              directUploadSuccess = true;
+            } catch (err: any) {
+              // Jika bucket pribadi belum terbuat atau error, otomatis alihkan ke bucket standar agar tidak gagal sayang
+              if (userPrefix && activeBucketId !== BUCKET_ID && BUCKET_ID) {
+                console.warn(`[Appwrite] Mengunggah ke bucket pribadi '${userPrefix}' gagal (${err?.message || err}). Mengalihkan ke standard fallback bucket: ${BUCKET_ID}`);
+                uploadResult = await storage.createFile(BUCKET_ID, fileId, file);
+                directUploadSuccess = true;
+              } else {
+                throw err;
+              }
+            }
+
+            if (directUploadSuccess && uploadResult) {
+              const usedBucketId = uploadResult.bucketId || activeBucketId;
+              const viewUrlObj = storage.getFileView(usedBucketId, uploadResult.$id) as any;
+              downloadUrl = typeof viewUrlObj === 'string' ? viewUrlObj : (viewUrlObj?.href || viewUrlObj?.toString() || '');
+              
+              if (uploadResult?.$id) {
+                setLastAppwriteFileId(uploadResult.$id);
+                localStorage.setItem('bt_last_appwrite_file_id', uploadResult.$id);
+              }
             }
           } catch (storageErr: any) {
             console.warn('Appwrite Storage direct upload blocked or failed. Switching to Firestore fallback...', storageErr);
@@ -1376,17 +1408,49 @@ export default function App() {
 
       try {
         // Try Appwrite Storage first
-        if (!BUCKET_ID) {
+        const userPrefix = user?.email ? user.email.split('@')[0].toLowerCase().replace(/[^a-z0-9_.-]/g, '') : '';
+        let activeBucketId = userPrefix || BUCKET_ID;
+
+        if (!activeBucketId) {
           throw new Error('VITE_APPWRITE_BUCKET_ID belum dikonfigurasi di panel Secrets sayang!');
         }
         const fileId = ID.unique();
-        const uploadResult = await storage.createFile(BUCKET_ID, fileId, file);
-        const viewUrlObj = storage.getFileView(BUCKET_ID, uploadResult.$id) as any;
-        downloadUrl = typeof viewUrlObj === 'string' ? viewUrlObj : (viewUrlObj?.href || viewUrlObj?.toString() || '');
-        directUploadSuccess = !!downloadUrl;
-        if (directUploadSuccess && uploadResult?.$id) {
-          setLastAppwriteFileId(uploadResult.$id);
-          localStorage.setItem('bt_last_appwrite_file_id', uploadResult.$id);
+        let uploadResult;
+        try {
+          let bucketReady = true;
+          if (userPrefix && activeBucketId !== BUCKET_ID) {
+            // Ambil atau buat bucket secara dinamis sebelum mengunggah sayang
+            bucketReady = await ensureAppwriteBucketExists(activeBucketId, `Bucket ${userPrefix}`);
+          }
+
+          if (!bucketReady && BUCKET_ID) {
+            console.warn(`[Appwrite Async Sync] Bucket pribadi '${userPrefix}' tidak siap. Mengalihkan ke standard bucket: ${BUCKET_ID}`);
+            activeBucketId = BUCKET_ID;
+          }
+
+          console.log(`[Appwrite Async Sync] Mencoba mengunggah ke target bucket: ${activeBucketId}`);
+          uploadResult = await storage.createFile(activeBucketId, fileId, file);
+          directUploadSuccess = true;
+        } catch (err: any) {
+          // Jika bucket pribadi gagal, alihkan kembali ke bucket standar
+          if (userPrefix && activeBucketId !== BUCKET_ID && BUCKET_ID) {
+            console.warn(`[Appwrite Async Sync] Mengunggah ke bucket pribadi '${userPrefix}' gagal (${err?.message || err}). Mengalihkan ke standard fallback bucket: ${BUCKET_ID}`);
+            uploadResult = await storage.createFile(BUCKET_ID, fileId, file);
+            directUploadSuccess = true;
+          } else {
+            throw err;
+          }
+        }
+
+        if (directUploadSuccess && uploadResult) {
+          const usedBucketId = uploadResult.bucketId || activeBucketId;
+          const viewUrlObj = storage.getFileView(usedBucketId, uploadResult.$id) as any;
+          downloadUrl = typeof viewUrlObj === 'string' ? viewUrlObj : (viewUrlObj?.href || viewUrlObj?.toString() || '');
+          
+          if (uploadResult?.$id) {
+            setLastAppwriteFileId(uploadResult.$id);
+            localStorage.setItem('bt_last_appwrite_file_id', uploadResult.$id);
+          }
         }
       } catch (storageErr: any) {
         console.warn('Manual Appwrite Storage sync failed. Falling back to Firestore...', storageErr);
@@ -4202,6 +4266,28 @@ export default function App() {
                       </div>
                       <span className="text-[7.5px] font-sans text-zinc-400 block leading-relaxed uppercase">
                         * Semua gambar original & variasi hasil AI akan dikaitkan dengan ID siber ini di database Firebase Cloud.
+                      </span>
+                    </div>
+
+                    {/* Appwrite Target Bucket Indicator */}
+                    <div className="space-y-1.5 bg-black/40 p-2.5 rounded-lg border border-white/5">
+                      <label className="text-[9px] font-mono uppercase text-neon-cyan font-bold flex items-center justify-between">
+                        <span>☁️ Target Bucket Appwrite:</span>
+                      </label>
+                      <div className="flex items-center gap-2">
+                        <span className="flex-1 bg-black/60 border border-[#00F0FF]/10 rounded-lg px-2 py-1.5 text-xs text-zinc-300 font-mono text-center truncate">
+                          {user?.email 
+                            ? `${user.email.split('@')[0].toLowerCase().replace(/[^a-z0-9_.-]/g, '')}` 
+                            : `${BUCKET_ID || 'tidak diset'}`}
+                        </span>
+                        <div className={`text-[8px] px-1.5 py-0.5 rounded font-mono uppercase font-bold select-none ${user?.email ? 'bg-[#00F0FF]/15 text-[#00F0FF]' : 'bg-zinc-800 text-zinc-400'}`}>
+                          {user?.email ? '🟢 PERSONAL' : '⚪ STANDAR'}
+                        </div>
+                      </div>
+                      <span className="text-[7.5px] font-sans text-zinc-400 block leading-relaxed uppercase">
+                        {user?.email 
+                          ? `* Masuk sebagai ${user.email}. Berkas otomatis dikirim ke bucket pribadi: "${user.email.split('@')[0].toLowerCase().replace(/[^a-z0-9_.-]/g, '')}"!` 
+                          : `* Belum masuk log. Foto akan diunggah ke bucket standar "${BUCKET_ID || 'default'}" sayang.`}
                       </span>
                     </div>
 
