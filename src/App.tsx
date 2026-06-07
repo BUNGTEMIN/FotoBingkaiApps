@@ -724,6 +724,9 @@ export default function App() {
   const [aiEffectImgId, setAiEffectImgId] = useState<string>(() => {
     return localStorage.getItem('bt_ai_effect_img_id') || `IMG-${Math.random().toString(36).substring(2, 8).toUpperCase()}`;
   });
+  const [lastAppwriteFileId, setLastAppwriteFileId] = useState<string>(() => {
+    return localStorage.getItem('bt_last_appwrite_file_id') || '';
+  });
   const aiEffectServer = 'firebase';
   const [aiEffectVariants, setAiEffectVariants] = useState<any[]>([]);
   const [isSyncingOriginal, setIsSyncingOriginal] = useState(false);
@@ -1282,6 +1285,10 @@ export default function App() {
             const viewUrlObj = storage.getFileView(BUCKET_ID, uploadResult.$id) as any;
             downloadUrl = typeof viewUrlObj === 'string' ? viewUrlObj : (viewUrlObj?.href || viewUrlObj?.toString() || '');
             directUploadSuccess = !!downloadUrl;
+            if (directUploadSuccess && uploadResult?.$id) {
+              setLastAppwriteFileId(uploadResult.$id);
+              localStorage.setItem('bt_last_appwrite_file_id', uploadResult.$id);
+            }
           } catch (storageErr: any) {
             console.warn('Appwrite Storage direct upload blocked or failed. Switching to Firestore fallback...', storageErr);
           }
@@ -1377,6 +1384,10 @@ export default function App() {
         const viewUrlObj = storage.getFileView(BUCKET_ID, uploadResult.$id) as any;
         downloadUrl = typeof viewUrlObj === 'string' ? viewUrlObj : (viewUrlObj?.href || viewUrlObj?.toString() || '');
         directUploadSuccess = !!downloadUrl;
+        if (directUploadSuccess && uploadResult?.$id) {
+          setLastAppwriteFileId(uploadResult.$id);
+          localStorage.setItem('bt_last_appwrite_file_id', uploadResult.$id);
+        }
       } catch (storageErr: any) {
         console.warn('Manual Appwrite Storage sync failed. Falling back to Firestore...', storageErr);
       }
@@ -4193,6 +4204,39 @@ export default function App() {
                         * Semua gambar original & variasi hasil AI akan dikaitkan dengan ID siber ini di database Firebase Cloud.
                       </span>
                     </div>
+
+                    {lastAppwriteFileId && (
+                      <div className="space-y-1.5 bg-[#00F0FF]/5 p-2.5 rounded-lg border border-[#00F0FF]/15 animate-fade-in">
+                        <label className="text-[9px] font-mono uppercase text-neon-cyan font-bold flex items-center justify-between">
+                          <span>📦 ID Berkas Appwrite Terakhir:</span>
+                        </label>
+                        <div className="flex gap-2">
+                          <span className="flex-1 bg-black/60 border border-[#00F0FF]/10 rounded-lg px-2 py-1.5 text-xs text-zinc-300 font-mono text-center select-all truncate">
+                            {lastAppwriteFileId}
+                          </span>
+                        </div>
+                        <div className="flex justify-between gap-1.5 mt-1">
+                          <button
+                            onClick={() => {
+                              navigator.clipboard.writeText(lastAppwriteFileId);
+                              triggerToast('SISTEM: ID Berkas Appwrite berhasil disalin sayang! 📋💖');
+                            }}
+                            className="text-[8px] bg-black/40 text-neon-cyan hover:bg-[#00F0FF]/10 border border-[#00F0FF]/20 px-2 py-1 rounded transition-colors font-sans w-1/2"
+                          >
+                            📋 SALIN ID
+                          </button>
+                          <button
+                            onClick={() => {
+                              setAiEffectImgId(lastAppwriteFileId);
+                              triggerToast('SISTEM: ID Ikat Gambar berhasil diganti menggunakan ID Appwrite sayang! 🔗💕');
+                            }}
+                            className="text-[8px] bg-[#00F0FF] text-black hover:bg-white hover:text-black px-2 py-1 rounded transition-colors font-sans w-1/2 font-bold"
+                          >
+                            🔗 JADIKAN ID SESSION
+                          </button>
+                        </div>
+                      </div>
+                    )}
 
                     {/* Section 2: Sync Original Button */}
                     <div className="pt-1">
