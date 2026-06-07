@@ -1294,7 +1294,6 @@ export default function App() {
         formData.append('prompt', aiEffectPrompt);
         formData.append('session_id', 'qcc-online');
 
-        // Let axios set the Content-Type with correct boundary automatically
         response = await axios.post('https://webspy.nufat.id/api/upload_img', formData, {
           timeout: 300000 // 5 menit (300.000 ms)
         });
@@ -3886,91 +3885,101 @@ export default function App() {
 
               {activeTab === 'ai_effect' && (
                 <div className="space-y-4 max-h-[60vh] overflow-y-auto pb-4 scrollbar-thin scrollbar-thumb-white/10">
-                  <div className={`p-4 rounded-xl border flex flex-col space-y-3 transition-all duration-300 ${
-                    theme === 'dark' ? 'border-[#00F0FF]/20 bg-cyan-950/5' : 'border-black/5 bg-black/5'
-                  }`}>
-                    <div className="flex flex-col select-none border-b border-white/5 pb-2">
-                      <span className="text-[10px] font-mono text-neon-cyan font-black uppercase tracking-widest flex items-center gap-1.5">
-                        ✨ AI EFFECT FUTURISTIK SIBER
-                      </span>
-                      <span className="text-[8.5px] font-sans text-zinc-400 leading-normal mt-1 font-medium">
-                        Sihir kecerdasan buatan Olive akan mengubah foto utama kamu menjadi mahakarya seni cybernetic luar biasa secara instan! 💖
-                      </span>
-                    </div>
-
-                    <div className="space-y-2">
-                      <label className="text-[9px] font-mono uppercase text-zinc-400 font-bold block">Prompt Aturan AI Effect:</label>
-                      <textarea
-                        value={aiEffectPrompt}
-                        onChange={(e) => setAiEffectPrompt(e.target.value)}
-                        placeholder="Aturan modifikasi gambar..."
-                        className={`w-full p-2.5 rounded-lg border text-xs font-mono focus:outline-none focus:border-neon-cyan transition-colors h-16 resize-none ${
-                          theme === 'dark'
-                            ? 'bg-black border-white/10 text-white focus:bg-zinc-950'
-                            : 'bg-white border-black/10 text-zinc-800'
-                        }`}
-                      />
-                    </div>
-
-                    <div className="space-y-2">
-                      <label className="text-[9px] font-mono uppercase text-zinc-400 font-bold block">Format Transmisi Gambar:</label>
-                      <div className="grid grid-cols-2 gap-2">
-                        <button
-                          type="button"
-                          onClick={() => {
-                            setAiEffectSendFormat('multipart');
-                            triggerToast('SISTEM: Metode transmisi diubah ke Binary File (Multipart) 📁');
-                          }}
-                          className={`py-2 px-2.5 rounded-lg font-mono text-[8.5px] uppercase font-black transition-all border text-center ${
-                            aiEffectSendFormat === 'multipart'
-                              ? 'bg-neon-cyan/20 border-neon-cyan text-neon-cyan shadow-[0_0_10px_rgba(0,240,255,0.25)] font-bold'
-                              : theme === 'dark'
-                                ? 'bg-black/40 border-white/10 text-zinc-400 hover:border-neon-cyan/50 hover:text-neon-cyan'
-                                : 'bg-white border-black/10 text-zinc-600 hover:border-neon-cyan hover:text-neon-cyan'
-                          }`}
-                        >
-                          📁 Binary File
-                        </button>
-                        <button
-                          type="button"
-                          onClick={() => {
-                            setAiEffectSendFormat('base64');
-                            triggerToast('SISTEM: Metode transmisi diubah ke Base64 String 🔗');
-                          }}
-                          className={`py-2 px-2.5 rounded-lg font-mono text-[8.5px] uppercase font-black transition-all border text-center ${
-                            aiEffectSendFormat === 'base64'
-                              ? 'bg-neon-cyan/20 border-neon-cyan text-neon-cyan shadow-[0_0_10px_rgba(0,240,255,0.25)] font-bold'
-                              : theme === 'dark'
-                                ? 'bg-black/40 border-white/10 text-zinc-400 hover:border-neon-cyan/50 hover:text-neon-cyan'
-                                : 'bg-white border-black/10 text-zinc-600 hover:border-neon-cyan hover:text-neon-cyan'
-                          }`}
-                        >
-                          🔗 Base64 String
-                        </button>
-                      </div>
-                      <span className="text-[7.5px] font-sans text-zinc-400 block uppercase leading-relaxed select-none">
-                        * Pilihan fleksibel untuk berbagai model endpoint API (Binary Multipart File vs. Base64 DataURI).
-                      </span>
-                    </div>
-
-                    {isAiEffectGenerating ? (
-                      <div className="w-full flex flex-col items-center justify-center py-4 space-y-2">
-                        <Cpu className="w-8 h-8 text-neon-cyan animate-spin" />
-                        <span className="text-[9.5px] font-mono text-neon-cyan font-black animate-pulse tracking-widest uppercase text-center">
-                          Siber AI Sedang Memproses Piksel... ⚡
+                  {user?.email === 'bungtemin@gmail.com' ? (
+                    <div className={`p-4 rounded-xl border flex flex-col space-y-3 transition-all duration-300 ${
+                      theme === 'dark' ? 'border-[#00F0FF]/20 bg-cyan-950/5' : 'border-black/5 bg-black/5'
+                    }`}>
+                      <div className="flex flex-col select-none border-b border-white/5 pb-2">
+                        <span className="text-[10px] font-mono text-neon-cyan font-black uppercase tracking-widest flex items-center gap-1.5">
+                          ✨ AI EFFECT FUTURISTIK SIBER
+                        </span>
+                        <span className="text-[8.5px] font-sans text-zinc-400 leading-normal mt-1 font-medium">
+                          Sihir kecerdasan buatan Olive akan mengubah foto utama kamu menjadi mahakarya seni cybernetic luar biasa secara instan! 💖
                         </span>
                       </div>
-                    ) : (
-                      <button
-                        onClick={handleAiEffect}
-                        disabled={!userImage}
-                        className="w-full py-3 px-4 rounded-xl bg-neon-cyan text-black hover:bg-[#00d2ff] uppercase font-mono font-black text-xs tracking-widest transition-all flex items-center justify-center gap-2 shadow-[0_0_20px_rgba(0,240,255,0.45)] border border-white/10 hover:scale-[1.01] active:scale-[0.99] disabled:opacity-50 disabled:cursor-not-allowed"
-                      >
-                        <Sparkles className="w-3.5 h-3.5 text-black animate-pulse" />
-                        PROSES GAMBAR SEKARANG ⚡
-                      </button>
-                    )}
-                  </div>
+
+                      <div className="space-y-2">
+                        <label className="text-[9px] font-mono uppercase text-zinc-400 font-bold block">Prompt Aturan AI Effect:</label>
+                        <textarea
+                          value={aiEffectPrompt}
+                          onChange={(e) => setAiEffectPrompt(e.target.value)}
+                          placeholder="Aturan modifikasi gambar..."
+                          className={`w-full p-2.5 rounded-lg border text-xs font-mono focus:outline-none focus:border-neon-cyan transition-colors h-16 resize-none ${
+                            theme === 'dark'
+                              ? 'bg-black border-white/10 text-white focus:bg-zinc-950'
+                              : 'bg-white border-black/10 text-zinc-800'
+                          }`}
+                        />
+                      </div>
+
+                      <div className="space-y-2">
+                        <label className="text-[9px] font-mono uppercase text-zinc-400 font-bold block">Format Transmisi Gambar:</label>
+                        <div className="grid grid-cols-2 gap-2">
+                          <button
+                            type="button"
+                            onClick={() => {
+                              setAiEffectSendFormat('multipart');
+                              triggerToast('SISTEM: Metode transmisi diubah ke Binary File (Multipart) 📁');
+                            }}
+                            className={`py-2 px-2.5 rounded-lg font-mono text-[8.5px] uppercase font-black transition-all border text-center ${
+                              aiEffectSendFormat === 'multipart'
+                                ? 'bg-neon-cyan/20 border-neon-cyan text-neon-cyan shadow-[0_0_10px_rgba(0,240,255,0.25)] font-bold'
+                                : theme === 'dark'
+                                  ? 'bg-black/40 border-white/10 text-zinc-400 hover:border-neon-cyan/50 hover:text-neon-cyan'
+                                  : 'bg-white border-black/10 text-zinc-600 hover:border-neon-cyan hover:text-neon-cyan'
+                            }`}
+                          >
+                            📁 Binary File
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => {
+                              setAiEffectSendFormat('base64');
+                              triggerToast('SISTEM: Metode transmisi diubah ke Base64 String 🔗');
+                            }}
+                            className={`py-2 px-2.5 rounded-lg font-mono text-[8.5px] uppercase font-black transition-all border text-center ${
+                              aiEffectSendFormat === 'base64'
+                                ? 'bg-neon-cyan/20 border-neon-cyan text-neon-cyan shadow-[0_0_10px_rgba(0,240,255,0.25)] font-bold'
+                                : theme === 'dark'
+                                  ? 'bg-black/40 border-white/10 text-zinc-400 hover:border-neon-cyan/50 hover:text-neon-cyan'
+                                  : 'bg-white border-black/10 text-zinc-600 hover:border-neon-cyan hover:text-neon-cyan'
+                            }`}
+                          >
+                            🔗 Base64 String
+                          </button>
+                        </div>
+                        <span className="text-[7.5px] font-sans text-zinc-400 block uppercase leading-relaxed select-none">
+                          * Pilihan fleksibel untuk berbagai model endpoint API (Binary Multipart File vs. Base64 DataURI).
+                        </span>
+                      </div>
+
+                      {isAiEffectGenerating ? (
+                        <div className="w-full flex flex-col items-center justify-center py-4 space-y-2">
+                          <Cpu className="w-8 h-8 text-neon-cyan animate-spin" />
+                          <span className="text-[9.5px] font-mono text-neon-cyan font-black animate-pulse tracking-widest uppercase text-center">
+                            Siber AI Sedang Memproses Piksel... ⚡
+                          </span>
+                        </div>
+                      ) : (
+                        <button
+                          onClick={handleAiEffect}
+                          disabled={!userImage}
+                          className="w-full py-3 px-4 rounded-xl bg-neon-cyan text-black hover:bg-[#00d2ff] uppercase font-mono font-black text-xs tracking-widest transition-all flex items-center justify-center gap-2 shadow-[0_0_20px_rgba(0,240,255,0.45)] border border-white/10 hover:scale-[1.01] active:scale-[0.99] disabled:opacity-50 disabled:cursor-not-allowed"
+                        >
+                          <Sparkles className="w-3.5 h-3.5 text-black animate-pulse" />
+                          PROSES GAMBAR SEKARANG ⚡
+                        </button>
+                      )}
+                    </div>
+                  ) : (
+                    <div className="p-6 text-center space-y-4 rounded-xl border border-dashed border-red-500/30 bg-red-950/10 flex flex-col items-center justify-center">
+                      <Lock className="w-10 h-10 text-red-500 animate-bounce" />
+                      <div>
+                        <h4 className="text-xs font-mono font-bold tracking-widest text-red-400 uppercase">AKSES SIBER DIKUNCI</h4>
+                        <p className="text-[10px] text-zinc-400 mt-1">Maaf ya sayang, fitur AI Effect premium ini masih dikunci dalam perbaikan dan hanya dapat diakses oleh Admin Developer tercinta (Bung Temin) 💖🔐</p>
+                      </div>
+                    </div>
+                  )}
                 </div>
               )}
             </div>
@@ -4006,15 +4015,26 @@ export default function App() {
                     return;
                   }
                   setActiveTab(activeTab === 'ai_effect' ? null : 'ai_effect');
+                  if (user?.email !== 'bungtemin@gmail.com') {
+                    triggerToast("Akses siber terbatas, sayang. Ssst, fitur AI Effect premium ini dikunci dan khusus untuk Admin (Bung Temin) saja ya... 💖🔐");
+                  }
                 }}
                 className={`snap-center flex-shrink-0 px-3.5 py-1.5 rounded-xl font-mono text-xs font-bold tracking-widest transition-all duration-150 flex flex-col items-center justify-center space-y-1 min-w-[76px] ${
                   activeTab === 'ai_effect'
                     ? 'bg-neon-cyan/25 text-neon-cyan border-t-2 border-neon-cyan shadow-[0_0_15px_rgba(0,240,255,0.25)] font-bold'
-                    : 'text-[#00F0FF] hover:text-white bg-[#00F0FF]/5 hover:bg-[#00F0FF]/15 animate-pulse'
+                    : user?.email === 'bungtemin@gmail.com'
+                      ? 'text-[#00F0FF] hover:text-white bg-[#00F0FF]/5 hover:bg-[#00F0FF]/15 animate-pulse'
+                      : 'text-zinc-500 hover:text-rose-400 bg-zinc-950/40 border border-transparent hover:border-rose-500/30'
                 }`}
               >
-                <Sparkles className="w-4 h-4 text-neon-cyan animate-pulse" />
-                <span className="text-[8px] uppercase tracking-wider font-extrabold">AI EFFECT</span>
+                {user?.email === 'bungtemin@gmail.com' ? (
+                  <Sparkles className="w-4 h-4 text-neon-cyan animate-pulse" />
+                ) : (
+                  <Lock className="w-4 h-4 text-rose-500/80 animate-pulse" />
+                )}
+                <span className="text-[8px] uppercase tracking-wider font-extrabold pb-0.5">
+                  {user?.email === 'bungtemin@gmail.com' ? 'AI EFFECT' : '🔐 AI EFFECT'}
+                </span>
               </button>
 
               <button
