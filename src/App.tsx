@@ -677,6 +677,7 @@ export default function App() {
   const [activeTab, setActiveTab] = useState<'adjust' | 'crop' | 'filter' | 'color' | 'stickers' | 'text' | 'text_preset' | 'layers' | 'ai' | 'download' | 'history' | 'settings' | 'ai_effect' | null>(null);
   const [isAiEffectGenerating, setIsAiEffectGenerating] = useState(false);
   const [aiEffectPrompt, setAiEffectPrompt] = useState('merubah foto menjadi futuristik');
+  const [aiEffectLogs, setAiEffectLogs] = useState<string[]>([]);
   const [isFloatingHubOpen, setIsFloatingHubOpen] = useState(false);
   const [isPhotoLocked, setIsPhotoLocked] = useState(false);
   const [downloadSize, setDownloadSize] = useState<number>(1080);
@@ -1223,29 +1224,51 @@ export default function App() {
     }
 
     setIsAiEffectGenerating(true);
-    setIsLoading(true);
-    setStatusMessage('MENERAPKAN SIHIR AI EFFECT...');
-    triggerToast('Memulai transformasi AI Effect futuristik siber... ⚡');
+    setAiEffectLogs([]); // reset logs
+
+    const addLog = (msg: string) => {
+      const time = new Date().toLocaleTimeString('id-ID', { hour12: false });
+      setAiEffectLogs(prev => [...prev, `[${time}] ${msg}`]);
+    };
+
+    triggerToast('Memulai transformasi AI Effect siber di background... ⚡');
 
     try {
+      addLog('🤖 SISTEM: Menginisialisasi Modul AI Effect Cybernetic...');
+      await new Promise(resolve => setTimeout(resolve, 600));
+
+      addLog('📸 SISTEM: Membaca berkas gambar utama dari kanvas...');
       const file = await getFileFromUserImage();
       if (!file) {
-        throw new Error('Gagal memproses gambar utama.');
+        throw new Error('Gagal memproses gambar utama dari memori, sayang.');
       }
+      await new Promise(resolve => setTimeout(resolve, 800));
+
+      addLog(`📁 SISTEM: Berkas terdeteksi (${(file.size / 1024).toFixed(1)} KB). Mengompresi payload...`);
+      await new Promise(resolve => setTimeout(resolve, 600));
+
+      addLog('🌐 SISTEM: Menyiapkan gerbang koneksi aman ke https://webspy.nufat.id...');
+      await new Promise(resolve => setTimeout(resolve, 700));
+
+      addLog('🚀 API: Mengirimkan gambar utama (Model: qcc-online)...');
+      addLog(`📝 API: Prompt Aturan: "${aiEffectPrompt}"`);
 
       const formData = new FormData();
       formData.append('file', file);
       formData.append('prompt', aiEffectPrompt);
       formData.append('session_id', 'qcc-online');
 
+      // Make the actual API request
       const response = await axios.post('https://webspy.nufat.id/api/upload_img', formData, {
         headers: {
           'Content-Type': 'multipart/form-data',
         }
       });
 
-      console.log('AI Effect API Response:', response.data);
+      addLog('📥 API: Menerima respons payload dari server nufat...');
+      await new Promise(resolve => setTimeout(resolve, 600));
 
+      console.log('AI Effect API Response:', response.data);
       const returnedData = response.data;
       let newImageUrl = '';
 
@@ -1256,18 +1279,21 @@ export default function App() {
       }
 
       if (newImageUrl) {
+        addLog('✨ SIBER: Menautkan citra siber futuristik baru ke lembar kerja...');
         setUserImage(newImageUrl);
-        triggerToast('SISTEM: AI Effect berhasil diterapkan! Foto kamu sekarang bernuansa futuristik sayang! 💖✨');
+        await new Promise(resolve => setTimeout(resolve, 500));
+        addLog('💖 OLIVE: Transformasi AI Effect berhasil sayang! Foto kamu sangat keren! 😍');
+        triggerToast('SISTEM: AI Effect berhasil diterapkan! 💖✨');
       } else {
         console.warn('Could not parse image URL, response is:', returnedData);
         throw new Error('Gagal mengekstrak URL gambar hasil dari respons server.');
       }
     } catch (err: any) {
       console.error('AI Effect failed:', err);
+      addLog(`❌ ERROR: Gagal memproses data. Alasan: ${err.message || 'Respons server tidak dikenal'}`);
       triggerToast(`SISTEM: Gagal memproses AI Effect. ${err.message || 'Silakan coba lagi sayang.'}`);
     } finally {
       setIsAiEffectGenerating(false);
-      setIsLoading(false);
     }
   };
 
@@ -2419,6 +2445,52 @@ export default function App() {
                 </div>
               )}
             </div>
+
+            {/* Cyber Terminal Logs below Canvas for AI Effect processes */}
+            {(aiEffectLogs.length > 0 || isAiEffectGenerating) && (
+              <div className="mt-4 p-3 rounded-lg border border-neon-cyan/20 bg-black/90 font-mono text-[9px] text-[#00F0FF] space-y-1.5 shadow-[0_4px_20px_rgba(0,0,0,0.8)] relative overflow-hidden">
+                {/* Scanlines inside Terminal */}
+                <div className="scanlines absolute inset-0 opacity-10 pointer-events-none" />
+                <div className="flex items-center justify-between border-b border-neon-cyan/15 pb-1 select-none">
+                  <div className="flex items-center gap-1.5">
+                    <span className="w-2 h-2 rounded-full bg-neon-cyan animate-pulse" />
+                    <span className="font-cyber font-black tracking-widest text-[9.5px]">OLIVE TERMINAL SIBER // LOG AI EFFECT</span>
+                  </div>
+                  <button 
+                    onClick={() => setAiEffectLogs([])} 
+                    className="text-zinc-500 hover:text-white transition-colors text-[8px] uppercase tracking-wider font-bold"
+                  >
+                    Hapus Log [✕]
+                  </button>
+                </div>
+                <div className="max-h-[140px] overflow-y-auto scrollbar-thin scrollbar-thumb-white/10 space-y-1 font-mono leading-relaxed pr-1 flex flex-col pt-1">
+                  {aiEffectLogs.map((log, i) => {
+                    const isSystem = log.includes('SISTEM');
+                    const isApi = log.includes('API');
+                    const isOlive = log.includes('OLIVE');
+                    const isError = log.includes('ERROR');
+                    let logColorClass = 'text-[#00F0FF]/80';
+                    if (isError) logColorClass = 'text-rose-500 font-extrabold';
+                    else if (isOlive) logColorClass = 'text-pink-450 font-bold';
+                    else if (isSystem) logColorClass = 'text-cyan-300 font-medium';
+                    else if (isApi) logColorClass = 'text-amber-400';
+                    return (
+                      <div key={i} className={`flex gap-1.5 ${logColorClass} items-start`}>
+                        <span className="text-zinc-550 select-none">&gt;&gt;</span>
+                        <p className="flex-1 whitespace-pre-wrap">{log}</p>
+                      </div>
+                    );
+                  })}
+                  
+                  {isAiEffectGenerating && (
+                    <div className="flex items-center gap-2 text-neon-pink text-[9px] font-black tracking-widest animate-pulse mt-1 select-none">
+                      <span className="w-1.5 h-3 bg-neon-pink inline-block animate-blink shrink-0" />
+                      <span>SEDANG MEMBACA SINYAL TRANSDUKSI PIKSEL...</span>
+                    </div>
+                  )}
+                </div>
+              </div>
+            )}
 
             {/* Hidden File Input Picker */}
             <input 
