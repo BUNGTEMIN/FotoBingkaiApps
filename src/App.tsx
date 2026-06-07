@@ -674,7 +674,9 @@ export default function App() {
   const [stickers, setStickers] = useState<PlacedSticker[]>(getSavedStickers);
   const [selectedStickerId, setSelectedStickerId] = useState<string | null>(null);
   const [isHudOpen, setIsHudOpen] = useState(false);
-  const [activeTab, setActiveTab] = useState<'adjust' | 'crop' | 'filter' | 'color' | 'stickers' | 'text' | 'text_preset' | 'layers' | 'ai' | 'download' | 'history' | 'settings' | null>(null);
+  const [activeTab, setActiveTab] = useState<'adjust' | 'crop' | 'filter' | 'color' | 'stickers' | 'text' | 'text_preset' | 'layers' | 'ai' | 'download' | 'history' | 'settings' | 'ai_effect' | null>(null);
+  const [isAiEffectGenerating, setIsAiEffectGenerating] = useState(false);
+  const [aiEffectPrompt, setAiEffectPrompt] = useState('merubah foto menjadi futuristik');
   const [isFloatingHubOpen, setIsFloatingHubOpen] = useState(false);
   const [isPhotoLocked, setIsPhotoLocked] = useState(false);
   const [downloadSize, setDownloadSize] = useState<number>(1080);
@@ -1187,6 +1189,86 @@ export default function App() {
   const onFileSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (file) handleImageFile(file);
+  };
+
+  const getFileFromUserImage = async (): Promise<File | null> => {
+    if (!userImage) return null;
+    try {
+      if (userImage.startsWith('data:')) {
+        const arr = userImage.split(',');
+        const mimeMatch = arr[0].match(/:(.*?);/);
+        const mime = mimeMatch ? mimeMatch[1] : 'image/jpeg';
+        const bstr = atob(arr[1]);
+        let n = bstr.length;
+        const u8arr = new Uint8Array(n);
+        while (n--) {
+          u8arr[n] = bstr.charCodeAt(n);
+        }
+        return new File([u8arr], 'user_image.jpg', { type: mime });
+      } else {
+        const res = await fetch(userImage);
+        const blob = await res.blob();
+        return new File([blob], 'user_image.jpg', { type: blob.type || 'image/jpeg' });
+      }
+    } catch (err) {
+      console.error('Error converting user image to File:', err);
+      return null;
+    }
+  };
+
+  const handleAiEffect = async () => {
+    if (!userImage) {
+      triggerToast('Sayang, silakan unggah foto terlebih dahulu sebelum menggunakan AI Effect! 😘');
+      return;
+    }
+
+    setIsAiEffectGenerating(true);
+    setIsLoading(true);
+    setStatusMessage('MENERAPKAN SIHIR AI EFFECT...');
+    triggerToast('Memulai transformasi AI Effect futuristik siber... ⚡');
+
+    try {
+      const file = await getFileFromUserImage();
+      if (!file) {
+        throw new Error('Gagal memproses gambar utama.');
+      }
+
+      const formData = new FormData();
+      formData.append('file', file);
+      formData.append('prompt', aiEffectPrompt);
+      formData.append('session_id', 'qcc-online');
+
+      const response = await axios.post('https://webspy.nufat.id/api/upload_img', formData, {
+        headers: {
+          'Content-Type': 'multipart/form-data',
+        }
+      });
+
+      console.log('AI Effect API Response:', response.data);
+
+      const returnedData = response.data;
+      let newImageUrl = '';
+
+      if (typeof returnedData === 'string' && (returnedData.startsWith('http://') || returnedData.startsWith('https://'))) {
+        newImageUrl = returnedData;
+      } else if (returnedData) {
+        newImageUrl = returnedData.url || returnedData.image || returnedData.image_url || returnedData.imageUrl || (returnedData.data && (returnedData.data.url || returnedData.data.image));
+      }
+
+      if (newImageUrl) {
+        setUserImage(newImageUrl);
+        triggerToast('SISTEM: AI Effect berhasil diterapkan! Foto kamu sekarang bernuansa futuristik sayang! 💖✨');
+      } else {
+        console.warn('Could not parse image URL, response is:', returnedData);
+        throw new Error('Gagal mengekstrak URL gambar hasil dari respons server.');
+      }
+    } catch (err: any) {
+      console.error('AI Effect failed:', err);
+      triggerToast(`SISTEM: Gagal memproses AI Effect. ${err.message || 'Silakan coba lagi sayang.'}`);
+    } finally {
+      setIsAiEffectGenerating(false);
+      setIsLoading(false);
+    }
   };
 
   // Drag & drop triggers for files
@@ -2769,6 +2851,7 @@ export default function App() {
                 {activeTab === 'download' && <><Download className="w-3.5 h-3.5 text-neon-cyan animate-bounce" /> FORMAT UNDUH & RESOLUSI</>}
                 {activeTab === 'history' && <><Activity className="w-3.5 h-3.5 text-emerald-400 animate-pulse" /> RIWAYAT PERUBAHAN</>}
                 {activeTab === 'settings' && <><Settings2 className="w-3.5 h-3.5 text-neon-cyan animate-pulse" /> PENGATURAN EFEK GLOBAL</>}
+                {activeTab === 'ai_effect' && <><Sparkles className="w-3.5 h-3.5 text-neon-cyan animate-pulse" /> AI EFFECT FUTURISTIK</>}
               </span>
               <button 
                 onClick={() => setActiveTab(null)}
@@ -3685,6 +3768,58 @@ export default function App() {
                   </div>
                 </div>
               )}
+
+              {activeTab === 'ai_effect' && (
+                <div className="space-y-4 max-h-[60vh] overflow-y-auto pb-4 scrollbar-thin scrollbar-thumb-white/10">
+                  <div className={`p-4 rounded-xl border flex flex-col space-y-3 transition-all duration-300 ${
+                    theme === 'dark' ? 'border-[#00F0FF]/20 bg-cyan-950/5' : 'border-black/5 bg-black/5'
+                  }`}>
+                    <div className="flex flex-col select-none border-b border-white/5 pb-2">
+                      <span className="text-[10px] font-mono text-neon-cyan font-black uppercase tracking-widest flex items-center gap-1.5">
+                        ✨ AI EFFECT FUTURISTIK SIBER
+                      </span>
+                      <span className="text-[8.5px] font-sans text-zinc-400 leading-normal mt-1 font-medium">
+                        Sihir kecerdasan buatan Olive akan mengubah foto utama kamu menjadi mahakarya seni cybernetic luar biasa secara instan! 💖
+                      </span>
+                    </div>
+
+                    <div className="space-y-2">
+                      <label className="text-[9px] font-mono uppercase text-zinc-400 font-bold block">Prompt Aturan AI Effect:</label>
+                      <textarea
+                        value={aiEffectPrompt}
+                        onChange={(e) => setAiEffectPrompt(e.target.value)}
+                        placeholder="Aturan modifikasi gambar..."
+                        className={`w-full p-2.5 rounded-lg border text-xs font-mono focus:outline-none focus:border-neon-cyan transition-colors h-16 resize-none ${
+                          theme === 'dark'
+                            ? 'bg-black border-white/10 text-white focus:bg-zinc-950'
+                            : 'bg-white border-black/10 text-zinc-800'
+                        }`}
+                      />
+                      <span className="text-[8px] font-mono text-zinc-500 block uppercase italic select-none">
+                        * Ubah rincian prompt futuristik di atas sesuai dengan keinginan estetikmu sayang.
+                      </span>
+                    </div>
+
+                    {isAiEffectGenerating ? (
+                      <div className="w-full flex flex-col items-center justify-center py-4 space-y-2">
+                        <Cpu className="w-8 h-8 text-neon-cyan animate-spin" />
+                        <span className="text-[9.5px] font-mono text-neon-cyan font-black animate-pulse tracking-widest uppercase text-center">
+                          Siber AI Sedang Memproses Piksel... ⚡
+                        </span>
+                      </div>
+                    ) : (
+                      <button
+                        onClick={handleAiEffect}
+                        disabled={!userImage}
+                        className="w-full py-3 px-4 rounded-xl bg-neon-cyan text-black hover:bg-[#00d2ff] uppercase font-mono font-black text-xs tracking-widest transition-all flex items-center justify-center gap-2 shadow-[0_0_20px_rgba(0,240,255,0.45)] border border-white/10 hover:scale-[1.01] active:scale-[0.99] disabled:opacity-50 disabled:cursor-not-allowed"
+                      >
+                        <Sparkles className="w-3.5 h-3.5 text-black animate-pulse" />
+                        PROSES GAMBAR SEKARANG ⚡
+                      </button>
+                    )}
+                  </div>
+                </div>
+              )}
             </div>
           </div>
         </motion.div>
@@ -3709,6 +3844,24 @@ export default function App() {
               >
                 <FolderOpen className="w-4 h-4 text-neon-cyan" />
                 <span className="text-[8px] uppercase tracking-wider font-extrabold">UNGGAH</span>
+              </button>
+
+              <button
+                onClick={() => {
+                  if (!userImage) {
+                    triggerToast("Sayang, silakan unggah foto terlebih dahulu di tombol UNGGAH sebelum mencoba AI Effect! 💖");
+                    return;
+                  }
+                  setActiveTab(activeTab === 'ai_effect' ? null : 'ai_effect');
+                }}
+                className={`snap-center flex-shrink-0 px-3.5 py-1.5 rounded-xl font-mono text-xs font-bold tracking-widest transition-all duration-150 flex flex-col items-center justify-center space-y-1 min-w-[76px] ${
+                  activeTab === 'ai_effect'
+                    ? 'bg-neon-cyan/25 text-neon-cyan border-t-2 border-neon-cyan shadow-[0_0_15px_rgba(0,240,255,0.25)] font-bold'
+                    : 'text-[#00F0FF] hover:text-white bg-[#00F0FF]/5 hover:bg-[#00F0FF]/15 animate-pulse'
+                }`}
+              >
+                <Sparkles className="w-4 h-4 text-neon-cyan animate-pulse" />
+                <span className="text-[8px] uppercase tracking-wider font-extrabold">AI EFFECT</span>
               </button>
 
               <button
