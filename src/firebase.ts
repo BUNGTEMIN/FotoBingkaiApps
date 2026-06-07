@@ -1,12 +1,12 @@
 import { initializeApp } from 'firebase/app';
 import { getAuth } from 'firebase/auth';
-import { initializeFirestore, doc, getDocFromServer } from 'firebase/firestore';
+import { initializeFirestore } from 'firebase/firestore';
 import firebaseConfig from '../firebase-applet-config.json';
 
 // Initialize Firebase
 const app = initializeApp(firebaseConfig);
 export const db = initializeFirestore(app, {
-  experimentalAutoDetectLongPolling: true,
+  experimentalForceLongPolling: true,
 }, (firebaseConfig as any).firestoreDatabaseId); /* CRITICAL: The app will break without this line */
 export const auth = getAuth();
 
@@ -57,21 +57,3 @@ export function handleFirestoreError(error: unknown, operationType: OperationTyp
   console.warn('Firestore Error: ', JSON.stringify(errInfo));
   throw new Error(JSON.stringify(errInfo));
 }
-
-// Validate connection to Firestore on initialization
-async function testConnection() {
-  if (typeof window === 'undefined') return; // Jangan jalankan di server atau saat proses build compile
-  
-  try {
-    // Gunakan timeout agar tidak memblokir atau memicu error panjang jika jaringan lambat
-    await Promise.race([
-      getDocFromServer(doc(db, 'test', 'connection')),
-      new Promise((_, reject) => setTimeout(() => reject(new Error('the client is offline (timeout)')), 4000))
-    ]);
-  } catch (error) {
-    if (error instanceof Error && error.message.includes('the client is offline')) {
-      console.warn("Informasi Firebase: Berjalan dalam mode offline atau caching lokal.");
-    }
-  }
-}
-testConnection();

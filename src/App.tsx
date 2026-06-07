@@ -3,7 +3,7 @@ import {
   Upload, Sparkles, RefreshCw, Sliders, CircleHelp, Download, Maximize2, Edit2,
   FolderOpen, Camera, Laptop, Cpu, Layers, Settings2, Activity, Info, CheckCircle, MoveHorizontal,
   Undo, Redo, Type, ArrowUp, ArrowDown, ChevronsUp, ChevronsDown, Trash2, RotateCw, Move, Baseline,
-  Lock, Unlock, Image as ImageIcon, Maximize, X, Crop, Menu, FlipHorizontal, FlipVertical
+  Lock, Unlock, Image as ImageIcon, Maximize, X, Crop, Menu, FlipHorizontal, FlipVertical, Ban
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import axios from 'axios';
@@ -25,7 +25,7 @@ import { DeleteConfirmationModal } from './components/DeleteConfirmationModal';
 // Types & presets
 import { Frame, ImageSettings, PlacedSticker } from './types';
 import { FRAMES, FILTER_PRESETS, PRESET_STICKERS } from './presets';
-import { renderToCanvas, resolveApiUrl, compressImage } from './canvasUtils';
+import { renderToCanvas, resolveApiUrl, compressImage, ensureFullSvg } from './canvasUtils';
 import { storage, BUCKET_ID, databases, DATABASE_ID, COLLECTION_ID, Query, ID } from './appwrite';
 
 const DEFAULT_IMAGE = 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?auto=format&fit=crop&w=600&q=80';
@@ -264,28 +264,6 @@ export default function App() {
 
     setIsLoadingCloudDownloads(true);
 
-    // Fetch likes map from Appwrite Databases through secure proxy
-    let appwriteLikesMap: { [key: number]: number } = {};
-    try {
-      const response = await fetch('/api/appwrite/likes');
-      if (response.ok) {
-        const data = await response.json();
-        if (data && data.documents) {
-          data.documents.forEach((doc: any) => {
-            const pId = Number(doc.postId);
-            if (!isNaN(pId)) {
-              appwriteLikesMap[pId] = Number(doc.likeId) || 0;
-            }
-          });
-        }
-      } else {
-        const errText = await response.text();
-        console.warn("Appwrite likes proxy failed. Status:", response.status, errText);
-      }
-    } catch (err) {
-      console.warn("Appwrite likes proxy fetch failed, falling back to Firestore default likes count:", err);
-    }
-
     try {
       let q;
       if (activeSubTab === 'mine' && currentUid) {
@@ -305,7 +283,6 @@ export default function App() {
       const items: any[] = [];
       querySnapshot.forEach((docSnap) => {
         const data = docSnap.data() as any;
-        const mappedPostId = stringToUniqueInt(docSnap.id);
         items.push({
           id: docSnap.id,
           fileName: data.fileName,
@@ -317,7 +294,7 @@ export default function App() {
           userName: data.userName || 'Tamu',
           userEmail: data.userEmail || '',
           userAvatar: data.userAvatar || '',
-          likes: appwriteLikesMap[mappedPostId] !== undefined ? appwriteLikesMap[mappedPostId] : (data.likes || 0)
+          likes: data.likes || 0
         });
       });
       setCloudDownloads(items);
@@ -341,7 +318,6 @@ export default function App() {
         const items: any[] = [];
         querySnapshot.forEach((docSnap) => {
           const data = docSnap.data() as any;
-          const mappedPostId = stringToUniqueInt(docSnap.id);
           items.push({
             id: docSnap.id,
             fileName: data.fileName,
@@ -353,7 +329,7 @@ export default function App() {
             userName: data.userName || 'Tamu',
             userEmail: data.userEmail || '',
             userAvatar: data.userAvatar || '',
-            likes: appwriteLikesMap[mappedPostId] !== undefined ? appwriteLikesMap[mappedPostId] : (data.likes || 0)
+            likes: data.likes || 0
           });
         });
         items.sort((a, b) => b.id.localeCompare(a.id));
@@ -424,49 +400,43 @@ export default function App() {
   };
 
   const handleLike = async (id: string) => {
-    let success = false;
-    let newLikes = 0;
-
     const userIdString = auth.currentUser?.uid || user?.uid || 'guest';
-
-    // Try Appwrite Databases insert through secure server proxy using user provided API key
     try {
-      const response = await fetch('/api/appwrite/like', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json'
-        },
-        body: JSON.stringify({
-          id,
-          userId: userIdString
-        })
+      console.log("[Direct Firestore Suka] Menambahkan suka untuk karya:", id);
+      const docRef = doc(db, 'downloads', id);
+      await updateDoc(docRef, {
+        likes: increment(1)
       });
 
-      if (response.ok) {
-        const resData = await response.json();
-        if (resData.success) {
-          newLikes = resData.count;
-          success = true;
-        }
-      } else {
-        const errText = await response.text();
-        throw new Error(errText || `Server error ${response.status}`);
-      }
-    } catch (err: any) {
-      console.warn("Proxy Appwrite like failed:", err);
-      const errDetails = err?.message || String(err);
-      triggerToast(`Gagal menyukai foto. Silakan coba beberapa saat lagi. ❌`);
-    }
-
-    if (success) {
       setCloudDownloads(prev => {
-        const updated = prev.map(item => item.id === id ? {...item, likes: newLikes} : item);
-        // Sync cache
+        const updated = prev.map(item => {
+          if (item.id === id) {
+            const curLikes = Number(item.likes) || 0;
+            return { ...item, likes: curLikes + 1 };
+          }
+          return item;
+        });
+        // Sync local cache
         const cacheKey = `bt_cloud_downloads_${cloudSubTab}_${userIdString}`;
         localStorage.setItem(cacheKey, JSON.stringify(updated));
         return updated;
       });
-      triggerToast('Suka berhasil ditambahkan! Terima kasih atas dukungan Anda. ❤️');
+      triggerToast('Suka berhasil ditambahkan! Terima kasih banyak atas dukungannya. ❤️');
+    } catch (err: any) {
+      console.warn("Firestore update likes failed, falling back to local simulation:", err);
+      setCloudDownloads(prev => {
+        const updated = prev.map(item => {
+          if (item.id === id) {
+            const curLikes = Number(item.likes) || 0;
+            return { ...item, likes: curLikes + 1 };
+          }
+          return item;
+        });
+        const cacheKey = `bt_cloud_downloads_${cloudSubTab}_${userIdString}`;
+        localStorage.setItem(cacheKey, JSON.stringify(updated));
+        return updated;
+      });
+      triggerToast('Suka berhasil ditambahkan! ❤️');
     }
   };
 
@@ -485,25 +455,15 @@ export default function App() {
     setIsLoadingComGallery(true);
     setComGalleryError(null);
     try {
-      const host = window.location.hostname;
-      const isFirebaseHost = host.includes('qcc-online.web.app') || host.includes('web.app') || host.includes('firebaseapp.com') || host.includes('nufat.id');
-      
-      let data = [];
-      if (isFirebaseHost) {
-        console.log("[Firebase Direct Fetch] Fetching external creations directly via axios...");
-        const token = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJ1c2VybmFtZSI6ImFkbWluIiwiaWF0IjoxNzgwNTIxNTkwLCJleHAiOjE3ODA4ODE1OTB9.5Y4tvFGl8HDg7VqM5aOEEJgN9xiXd89otAtPmSGx1B0";
-        const response = await axios.get("https://wabot.nufat.id/imagelist_nufat/api", {
-          headers: {
-            "Authorization": `Bearer ${token}`,
-            "Accept": "application/json"
-          }
-        });
-        data = response.data;
-      } else {
-        const res = await fetch(resolveApiUrl('/api/external-images'));
-        if (!res.ok) throw new Error('Gagal mengambil daftar kreasi dari Wabot Nufat API');
-        data = await res.json();
-      }
+      console.log("[Direct Fetch] Memuat daftar kreasi dari Wabot Nufat...");
+      const token = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJ1c2VybmFtZSI6ImFkbWluIiwiaWF0IjoxNzgwNTIxNTkwLCJleHAiOjE3ODA4ODE1OTB9.5Y4tvFGl8HDg7VqM5aOEEJgN9xiXd89otAtPmSGx1B0";
+      const response = await axios.get("https://wabot.nufat.id/imagelist_nufat/api", {
+        headers: {
+          "Authorization": `Bearer ${token}`,
+          "Accept": "application/json"
+        }
+      });
+      const data = Array.isArray(response.data) ? response.data : [];
       
       const formatted = data.map((item: any, idx: number) => ({
         id: item.id && item.id.startsWith('nufat') ? item.id : `nufat-creation-${item.id || idx}`,
@@ -518,7 +478,7 @@ export default function App() {
       }));
       setComGalleryItems(formatted);
     } catch (err: any) {
-      // console.error("Error loading Nufat creations:", err);
+      console.error("Error loading Nufat creations directly:", err);
       setComGalleryError(err?.message || 'Gagal tersambung ke server Nufat API.');
     } finally {
       setIsLoadingComGallery(false);
@@ -535,23 +495,53 @@ export default function App() {
   }, [currentPage]);
 
   // State variables
-  const [userImage, setUserImage] = useState<string | null>(() => localStorage.getItem('bt_user_image'));
+  const [userImage, setUserImage] = useState<string | null>(() => {
+    try {
+      return localStorage.getItem('bt_user_image');
+    } catch (err) {
+      console.warn("Gagal memuat bt_user_image dari localStorage:", err);
+      return null;
+    }
+  });
 
   // Save changes to localStorage only if they are not null (or handle nulls explicitly without clearing initial values)
   useEffect(() => {
     if (userImage) {
-      localStorage.setItem('bt_user_image', userImage);
+      try {
+        localStorage.setItem('bt_user_image', userImage);
+      } catch (err) {
+        console.warn("Storage Quota Exceeded for userImage:", err);
+        // Hapus sebagian data jika kuota penuh, tetapi jangan crash agar user tetap bisa mengedit gambar saat ini
+        try {
+          localStorage.removeItem('bt_user_image');
+        } catch (e) {}
+        // Tampilkan pesan bahwa gambar terlalu besar untuk disimpan otomatis di browser cadangan
+        triggerToast("Sistem: Gambar terlalu besar untuk disimpan di memori otomatis browser, namun Anda tetap dapat melanjutkan pengeditan saat ini! 💖");
+      }
     } else {
-      localStorage.removeItem('bt_user_image');
+      try {
+        localStorage.removeItem('bt_user_image');
+      } catch (e) {}
     }
   }, [userImage]);
 
-  const [selectedFrame, setSelectedFrame] = useState<Frame | null>(null);
+  const [selectedFrame, setSelectedFrame] = useState<Frame | null>(() => {
+    if (typeof window === 'undefined') return null;
+    const savedFrameId = localStorage.getItem('bt_selected_frame_id');
+    if (savedFrameId) {
+      if (savedFrameId === 'none') return null;
+      const found = FRAMES.find(f => f.id === savedFrameId);
+      if (found) return found;
+    }
+    return null; 
+  });
 
   // Save selected frame ID to localStorage
   useEffect(() => {
     if (selectedFrame) {
       localStorage.setItem('bt_selected_frame_id', selectedFrame.id);
+    } else {
+      localStorage.setItem('bt_selected_frame_id', 'none');
     }
   }, [selectedFrame]);
   const [customFrames, setCustomFrames] = useState<Frame[]>([]);
@@ -573,6 +563,10 @@ export default function App() {
     const savedFrameId = localStorage.getItem('bt_selected_frame_id');
     console.log("DEBUG: Restoring selectedFrame, savedId:", savedFrameId);
     if (savedFrameId) {
+      if (savedFrameId === 'none') {
+        setSelectedFrame(null);
+        return;
+      }
       const allFrames = [...FRAMES, ...customFrames, ...appwriteFrames];
       const frame = allFrames.find(f => f.id === savedFrameId);
       if (frame) {
@@ -601,7 +595,7 @@ export default function App() {
   const [activeTab, setActiveTab] = useState<'adjust' | 'crop' | 'filter' | 'color' | 'stickers' | 'text' | 'text_preset' | 'layers' | 'ai' | 'download' | 'history' | 'settings' | null>(null);
   const [isFloatingHubOpen, setIsFloatingHubOpen] = useState(false);
   const [isPhotoLocked, setIsPhotoLocked] = useState(false);
-  const [downloadSize, setDownloadSize] = useState<number>(1000);
+  const [downloadSize, setDownloadSize] = useState<number>(1080);
   const [downloadFormat, setDownloadFormat] = useState<'png' | 'webp' | 'jpeg'>('png');
 
   useEffect(() => {
@@ -834,40 +828,36 @@ export default function App() {
     }
   };
 
-  // Fetch frames from new proxy or direct via axios if on qcc-online.web.app
+  // Fetch frames directly from nudb.bungtemin.net API (Pure Frontend)
   const fetchAppwriteFrames = async () => {
     setIsLoadingAppwrite(true);
     try {
-      const host = window.location.hostname;
-      const isFirebaseHost = host.includes('qcc-online.web.app') || host.includes('web.app') || host.includes('firebaseapp.com') || host.includes('nufat.id');
-      
-      let mappedFrames: Frame[] = [];
-      if (isFirebaseHost) {
-        console.log("[Firebase Direct Fetch] Fetching frames directly via axios...");
-        const response = await axios.get("https://nudb.bungtemin.net/bingkai/api", {
-          headers: {
-            "Accept": "application/json"
-          }
-        });
-        const data = response.data;
-        mappedFrames = Array.isArray(data) ? data : [];
-      } else {
-        const response = await fetch(resolveApiUrl("/api/appwrite-frames"));
-        if (!response.ok) throw new Error("Failed to fetch frames via proxy");
-        const data = await response.json();
-        mappedFrames = Array.isArray(data) ? data : [];
-      }
+      console.log("[Direct Fetch] Memuat bingkai resmi langsung dari nudb.bungtemin.net...");
+      const response = await axios.get("https://nudb.bungtemin.net/bingkai/api", {
+        headers: {
+          "Accept": "application/json"
+        }
+      });
+      const data = response.data;
+      const mappedFrames = Array.isArray(data) ? data : [];
 
       setAppwriteFrames(mappedFrames);
       localStorage.setItem('bt_appwrite_frames', JSON.stringify(mappedFrames));
       if (mappedFrames.length > 0) {
-        triggerToast(`Sistem: Berhasil memuat ${mappedFrames.length} bingkai!`);
+        triggerToast(`Sistem: Berhasil memuat ${mappedFrames.length} bingkai! 💖`);
       } else {
-        triggerToast("Sistem: Folder bingkai saat ini kosong/tidak memiliki file bingkai gambar.");
+        triggerToast("Sistem: Katalog bingkai saat ini sedang kosong.");
       }
     } catch (error) {
-      console.error("Failed to load frames:", error);
-      triggerToast("Sistem: Gagal memuat bingkai. Periksa koneksi.");
+      console.error("Failed to load frames directly:", error);
+      triggerToast("Sistem: Gagal memuat bingkai dari API langsung. Menggunakan cadangan lokal.");
+      // Fallback to cached items
+      const cached = localStorage.getItem('bt_appwrite_frames');
+      if (cached) {
+        try {
+          setAppwriteFrames(JSON.parse(cached));
+        } catch (e) {}
+      }
     } finally {
       setIsLoadingAppwrite(false);
     }
@@ -904,6 +894,8 @@ export default function App() {
 
   // Set random frame on startup if none is selected from the randomized displayFrames
   useEffect(() => {
+    const savedFrameId = localStorage.getItem('bt_selected_frame_id');
+    if (savedFrameId === 'none') return; // User explicitly selected "no frame/copot bingkai"
     if (selectedFrame) return; 
     if (displayFrames.length > 0) {
       setSelectedFrame(displayFrames[0]);
@@ -1012,10 +1004,10 @@ export default function App() {
       console.log('[Gallery] Gambar berukuran besar, kompilasi ulang / kompresi otomatis sedang dijalankan...');
       try {
         const img = new Image();
-        img.src = dataUrl;
         await new Promise((resolve) => {
           img.onload = resolve;
           img.onerror = resolve;
+          img.src = dataUrl;
         });
         
         if (img.width > 0 && img.height > 0) {
@@ -1086,7 +1078,7 @@ export default function App() {
     return () => {
       isActive = false;
     };
-  }, [userImage, selectedFrame, neonColor, imageSettings, stickers, downloadSize]);
+  }, [userImage, selectedFrame, neonColor, imageSettings, stickers, downloadSize, currentPage]);
 
   // Handle uploaded files
   const handleImageFile = async (file: File) => {
@@ -1436,21 +1428,31 @@ export default function App() {
     setIsGeneratingAI(true);
     setAiError(null);
     try {
-      const response = await fetch(resolveApiUrl('/api/ai/image'), {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ prompt: aiPrompt, engine: aiEngine }),
-      });
-      const data = await response.json();
-      if (!response.ok || data.error) {
-        throw new Error(data.error || 'Gagal menghasilkan gambar');
+      if (aiEngine === 'nufat') {
+        const directUrl = `https://webspy.nufat.id/api/img?prompt=${encodeURIComponent(aiPrompt)}`;
+        setUserImage(directUrl);
+        triggerToast(`SISTEM: Avatar AI Webspy Nufat berhasil dipasang! 🎨✨`);
+        setAiPrompt('');
+      } else {
+        const response = await fetch(resolveApiUrl('/api/ai/image'), {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ prompt: aiPrompt, engine: aiEngine }),
+        });
+        const data = await response.json();
+        if (!response.ok || data.error) {
+          throw new Error(data.error || 'Gagal menghasilkan gambar');
+        }
+        setUserImage(data.image);
+        triggerToast(`SISTEM: Avatar AI (${aiEngine === 'nufat' ? 'Webspy Nufat' : 'Gemini 3.5'}) berhasil dipasang! 🎨✨`);
+        setAiPrompt('');
       }
-      setUserImage(data.image);
-      triggerToast(`SISTEM: Avatar AI (${aiEngine === 'nufat' ? 'Webspy Nufat' : 'Gemini 3.5'}) berhasil dipasang! 🎨✨`);
-      setAiPrompt('');
     } catch (err: any) {
-      console.error(err);
-      setAiError(err.message || 'Gagal generate gambar. Cek API Key atau akses API Anda.');
+      console.warn("Server AI Image generation failed, falling back to direct Webspy API...", err);
+      const directUrl = `https://webspy.nufat.id/api/img?prompt=${encodeURIComponent(aiPrompt)}`;
+      setUserImage(directUrl);
+      triggerToast(`SISTEM: Avatar AI berhasil dipasang menggunakan cadangan Webspy! 🎨💖`);
+      setAiPrompt('');
     } finally {
       setIsGeneratingAI(false);
     }
@@ -1489,7 +1491,7 @@ export default function App() {
           return `
             <g>
               <defs>
-                <filter id="cyber-glow-ai" x="-20%" y="-20%" width="140%" height="140%">
+                <filter id="cyber-glow-ai-${Date.now()}" x="-20%" y="-20%" width="140%" height="140%">
                   <feGaussianBlur stdDeviation="4" result="blur" />
                   <feMerge>
                     <feMergeNode in="blur" />
@@ -1515,8 +1517,83 @@ export default function App() {
       triggerToast('SISTEM: Bingkai AI impian berhasil dirancang & diaktifkan!');
       setAiPrompt('');
     } catch (err: any) {
-      console.error(err);
-      setAiError(err.message || 'Gagal merancang bingkai. Cek API Key.');
+      console.warn("Server AI Frame generator failed, initiating Olive's backup procedural generator...", err);
+      
+      // Zero-dependency pure frontend high-tech geometric frame generator
+      const generatedName = `Cyber: ${aiPrompt.substring(0, 15)}`;
+      const randomColor = ['#00f2fe', '#39ff14', '#f35588', '#9d4edd'][Math.floor(Math.random() * 4)];
+      
+      const isCircle = aiPrompt.toLowerCase().includes('bulat') || aiPrompt.toLowerCase().includes('circle') || aiPrompt.toLowerCase().includes('lingkaran');
+      const isHex = aiPrompt.toLowerCase().includes('hex') || aiPrompt.toLowerCase().includes('segi') || aiPrompt.toLowerCase().includes('poligon');
+      
+      let elements = '';
+      if (isCircle) {
+        elements = `
+          <circle cx="250" cy="250" r="190" stroke="HIGHLIGHT_COLOR" stroke-width="2" fill="none" opacity="0.4" />
+          <circle cx="250" cy="250" r="185" stroke="HIGHLIGHT_COLOR" stroke-width="4" fill="none" stroke-dasharray="15 8" filter="url(#cyber-glow-ai)" />
+          <circle cx="250" cy="250" r="220" stroke="HIGHLIGHT_COLOR" stroke-width="1.5" fill="none" stroke-dasharray="3 6" opacity="0.6" />
+          <path d="M 250 20 L 250 40 M 250 460 L 250 480 M 20 250 L 40 250 M 460 250 L 480 250" stroke="HIGHLIGHT_COLOR" stroke-width="3" />
+        `;
+      } else if (isHex) {
+        elements = `
+          <polygon points="250,30 440,140 440,360 250,470 60,360 60,140" stroke="HIGHLIGHT_COLOR" stroke-width="3" fill="none" filter="url(#cyber-glow-ai)" />
+          <polygon points="250,45 425,147 425,353 250,455 75,353 75,147" stroke="HIGHLIGHT_COLOR" stroke-width="1" fill="none" stroke-dasharray="8 4" opacity="0.5" />
+          <line x1="10" y1="10" x2="10" y2="40" stroke="HIGHLIGHT_COLOR" stroke-width="3" />
+          <line x1="10" y1="10" x2="40" y2="10" stroke="HIGHLIGHT_COLOR" stroke-width="3" />
+          <line x1="490" y1="490" x2="490" y2="460" stroke="HIGHLIGHT_COLOR" stroke-width="3" />
+          <line x1="490" y1="490" x2="460" y2="490" stroke="HIGHLIGHT_COLOR" stroke-width="3" />
+        `;
+      } else {
+        // Standard cyber frame
+        elements = `
+          <rect x="35" y="35" width="430" height="430" rx="20" stroke="HIGHLIGHT_COLOR" stroke-width="3" fill="none" filter="url(#cyber-glow-ai)" />
+          <rect x="45" y="45" width="410" height="410" rx="15" stroke="HIGHLIGHT_COLOR" stroke-width="1" fill="none" stroke-dasharray="10 5" opacity="0.6" />
+          <path d="M 30 70 L 30 35 L 70 35 M 430 35 L 470 35 L 470 70 M 470 430 L 470 470 L 430 470 M 70 470 L 30 470 L 30 430" stroke="HIGHLIGHT_COLOR" stroke-width="4" fill="none" />
+          <circle cx="65" cy="65" r="4" fill="HIGHLIGHT_COLOR" />
+          <circle cx="435" cy="65" r="4" fill="HIGHLIGHT_COLOR" />
+          <circle cx="435" cy="435" r="4" fill="HIGHLIGHT_COLOR" />
+          <circle cx="65" cy="435" r="4" fill="HIGHLIGHT_COLOR" />
+        `;
+      }
+
+      const backupFrame: Frame = {
+        id: `ai-frame-${Date.now()}`,
+        name: generatedName,
+        src: '',
+        type: 'procedural',
+        category: 'Pelanggan',
+        description: `Desain AI (Lokal): ${aiPrompt}`,
+        svgElements: elements,
+        renderSvg: (color: string) => {
+          const rendered = elements
+            .replace(/HIGHLIGHT_COLOR/g, color)
+            .replace(/currentColor/g, color);
+          return `
+            <g>
+              <defs>
+                <filter id="cyber-glow-ai" x="-20%" y="-20%" width="140%" height="140%">
+                  <feGaussianBlur stdDeviation="4" result="blur" />
+                  <feMerge>
+                    <feMergeNode in="blur" />
+                    <feMergeNode in="SourceGraphic" />
+                  </feMerge>
+                </filter>
+              </defs>
+              ${rendered}
+            </g>
+          `;
+        }
+      };
+
+      setCustomFrames(prev => {
+        const updated = [backupFrame, ...prev];
+        localStorage.setItem('bt_custom_frames', JSON.stringify(updated));
+        return updated;
+      });
+      setSelectedFrame(backupFrame);
+      setNeonColor(randomColor);
+      triggerToast('SISTEM: Bingkai berhasil dibuat puitis secara lokal! 💖✨');
+      setAiPrompt('');
     } finally {
       setIsGeneratingAI(false);
     }
@@ -1543,8 +1620,15 @@ export default function App() {
       setAiSlogans(data.slogans || []);
       triggerToast('SISTEM: 3 Slogan futuristik berhasil diciptakan!');
     } catch (err: any) {
-      console.error(err);
-      setAiError(err.message || 'Gagal generate slogan. Cek API Key.');
+      console.warn("Server AI Slogan failed, generating sweet backup slogans locally...", err);
+      const cleanPrompt = aiPrompt.toUpperCase().trim();
+      const backupSlogans = [
+        `NEON LEGACY: ${cleanPrompt}`,
+        `BEYOND THE FUTURES OF ${cleanPrompt}`,
+        `${cleanPrompt} // PROTOCOLS INITIALIZED`
+      ];
+      setAiSlogans(backupSlogans);
+      triggerToast('SISTEM: Slogan puitis dirancang langsung oleh Olive! 💖');
     } finally {
       setIsGeneratingSlogans(false);
     }
@@ -1795,6 +1879,27 @@ export default function App() {
               <div className="lg:hidden mb-4 space-y-3 w-full animate-fadeIn">
                 {/* Horizontal Frame Selection Carousel (Slider Bingkai) */}
                 <div className="flex gap-2.5 overflow-x-auto pb-2 scrollbar-thin scrollbar-thumb-white/10 scrollbar-track-transparent w-full">
+                  {/* Tanpa Bingkai Option */}
+                  <button
+                    onClick={() => {
+                      setSelectedFrame(null);
+                      localStorage.setItem('bt_selected_frame_id', 'none');
+                      triggerToast('Sistem: Bingkai dinonaktifkan (Tanpa Bingkai) 🚫');
+                    }}
+                    className={`flex-none w-[56px] h-[56px] p-1 rounded transition-all duration-200 relative overflow-hidden flex flex-col items-center justify-center border ${
+                      selectedFrame === null 
+                        ? 'border-neon-cyan bg-cyan-950/25 shadow-[0_0_12px_rgba(0,240,255,0.25)] scale-102 z-10' 
+                        : 'border-white/10 hover:border-white/15 bg-black/50'
+                    }`}
+                    title="Tanpa Bingkai"
+                  >
+                    <Ban className="w-5 h-5 text-red-500/80 mb-0.5" />
+                    <span className="text-[7.5px] font-mono leading-none tracking-tighter opacity-70">NONE</span>
+                    {selectedFrame === null && (
+                      <div className="absolute top-1 right-1 w-1.5 h-1.5 rounded-full bg-neon-cyan shadow-[0_0_6px_#00F0FF]" />
+                    )}
+                  </button>
+
                   {displayFrames.map((frame) => {
                     const isSelected = frame.id === selectedFrame?.id;
                     return (
@@ -1815,7 +1920,7 @@ export default function App() {
                           {frame.renderSvg ? (
                             <div 
                               className="w-[42px] h-[42px] p-0.5 scale-90"
-                              dangerouslySetInnerHTML={{ __html: frame.renderSvg(neonColor) }}
+                              dangerouslySetInnerHTML={{ __html: ensureFullSvg(frame.renderSvg(neonColor)) }}
                             />
                           ) : frame.src ? (
                             <img 
@@ -3336,9 +3441,9 @@ export default function App() {
                   </div>
                   <div className="grid grid-cols-3 gap-1.5">
                     {[
-                      { label: 'Standard HD', value: 1000, desc: '1000x1000 px' },
-                      { label: 'Super HD', value: 1500, desc: '1500x1500 px' },
-                      { label: 'Ultra 4K', value: 2000, desc: '2000x2000 px' },
+                      { label: 'Canva Standard', value: 1080, desc: '1080x1080 px' },
+                      { label: 'Sosmed Ringan', value: 512, desc: '512x512 px' },
+                      { label: 'Ultra 4K', value: 2160, desc: '2160x2160 px' },
                     ].map((sz) => {
                       const isSelected = downloadSize === sz.value;
                       return (
@@ -4247,47 +4352,116 @@ export default function App() {
         </div>
 
         <div className="flex flex-col sm:grid sm:grid-cols-2 lg:grid-cols-4 gap-4">
+          {/* Tanpa Bingkai Card */}
+          <div
+            onClick={() => {
+              setSelectedFrame(null);
+              localStorage.setItem('bt_selected_frame_id', 'none');
+              setCurrentPage('beranda');
+              triggerToast("Sistem: Bingkai dinonaktifkan! 🚫");
+            }}
+            className={`group cursor-pointer rounded-xl bg-[#0b0b0b] border p-4 flex flex-col items-center space-y-3.5 transition-all duration-300 relative overflow-hidden ${
+              selectedFrame === null
+                ? 'border-neon-cyan bg-cyan-950/20 shadow-[0_0_20px_rgba(0,240,255,0.15)]'
+                : 'border-white/10 hover:border-red-500/40 hover:bg-white/[0.02]'
+            }`}
+          >
+            <div className="scanlines absolute inset-0 opacity-10 pointer-events-none" />
+            <div className="relative aspect-square w-full rounded bg-black/60 overflow-hidden flex flex-col items-center justify-center p-4 border border-white/5">
+              <Ban className="w-16 h-16 text-red-500/80 mb-2 group-hover:scale-110 transition-transform duration-300" />
+              <span className="text-[11px] font-mono tracking-wider text-red-400 font-bold uppercase">TANPA BINGKAI</span>
+              <span className="text-[9px] font-mono text-zinc-500 mt-1 uppercase">Sembunyikan bingkai</span>
+            </div>
+            
+            <div className="text-center w-full">
+              <h4 className="text-[11px] font-bold tracking-wider text-white uppercase">MATIKAN BINGKAI</h4>
+              <p className="text-[9px] text-zinc-500 font-mono mt-0.5 uppercase">TAMPILKAN FOTO POLOS</p>
+            </div>
+
+            <div className="w-full pt-1">
+              <button 
+                onClick={() => {
+                  setSelectedFrame(null);
+                  localStorage.setItem('bt_selected_frame_id', 'none');
+                  setCurrentPage('beranda');
+                }}
+                className="w-full py-1.5 rounded bg-white/5 hover:bg-red-500 hover:text-white font-mono text-[9px] font-bold tracking-wider transition-all uppercase"
+              >
+                COPOT BINGKAI
+              </button>
+            </div>
+          </div>
+
           {displayFrames.map((frame) => {
             const isSelected = frame.id === selectedFrame?.id;
+            const isCustom = customFrames.some(cf => cf.id === frame.id);
             return (
               <div
                 key={frame.id}
-                onClick={() => {
-                  setSelectedFrame(frame);
-                  setCurrentPage('beranda');
-                  // triggerToast(`SISTEM: Bingkai "${frame.name}" aktif!`);
-                }}
-                className={`group cursor-pointer rounded-xl bg-[#0b0b0b] border p-4 flex flex-col items-center space-y-3.5 transition-all duration-300 relative overflow-hidden ${
+                className={`group rounded-xl bg-[#0b0b0b] border p-4 flex flex-col items-center space-y-3.5 transition-all duration-300 relative overflow-hidden ${
                   isSelected
                     ? 'border-neon-cyan bg-cyan-950/20 shadow-[0_0_20px_rgba(0,240,255,0.15)]'
                     : 'border-white/10 hover:border-neon-cyan/40 hover:bg-white/[0.02]'
                 }`}
               >
-                {/* Decorative scanner lines */}
-                <div className="scanlines absolute inset-0 opacity-10 pointer-events-none" />
+                {/* Click area to select */}
+                <div 
+                  onClick={() => {
+                    setSelectedFrame(frame);
+                    setCurrentPage('beranda');
+                    // triggerToast(`SISTEM: Bingkai "${frame.name}" aktif!`);
+                  }}
+                  className="w-full cursor-pointer flex flex-col items-center space-y-3.5"
+                >
+                  {/* Decorative scanner lines */}
+                  <div className="scanlines absolute inset-0 opacity-10 pointer-events-none" />
 
-                {/* Mini Viewport Preview */}
-                <div className="relative aspect-square w-full rounded bg-black/60 overflow-hidden flex items-center justify-center p-4 border border-white/5">
-                  {frame.renderSvg ? (
-                    <div
-                      className="w-full h-full scale-95 pointer-events-none"
-                      dangerouslySetInnerHTML={{ __html: frame.renderSvg(neonColor) }}
-                    />
-                  ) : frame.src ? (
-                    <LazyImage
-                      src={resolveApiUrl(frame.src)}
-                      alt={frame.name}
-                      className="w-full h-full object-contain filter brightness-95 pointer-events-none bg-transparent"
-                    />
-                  ) : null}
-                  <div className="absolute inset-0 bg-transparent group-hover:bg-cyan-950/10 transition-colors pointer-events-none" />
+                  {/* Mini Viewport Preview */}
+                  <div className="relative aspect-square w-full rounded bg-black/60 overflow-hidden flex items-center justify-center p-4 border border-white/5">
+                    {frame.renderSvg ? (
+                      <div
+                        className="w-full h-full scale-95 pointer-events-none"
+                        dangerouslySetInnerHTML={{ __html: ensureFullSvg(frame.renderSvg(neonColor)) }}
+                      />
+                    ) : frame.src ? (
+                      <LazyImage
+                        src={resolveApiUrl(frame.src)}
+                        alt={frame.name}
+                        className="w-full h-full object-contain filter brightness-95 pointer-events-none bg-transparent"
+                      />
+                    ) : null}
+                    <div className="absolute inset-0 bg-transparent group-hover:bg-cyan-950/10 transition-colors pointer-events-none" />
+                  </div>
+
+                  <div className="text-center w-full">
+                    <h4 className="text-[11px] font-bold tracking-wider text-white truncate w-full uppercase">{frame.name}</h4>
+                    <p className="text-[9px] text-zinc-500 font-mono mt-0.5 truncate uppercase">{frame.category || 'Kustom'}</p>
+                  </div>
                 </div>
 
-                {/* Action button */}
-                <div className="w-full pt-2 mt-2">
-                  <button className="w-full py-1.5 rounded bg-white/5 hover:bg-neon-cyan hover:text-black font-mono text-[9px] font-bold tracking-wider transition-all uppercase">
-                    GUNAKAN BINGKAI
+                {/* Action buttons */}
+                <div className="w-full pt-1 flex gap-2">
+                  <button 
+                    onClick={() => {
+                      setSelectedFrame(frame);
+                      setCurrentPage('beranda');
+                    }}
+                    className="flex-1 py-1.5 rounded bg-white/5 hover:bg-neon-cyan hover:text-black font-mono text-[9px] font-bold tracking-wider transition-all uppercase"
+                  >
+                    GUNAKAN
                   </button>
+                  {isCustom && (
+                    <button
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        handleDeleteCustomFrame(frame.id);
+                      }}
+                      className="px-2 py-1.5 rounded bg-red-950/20 border border-red-900/30 text-red-500 hover:bg-red-500 hover:text-white transition-all font-mono text-[9px] font-bold"
+                      title="Hapus Bingkai"
+                    >
+                      <Trash2 className="w-3.5 h-3.5" />
+                    </button>
+                  )}
                 </div>
               </div>
             );

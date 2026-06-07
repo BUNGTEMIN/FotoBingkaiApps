@@ -9,7 +9,6 @@ export const compressImage = async (file: File, maxSizeMB: number = 2, maxWidthO
     reader.readAsDataURL(file);
     reader.onload = (event) => {
       const img = new Image();
-      img.src = event.target?.result as string;
       img.onload = () => {
         let width = img.width;
         let height = img.height;
@@ -45,6 +44,7 @@ export const compressImage = async (file: File, maxSizeMB: number = 2, maxWidthO
         resolve(dataUrl);
       };
       img.onerror = (err) => reject(err);
+      img.src = event.target?.result as string;
     };
     reader.onerror = (err) => reject(err);
   });
@@ -52,15 +52,14 @@ export const compressImage = async (file: File, maxSizeMB: number = 2, maxWidthO
 export const resolveApiUrl = (apiPath: string): string => {
   if (apiPath.startsWith('http://') || apiPath.startsWith('https://')) return apiPath;
   const host = window.location.hostname;
-  // Use absolute backend URL ONLY if hosted on an external static domain (like Firebase/web.app)
-  // If we are already on localhost or the native Cloud Run url (*.run.app), we can safely use relative paths.
-  if (!host.includes('localhost') && !host.includes('127.0.0.1') && !host.includes('.run.app')) {
-    const isDevMode = import.meta.env.DEV;
-    const cloudRunBaseUrl = isDevMode
-      ? 'https://ais-dev-h437zomktk5zw36hxyzbwi-844303505958.asia-southeast1.run.app'
-      : 'https://ais-pre-h437zomktk5zw36hxyzbwi-844303505958.asia-southeast1.run.app';
-    return `${cloudRunBaseUrl}${apiPath}`;
+  
+  // Jika sedang berjalan di localhost atau development AI Studio (yang tidak ada backend server)
+  // semua request API langsung diarahkan ke production backend di twibbon.nufat.id
+  if (host.includes('localhost') || host.includes('127.0.0.1') || host.includes('.run.app')) {
+    return `https://twibbon.nufat.id${apiPath}`;
   }
+  
+  // Di production (misalnya di-deploy di twibbon.nufat.id atau hosting statis sendiri berpasangan dengan API), gunakan relative path
   return apiPath;
 };
 
@@ -76,22 +75,35 @@ export const loadImage = (src: string, isCrossOrigin = true): Promise<HTMLImageE
     const host = window.location.hostname;
     const isFirebaseHost = host.includes('qcc-online.web.app') || host.includes('web.app') || host.includes('firebaseapp.com') || host.includes('nufat.id');
 
-    if (src.startsWith('http') && !src.includes(window.location.hostname) && !isFirebaseHost) {
-      finalSrc = resolveApiUrl(`/api/proxy-image?url=${encodeURIComponent(src)}`);
-      isUsingProxy = true;
+    if (src.startsWith('http') && !src.includes(window.location.hostname)) {
+      if (src.includes('nudb.bungtemin.net') || src.includes('apps.bungtemin.net') || src.includes('wabot.nufat.id') || src.includes('webspy.nufat.id') || src.includes('dev.bungtemin.net')) {
+        // Direct loading for trusted domains to avoid proxy wrapper/CORS/ais-dev- error
+        finalSrc = src;
+        isUsingProxy = false;
+      } else {
+        // Pure frontend proxy bypass using the highly reliable images.weserv.nl proxy to bypass CORS
+        finalSrc = `https://images.weserv.nl/?url=${encodeURIComponent(src)}`;
+        isUsingProxy = true;
+      }
     }
 
     const img = new Image();
     
     // Do NOT set crossOrigin="anonymous" for purely local relative paths to prevent strict CORS blocks on static hosts
     const isLocalRelative = src.startsWith('/') || src.startsWith('./') || src.startsWith('../');
-    if ((isCrossOrigin || src.startsWith('http')) && !isLocalRelative && !finalSrc.startsWith('data:')) {
+    if ((isCrossOrigin || src.startsWith('http')) && !isLocalRelative && !finalSrc.startsWith('data:') && !finalSrc.startsWith('blob:')) {
       img.crossOrigin = 'anonymous';
     }
 
     img.onload = () => resolve(img);
 
     img.onerror = () => {
+      // If it is a data: or blob: url, do not attempt to reload or append cache buster
+      if (src.startsWith('data:') || src.startsWith('blob:') || isLocalRelative) {
+        reject(new Error(`Gagal memuat gambar lokal: ${src}`));
+        return;
+      }
+
       // Avoid browser cache from the previously failed request
       const cacheBustedSrc = src + (src.includes('?') ? '&' : '?') + 'fallback=' + Date.now();
       
@@ -123,10 +135,24 @@ export const loadImage = (src: string, isCrossOrigin = true): Promise<HTMLImageE
   });
 };
 
-// Convert SVG string to data URL
+// Helper to ensure SVG contains outer svg root element with appropriate xmlns and viewBox
+export const ensureFullSvg = (svgContent: string): string => {
+  const content = svgContent.trim();
+  if (content.toLowerCase().startsWith('<svg')) {
+    return content;
+  }
+  return `<svg width="1000" height="1000" viewBox="0 0 1000 1000" fill="none" xmlns="http://www.w3.org/2000/svg" style="width:100%; height:100%;">${content}</svg>`;
+};
+
+// Convert SVG string to data URL using safe Base64 encoding
 export const svgToDataUrl = (svgContent: string): string => {
-  const blob = new Blob([svgContent], { type: 'image/svg+xml;charset=utf-8' });
-  return URL.createObjectURL(blob);
+  const fullSvg = ensureFullSvg(svgContent);
+  try {
+    const base64 = btoa(unescape(encodeURIComponent(fullSvg)));
+    return `data:image/svg+xml;base64,${base64}`;
+  } catch (e) {
+    return `data:image/svg+xml;charset=utf-8,${encodeURIComponent(fullSvg)}`;
+  }
 };
 
 // Formulate CSS filter string for canvas context or styling
@@ -158,7 +184,7 @@ export const renderToCanvas = async (
   const ctx = canvas.getContext('2d');
   if (!ctx) return;
 
-  const size = params.size || 1000; // Custom resolution size or 1000px HD default
+  const size = params.size || 1080; // Custom resolution size or 1080px HD default (Canva standard)
   canvas.width = size;
   canvas.height = size;
   
@@ -320,7 +346,7 @@ export const renderToCanvas = async (
       ctx.drawImage(frameImg, 0, 0, size, size);
       ctx.restore();
   
-      if (tempUrl) {
+      if (tempUrl && tempUrl.startsWith('blob:')) {
         URL.revokeObjectURL(tempUrl);
       }
     } catch (err) {

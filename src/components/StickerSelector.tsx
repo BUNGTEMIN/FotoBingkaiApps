@@ -3,6 +3,7 @@ import axios from 'axios';
 import { PlacedSticker, PresetSticker } from '../types';
 import { PRESET_STICKERS } from '../presets';
 import { Plus, Trash, Type, Sliders, Settings, Upload, Link, Image as ImageIcon, Globe, Sparkles } from 'lucide-react';
+import { resolveApiUrl } from '../canvasUtils';
 
 interface StickerSelectorProps {
   stickers: PlacedSticker[];
@@ -104,16 +105,22 @@ export default function StickerSelector({
         }
       })
       .catch(err => {
-        console.warn("Direct CORS/fetch failed, falling back to secure proxy via local Express backend:", err.message);
-        // Fallback to our local proxy using axios
-        axios.get('/api/external-png-list')
+        console.warn("Direct CORS/fetch failed, trying backup direct API format...", err.message);
+        // Backup direct url
+        axios.get('https://apps.bungtemin.net/api/drive/list')
           .then(res => {
-            if (res.data && Array.isArray(res.data)) {
-              setPresetPngStickers(res.data);
-              console.log("Successfully fetched PNG stickers via local backend proxy!");
+            const data = res.data;
+            const list = Array.isArray(data) ? data : (data && Array.isArray(data.data) ? data.data : []);
+            if (list.length > 0) {
+              setPresetPngStickers(list.map((item: any, idx: number) => ({
+                id: item.id || `remote-${idx}`,
+                name: item.name || `Sticker ${idx}`,
+                url: item.src || item.url || item.link,
+                desc: item.description || item.desc || "External PNG sticker"
+              })));
             }
           })
-          .catch(proxyErr => console.error("Both direct and proxy fetches failed:", proxyErr));
+          .catch(backupErr => console.error("Both primary and backup PNG sticker endpoints failed:", backupErr));
       });
   }, []);
 
