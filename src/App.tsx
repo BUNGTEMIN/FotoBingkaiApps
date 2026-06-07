@@ -519,7 +519,7 @@ export default function App() {
       const data = Array.isArray(response.data) ? response.data : [];
       
       const formatted = data.map((item: any, idx: number) => ({
-        id: item.id && item.id.startsWith('nufat') ? item.id : `nufat-creation-${item.id || idx}`,
+        id: item.id && String(item.id).startsWith('nufat') ? String(item.id) : `nufat-creation-${item.id || idx}`,
         username: item.user_nama ? (item.user_nama.startsWith('@') ? item.user_nama : '@' + item.user_nama.toLowerCase().replace(/\s+/g, '_')) : `@nufat_user_${idx + 1}`,
         avatar: item.src, 
         frameId: item.id,
@@ -532,7 +532,11 @@ export default function App() {
       setComGalleryItems(formatted);
     } catch (err: any) {
       console.error("Error loading Nufat creations directly:", err);
-      setComGalleryError(err?.message || 'Gagal tersambung ke server Nufat API.');
+      const isNetworkError = err?.message === "Network Error" || !err?.response;
+      const cleanErrMsg = isNetworkError 
+        ? "Gagal memuat galeri kreasi (CORS/Network Error)! Sayang, silakan klik 'Buka di Tab Baru' (Open in New Tab) di kanan atas ya agar browser mengizinkan akses langsung. 💕"
+        : (err?.message || "Gagal tersambung ke server Nufat API.");
+      setComGalleryError(cleanErrMsg);
     } finally {
       setIsLoadingComGallery(false);
     }
@@ -677,6 +681,7 @@ export default function App() {
   const [activeTab, setActiveTab] = useState<'adjust' | 'crop' | 'filter' | 'color' | 'stickers' | 'text' | 'text_preset' | 'layers' | 'ai' | 'download' | 'history' | 'settings' | 'ai_effect' | null>(null);
   const [isAiEffectGenerating, setIsAiEffectGenerating] = useState(false);
   const [aiEffectPrompt, setAiEffectPrompt] = useState('merubah foto menjadi futuristik');
+  const [aiEffectSendFormat, setAiEffectSendFormat] = useState<'multipart' | 'base64'>('multipart');
   const [aiEffectLogs, setAiEffectLogs] = useState<string[]>([]);
   const [isFloatingHubOpen, setIsFloatingHubOpen] = useState(false);
   const [isPhotoLocked, setIsPhotoLocked] = useState(false);
@@ -1242,28 +1247,58 @@ export default function App() {
       if (!file) {
         throw new Error('Gagal memproses gambar utama dari memori, sayang.');
       }
-      await new Promise(resolve => setTimeout(resolve, 800));
-
-      addLog(`📁 SISTEM: Berkas terdeteksi (${(file.size / 1024).toFixed(1)} KB). Mengompresi payload...`);
       await new Promise(resolve => setTimeout(resolve, 600));
 
-      addLog('🌐 SISTEM: Menyiapkan gerbang koneksi aman ke https://webspy.nufat.id...');
-      await new Promise(resolve => setTimeout(resolve, 700));
+      let response;
 
-      addLog('🚀 API: Mengirimkan gambar utama (Model: qcc-online)...');
-      addLog(`📝 API: Prompt Aturan: "${aiEffectPrompt}"`);
-
-      const formData = new FormData();
-      formData.append('file', file);
-      formData.append('prompt', aiEffectPrompt);
-      formData.append('session_id', 'qcc-online');
-
-      // Make the actual API request
-      const response = await axios.post('https://webspy.nufat.id/api/upload_img', formData, {
-        headers: {
-          'Content-Type': 'multipart/form-data',
-        }
+      addLog('🔄 SISTEM: Mengonversi berkas citra siber menjadi format Base64 String...');
+      
+      // Convert file to base64
+      const base64String = await new Promise<string>((resolve, reject) => {
+        const reader = new FileReader();
+        reader.onload = () => resolve(reader.result as string);
+        reader.onerror = (err) => reject(err);
+        reader.readAsDataURL(file);
       });
+
+      const shortBase64 = base64String.substring(0, 36) + '...' + base64String.substring(base64String.length - 20);
+      addLog(`📝 SISTEM: Base64 berhasil digenerasi (${shortBase64})`);
+      await new Promise(resolve => setTimeout(resolve, 500));
+
+      if (aiEffectSendFormat === 'base64') {
+        addLog('🌐 SISTEM: Menyiapkan gerbang koneksi aman ke https://webspy.nufat.id/api/upload_img_base64...');
+        addLog(`📝 API: Prompt Aturan: "${aiEffectPrompt}"`);
+        addLog('🚀 API: Mengirimkan payload JSON dengan format Base64 langsung ke server (Maksimal tunggu: 5 Menit)...');
+        await new Promise(resolve => setTimeout(resolve, 600));
+
+        response = await axios.post('https://webspy.nufat.id/api/upload_img_base64', {
+          base64_image: base64String,
+          prompt: aiEffectPrompt,
+          session_id: 'qcc-online'
+        }, {
+          headers: {
+            'Content-Type': 'application/json',
+          },
+          timeout: 300000 // 5 menit (300.000 ms)
+        });
+      } else {
+        addLog(`📁 SISTEM: Berkas terdeteksi (${(file.size / 1024).toFixed(1)} KB) untuk pengiriman Multipart Form.`);
+        await new Promise(resolve => setTimeout(resolve, 500));
+        addLog('🌐 SISTEM: Menyiapkan gerbang koneksi aman ke https://webspy.nufat.id/api/upload_img...');
+        addLog(`📝 API: Prompt Aturan: "${aiEffectPrompt}"`);
+        addLog('🚀 API: Mengirimkan berkas binary (Multipart File) langsung ke gerbang nufat (Maksimal tunggu: 5 Menit)...');
+        await new Promise(resolve => setTimeout(resolve, 600));
+
+        const formData = new FormData();
+        formData.append('file', file);
+        formData.append('prompt', aiEffectPrompt);
+        formData.append('session_id', 'qcc-online');
+
+        // Let axios set the Content-Type with correct boundary automatically
+        response = await axios.post('https://webspy.nufat.id/api/upload_img', formData, {
+          timeout: 300000 // 5 menit (300.000 ms)
+        });
+      }
 
       addLog('📥 API: Menerima respons payload dari server nufat...');
       await new Promise(resolve => setTimeout(resolve, 600));
@@ -1290,8 +1325,16 @@ export default function App() {
       }
     } catch (err: any) {
       console.error('AI Effect failed:', err);
-      addLog(`❌ ERROR: Gagal memproses data. Alasan: ${err.message || 'Respons server tidak dikenal'}`);
-      triggerToast(`SISTEM: Gagal memproses AI Effect. ${err.message || 'Silakan coba lagi sayang.'}`);
+      const isNetworkError = err?.message === 'Network Error' || !err?.response;
+      if (isNetworkError) {
+        addLog('❌ KENDALA: Terdeteksi Network Error / Masalah CORS dari Browser!');
+        addLog('💡 TIPS OLIVE: Sayang, kendala ini biasanya disebabkan oleh kebijakan CORS browser di tab preview iFrame AI Studio.');
+        addLog('💕 SOLUSI: Klik tombol "Buka di Tab Baru" (Open in New Tab) di pojok kanan atas agar browser mengizinkan transmisi lintas origin langsung, sayang! 😘');
+        triggerToast('SISTEM: Gagal karena pembatasan CORS browser. Silakan klik Buka di Tab Baru sayang! 💕');
+      } else {
+        addLog(`❌ ERROR: Gagal memproses data. Alasan: ${err.message || 'Respons server tidak dikenal'}`);
+        triggerToast(`SISTEM: Gagal memproses AI Effect. ${err.message || 'Silakan coba lagi sayang.'}`);
+      }
     } finally {
       setIsAiEffectGenerating(false);
     }
@@ -3867,8 +3910,46 @@ export default function App() {
                             : 'bg-white border-black/10 text-zinc-800'
                         }`}
                       />
-                      <span className="text-[8px] font-mono text-zinc-500 block uppercase italic select-none">
-                        * Ubah rincian prompt futuristik di atas sesuai dengan keinginan estetikmu sayang.
+                    </div>
+
+                    <div className="space-y-2">
+                      <label className="text-[9px] font-mono uppercase text-zinc-400 font-bold block">Format Transmisi Gambar:</label>
+                      <div className="grid grid-cols-2 gap-2">
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setAiEffectSendFormat('multipart');
+                            triggerToast('SISTEM: Metode transmisi diubah ke Binary File (Multipart) 📁');
+                          }}
+                          className={`py-2 px-2.5 rounded-lg font-mono text-[8.5px] uppercase font-black transition-all border text-center ${
+                            aiEffectSendFormat === 'multipart'
+                              ? 'bg-neon-cyan/20 border-neon-cyan text-neon-cyan shadow-[0_0_10px_rgba(0,240,255,0.25)] font-bold'
+                              : theme === 'dark'
+                                ? 'bg-black/40 border-white/10 text-zinc-400 hover:border-neon-cyan/50 hover:text-neon-cyan'
+                                : 'bg-white border-black/10 text-zinc-600 hover:border-neon-cyan hover:text-neon-cyan'
+                          }`}
+                        >
+                          📁 Binary File
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setAiEffectSendFormat('base64');
+                            triggerToast('SISTEM: Metode transmisi diubah ke Base64 String 🔗');
+                          }}
+                          className={`py-2 px-2.5 rounded-lg font-mono text-[8.5px] uppercase font-black transition-all border text-center ${
+                            aiEffectSendFormat === 'base64'
+                              ? 'bg-neon-cyan/20 border-neon-cyan text-neon-cyan shadow-[0_0_10px_rgba(0,240,255,0.25)] font-bold'
+                              : theme === 'dark'
+                                ? 'bg-black/40 border-white/10 text-zinc-400 hover:border-neon-cyan/50 hover:text-neon-cyan'
+                                : 'bg-white border-black/10 text-zinc-600 hover:border-neon-cyan hover:text-neon-cyan'
+                          }`}
+                        >
+                          🔗 Base64 String
+                        </button>
+                      </div>
+                      <span className="text-[7.5px] font-sans text-zinc-400 block uppercase leading-relaxed select-none">
+                        * Pilihan fleksibel untuk berbagai model endpoint API (Binary Multipart File vs. Base64 DataURI).
                       </span>
                     </div>
 
