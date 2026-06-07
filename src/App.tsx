@@ -3758,7 +3758,7 @@ export default function App() {
                 {activeTab === 'download' && <><Download className="w-3.5 h-3.5 text-neon-cyan animate-bounce" /> FORMAT UNDUH & RESOLUSI</>}
                 {activeTab === 'history' && <><Activity className="w-3.5 h-3.5 text-emerald-400 animate-pulse" /> RIWAYAT PERUBAHAN</>}
                 {activeTab === 'settings' && <><Settings2 className="w-3.5 h-3.5 text-neon-cyan animate-pulse" /> PENGATURAN EFEK GLOBAL</>}
-                {activeTab === 'ai_effect' && <><Sparkles className="w-3.5 h-3.5 text-neon-cyan animate-pulse" /> AI EFFECT FUTURISTIK</>}
+                {activeTab === 'ai_effect' && user?.email === 'bungtemin@gmail.com' && <><Sparkles className="w-3.5 h-3.5 text-neon-cyan animate-pulse" /> AI EFFECT FUTURISTIK</>}
               </span>
               <button 
                 onClick={() => setActiveTab(null)}
@@ -4676,7 +4676,7 @@ export default function App() {
                 </div>
               )}
 
-              {activeTab === 'ai_effect' && (
+              {activeTab === 'ai_effect' && user?.email === 'bungtemin@gmail.com' && (
                 <div className="space-y-4 max-h-[60vh] overflow-y-auto pb-4 scrollbar-thin scrollbar-thumb-white/10">
                   <div className={`p-4 rounded-xl border flex flex-col space-y-4 transition-all duration-300 ${
                     theme === 'dark' ? 'border-[#00F0FF]/20 bg-cyan-950/5' : 'border-black/5 bg-black/5'
@@ -4966,34 +4966,27 @@ export default function App() {
                 <span className="text-[8px] uppercase tracking-wider font-extrabold">UNGGAH</span>
               </button>
 
-              <button
-                onClick={() => {
-                  if (!userImage) {
-                    triggerToast("Sayang, silakan unggah foto terlebih dahulu di tombol UNGGAH sebelum mencoba AI Effect! 💖");
-                    return;
-                  }
-                  setActiveTab(activeTab === 'ai_effect' ? null : 'ai_effect');
-                  if (user?.email !== 'bungtemin@gmail.com') {
-                    triggerToast("Akses siber terbatas, sayang. Ssst, fitur AI Effect premium ini dikunci dan khusus untuk Admin (Bung Temin) saja ya... 💖🔐");
-                  }
-                }}
-                className={`snap-center flex-shrink-0 px-3.5 py-1.5 rounded-xl font-mono text-xs font-bold tracking-widest transition-all duration-150 flex flex-col items-center justify-center space-y-1 min-w-[76px] ${
-                  activeTab === 'ai_effect'
-                    ? 'bg-neon-cyan/25 text-neon-cyan border-t-2 border-neon-cyan shadow-[0_0_15px_rgba(0,240,255,0.25)] font-bold'
-                    : user?.email === 'bungtemin@gmail.com'
-                      ? 'text-[#00F0FF] hover:text-white bg-[#00F0FF]/5 hover:bg-[#00F0FF]/15 animate-pulse'
-                      : 'text-zinc-500 hover:text-rose-400 bg-zinc-950/40 border border-transparent hover:border-rose-500/30'
-                }`}
-              >
-                {user?.email === 'bungtemin@gmail.com' ? (
+              {user?.email === 'bungtemin@gmail.com' && (
+                <button
+                  onClick={() => {
+                    if (!userImage) {
+                      triggerToast("Sayang, silakan unggah foto terlebih dahulu di tombol UNGGAH sebelum mencoba AI Effect! 💖");
+                      return;
+                    }
+                    setActiveTab(activeTab === 'ai_effect' ? null : 'ai_effect');
+                  }}
+                  className={`snap-center flex-shrink-0 px-3.5 py-1.5 rounded-xl font-mono text-xs font-bold tracking-widest transition-all duration-150 flex flex-col items-center justify-center space-y-1 min-w-[76px] ${
+                    activeTab === 'ai_effect'
+                      ? 'bg-neon-cyan/25 text-neon-cyan border-t-2 border-neon-cyan shadow-[0_0_15px_rgba(0,240,255,0.25)] font-bold'
+                      : 'text-[#00F0FF] hover:text-white bg-[#00F0FF]/5 hover:bg-[#00F0FF]/15 animate-pulse'
+                  }`}
+                >
                   <Sparkles className="w-4 h-4 text-neon-cyan animate-pulse" />
-                ) : (
-                  <Lock className="w-4 h-4 text-rose-500/80 animate-pulse" />
-                )}
-                <span className="text-[8px] uppercase tracking-wider font-extrabold pb-0.5">
-                  {user?.email === 'bungtemin@gmail.com' ? 'AI EFFECT' : '🔐 AI EFFECT'}
-                </span>
-              </button>
+                  <span className="text-[8px] uppercase tracking-wider font-extrabold pb-0.5">
+                    AI EFFECT
+                  </span>
+                </button>
+              )}
 
               <button
                 onClick={() => setActiveTab(activeTab === 'text_preset' ? null : 'text_preset')}
