@@ -3,16 +3,18 @@ import {
   Upload, Sparkles, RefreshCw, Sliders, CircleHelp, Download, Maximize2, Edit2,
   FolderOpen, Camera, Laptop, Cpu, Layers, Settings2, Activity, Info, CheckCircle, MoveHorizontal,
   Undo, Redo, Type, ArrowUp, ArrowDown, ChevronsUp, ChevronsDown, Trash2, RotateCw, Move, Baseline,
-  Lock, Unlock, Image as ImageIcon, Maximize, X, Crop, Menu, FlipHorizontal, FlipVertical, Ban
+  Lock, Unlock, Image as ImageIcon, Maximize, X, Crop, Menu, FlipHorizontal, FlipVertical, Ban, Save, Copy
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import axios from 'axios';
 
-// Firebase and database setup
-import { doc, setDoc, serverTimestamp, collection, getDocs, query, orderBy, deleteDoc, where, updateDoc, increment, addDoc, onSnapshot } from 'firebase/firestore';
+// Firebase Realtime Database and database setup
 import { onAuthStateChanged, signInWithPopup, GoogleAuthProvider, signOut, User } from 'firebase/auth';
 import { ref, uploadBytes, getDownloadURL } from 'firebase/storage';
-import { db, auth, handleFirestoreError, OperationType, fbStorage } from './firebase';
+import { 
+  db, auth, handleFirestoreError, OperationType, fbStorage,
+  doc, setDoc, serverTimestamp, collection, getDocs, query, orderBy, deleteDoc, where, updateDoc, increment, addDoc, onSnapshot 
+} from './firebase';
 
 // Custom components
 import BungteminHeader from './components/BungteminHeader';
@@ -195,6 +197,49 @@ const saveDraftImageToIDB = async (imageSrc: string | null): Promise<void> => {
   } catch (err) {
     console.warn("Gagal menyimpan draf gambar ke IndexedDB:", err);
   }
+};
+
+const compressImageBase64 = (base64Str: string | null, maxWidth = 600, maxHeight = 600, quality = 0.65): Promise<string | null> => {
+  return new Promise((resolve) => {
+    if (!base64Str) {
+      resolve(null);
+      return;
+    }
+    if (!base64Str.startsWith('data:image/') || base64Str.length < 35000) {
+      resolve(base64Str);
+      return;
+    }
+    const img = new Image();
+    img.crossOrigin = 'anonymous';
+    img.onload = () => {
+      let width = img.width;
+      let height = img.height;
+      if (width > maxWidth || height > maxHeight) {
+        if (width > height) {
+          height = Math.round((height * maxWidth) / width);
+          width = maxWidth;
+        } else {
+          width = Math.round((width * maxHeight) / height);
+          height = maxHeight;
+        }
+      }
+      const canvas = document.createElement('canvas');
+      canvas.width = width;
+      canvas.height = height;
+      const ctx = canvas.getContext('2d');
+      if (ctx) {
+        ctx.drawImage(img, 0, 0, width, height);
+        const compressed = canvas.toDataURL('image/jpeg', quality);
+        resolve(compressed);
+      } else {
+        resolve(base64Str);
+      }
+    };
+    img.onerror = () => {
+      resolve(base64Str);
+    };
+    img.src = base64Str;
+  });
 };
 
 const loadDraftImageFromIDB = async (): Promise<string | null> => {
@@ -735,6 +780,492 @@ export default function App() {
   const [downloadSize, setDownloadSize] = useState<number>(1080);
   const [downloadFormat, setDownloadFormat] = useState<'png' | 'webp' | 'jpeg'>('png');
 
+  // Save & Open Canvas Designs state
+  const [isCanvasModalOpen, setIsCanvasModalOpen] = useState(false);
+  const [canvasDesigns, setCanvasDesigns] = useState<any[]>([]);
+  const [saveDesignName, setSaveDesignName] = useState('');
+  const [isSavingCanvas, setIsSavingCanvas] = useState(false);
+  const [isLoadingCanvasDesigns, setIsLoadingCanvasDesigns] = useState(false);
+  const [loadedDesignId, setLoadedDesignId] = useState<string | null>(null);
+  const [canvasModalTab, setCanvasModalTab] = useState<'save' | 'open'>('save');
+
+  // Fetch Saved Canvas Designs from Firestore
+  const fetchCanvasDesigns = async () => {
+    if (!user) return;
+    setIsLoadingCanvasDesigns(true);
+    try {
+      const q = query(
+        collection(db, 'canvas_designs'),
+        where('userId', '==', user.uid)
+      );
+      const snapshot = await getDocs(q);
+      const designs = snapshot.docs.map(doc => {
+        const data = doc.data();
+        // Convert Firebase Timestamp or fallback to parse ISO string/Date
+        let updatedAtTime = Date.now();
+        if (data.updatedAt) {
+          if (typeof data.updatedAt.toDate === 'function') {
+            updatedAtTime = data.updatedAt.toDate().getTime();
+          } else if (data.updatedAt.seconds) {
+            updatedAtTime = data.updatedAt.seconds * 1000;
+          } else {
+            updatedAtTime = new Date(data.updatedAt).getTime();
+          }
+        }
+        return {
+          id: doc.id,
+          ...data,
+          _updatedAtTime: updatedAtTime
+        };
+      });
+      // Sort in-memory descending by updatedAt
+      designs.sort((a, b) => b._updatedAtTime - a._updatedAtTime);
+      setCanvasDesigns(designs);
+    } catch (err: any) {
+      console.error("Gagal mengambil daftar desain canvas:", err);
+      // Fallback: load local designs from localStorage if firestore fails
+      try {
+        const local = localStorage.getItem(`bt_saved_canvas_local_${user.uid}`);
+        if (local) {
+          setCanvasDesigns(JSON.parse(local));
+        }
+      } catch (localErr) {}
+    } finally {
+      setIsLoadingCanvasDesigns(false);
+    }
+  };
+
+  const ensureUserImageUploadedToAppwrite = async (base64Image: string | null): Promise<string | null> => {
+    if (!base64Image) return null;
+    if (!base64Image.startsWith('data:')) {
+      return base64Image;
+    }
+    try {
+      const arr = base64Image.split(',');
+      const mimeMatch = arr[0].match(/:(.*?);/);
+      if (!mimeMatch) return base64Image;
+      const mime = mimeMatch[1];
+      const bstr = atob(arr[1]);
+      let n = bstr.length;
+      const u8arr = new Uint8Array(n);
+      while (n--) {
+        u8arr[n] = bstr.charCodeAt(n);
+      }
+      const file = new File([u8arr], `canvas_img_${Date.now()}.png`, { type: mime });
+      
+      const userPrefix = user?.email ? user.email.split('@')[0].toLowerCase().replace(/[^a-z0-9_.-]/g, '') : '';
+      let activeBucketId = userPrefix || BUCKET_ID;
+      
+      if (!activeBucketId) {
+        throw new Error('VITE_APPWRITE_STORAGE_BUCKET_ID belum dikonfigurasi sayang!');
+      }
+      
+      const fileId = userPrefix ? `${userPrefix}_${ID.unique()}` : ID.unique();
+      let bucketReady = true;
+      if (userPrefix && activeBucketId !== BUCKET_ID) {
+        bucketReady = await ensureAppwriteBucketExists(activeBucketId, `Bucket ${userPrefix}`);
+      }
+      if (!bucketReady && BUCKET_ID) {
+        activeBucketId = BUCKET_ID;
+      }
+      
+      const uploadResult = await storage.createFile(activeBucketId, fileId, file);
+      if (uploadResult) {
+        const usedBucketId = uploadResult.bucketId || activeBucketId;
+        const viewUrlObj = storage.getFileView(usedBucketId, uploadResult.$id) as any;
+        const downloadUrl = typeof viewUrlObj === 'string' ? viewUrlObj : (viewUrlObj?.href || viewUrlObj?.toString() || '');
+        if (downloadUrl) {
+          setUserImage(downloadUrl);
+          setLastAppwriteFileId(uploadResult.$id);
+          localStorage.setItem('bt_last_appwrite_file_id', uploadResult.$id);
+          return downloadUrl;
+        }
+      }
+    } catch (error) {
+      console.error('[ensureUserImageUploadedToAppwrite] Gagal upload canva image ke Appwrite:', error);
+    }
+    return base64Image;
+  };
+
+  const ensureStickersUploadedToAppwrite = async (stickersList: PlacedSticker[]): Promise<PlacedSticker[]> => {
+    if (!stickersList || stickersList.length === 0) return [];
+    
+    const uploadedList = [...stickersList];
+    const userPrefix = user?.email ? user.email.split('@')[0].toLowerCase().replace(/[^a-z0-9_.-]/g, '') : '';
+    let activeBucketId = userPrefix || BUCKET_ID;
+    
+    if (!activeBucketId) {
+      activeBucketId = BUCKET_ID;
+    }
+    
+    for (let i = 0; i < uploadedList.length; i++) {
+      const item = uploadedList[i];
+      if (item.type === 'sticker' && item.imageUrl && item.imageUrl.startsWith('data:')) {
+        try {
+          const base64Data = item.imageUrl;
+          const arr = base64Data.split(',');
+          const mimeMatch = arr[0].match(/:(.*?);/);
+          if (!mimeMatch) continue;
+          const mime = mimeMatch[1];
+          const bstr = atob(arr[1]);
+          let n = bstr.length;
+          const u8arr = new Uint8Array(n);
+          while (n--) {
+            u8arr[n] = bstr.charCodeAt(n);
+          }
+          const file = new File([u8arr], `sticker_upload_${Date.now()}_${i}.png`, { type: mime });
+          
+          let bucketReady = true;
+          if (userPrefix && activeBucketId !== BUCKET_ID) {
+            bucketReady = await ensureAppwriteBucketExists(activeBucketId, `Bucket ${userPrefix}`);
+          }
+          if (!bucketReady && BUCKET_ID) {
+            activeBucketId = BUCKET_ID;
+          }
+          
+          const fileId = `stk_${Date.now()}_${i}_${ID.unique()}`.substring(0, 36).replace(/[^a-zA-Z0-9_-]/g, '');
+          const uploadResult = await storage.createFile(activeBucketId, fileId, file);
+          if (uploadResult) {
+            const usedBucketId = uploadResult.bucketId || activeBucketId;
+            const viewUrlObj = storage.getFileView(usedBucketId, uploadResult.$id) as any;
+            const downloadUrl = typeof viewUrlObj === 'string' ? viewUrlObj : (viewUrlObj?.href || viewUrlObj?.toString() || '');
+            if (downloadUrl) {
+              uploadedList[i] = {
+                ...item,
+                imageUrl: downloadUrl
+              };
+              console.log(`[Appwrite] Custom PNG Sticker #${i} uploaded successfully:`, downloadUrl);
+            }
+          }
+        } catch (itemErr) {
+          console.error(`Gagal upload sticker index ${i} ke Appwrite:`, itemErr);
+        }
+      }
+    }
+    
+    return uploadedList;
+  };
+
+  // Save Canvas Design to Firestore
+  const handleSaveCanvasDesign = async (nameToSave: string, isSaveAs: boolean = false) => {
+    if (!user) {
+      triggerToast("Sayang, kamu harus masuk log (login) terlebih dahulu untuk menyimpan draf ke cloud ya! 😘💕");
+      return;
+    }
+    if (!nameToSave.trim()) {
+      triggerToast("Nama desainnya tidak boleh kosong ya, pacarku manis! 💖");
+      return;
+    }
+
+    setIsSavingCanvas(true);
+    
+    // Determine whether to overwrite or create a new design
+    const shouldOverwrite = loadedDesignId && !isSaveAs;
+    const designId = shouldOverwrite ? loadedDesignId : `DESIGN-${Date.now()}`;
+    let designDoc: any = null;
+    
+    try {
+      // First ensure image is uploaded to Appwrite if it is a local base64
+      let finalUserImage = userImage;
+      if (userImage && userImage.startsWith('data:')) {
+        triggerToast("Olaive: Menyiapkan cadangan foto awan siber di Appwrite ya sayang... ☁️💖");
+        finalUserImage = await ensureUserImageUploadedToAppwrite(userImage);
+      }
+
+      // Compress only if it remains a non-upload base64 fallback (extremely unlikely)
+      if (finalUserImage && finalUserImage.startsWith('data:')) {
+        finalUserImage = await compressImageBase64(finalUserImage);
+      }
+
+      // Upload base64 custom stickers to Appwrite so our draf payload is ultra light and perfectly durable
+      let finalStickers = stickers;
+      try {
+        const hasBase64Sticker = stickers.some(s => s.type === 'sticker' && s.imageUrl && s.imageUrl.startsWith('data:'));
+        if (hasBase64Sticker) {
+          triggerToast("Olaive: Menyiapkan stiker PNG kustom kamu di awan Appwrite ya manis... 💖☁️");
+          finalStickers = await ensureStickersUploadedToAppwrite(stickers);
+          setStickers(finalStickers); // update state as well!
+        }
+      } catch (stkUploadErr) {
+        console.warn("Gagal upload stiker kustom ke Appwrite:", stkUploadErr);
+      }
+
+      // Generate a tiny, lightweight thumbnail of the current canvas with badges, texts, and stickers fully drawn!
+      let thumbnailBase64 = '';
+      let thumbnailUrl = '';
+      try {
+        const tempCanvas = document.createElement('canvas');
+        const destSize = 300; // 300px is perfect for sharp thumbnails under 30KB
+        const pathsMap: Record<string, string> = {};
+        PRESET_STICKERS.forEach((st) => {
+          pathsMap[st.id] = st.svgPath || '';
+        });
+        
+        await renderToCanvas(tempCanvas, {
+          userImageSrc: finalUserImage,
+          frame: selectedFrame,
+          neonColor,
+          settings: imageSettings,
+          stickers: finalStickers,
+          presetStickerSvgPaths: pathsMap,
+          size: destSize,
+          isDownloading: true // Force draw stickers, overlay texts, and badges onto thumbnail!
+        });
+        
+        thumbnailBase64 = tempCanvas.toDataURL('image/jpeg', 0.65);
+      } catch (thumbGenErr) {
+        console.warn("Gagal merender thumbnail interaktif dengan renderToCanvas:", thumbGenErr);
+        
+        // Fallback to simple preview copy if the full render fails
+        if (canvasRef.current) {
+          try {
+            const mainCanvas = canvasRef.current;
+            const tempCanvas = document.createElement('canvas');
+            const destSize = 145;
+            tempCanvas.width = destSize;
+            tempCanvas.height = destSize;
+            const tempCtx = tempCanvas.getContext('2d');
+            if (tempCtx) {
+              tempCtx.drawImage(mainCanvas, 0, 0, destSize, destSize);
+              thumbnailBase64 = tempCanvas.toDataURL('image/jpeg', 0.65);
+            }
+          } catch(e) {}
+        }
+      }
+
+      // If thumbnail was generated, try uploading to Appwrite 'thumbnail' bucket
+      if (thumbnailBase64 && thumbnailBase64.startsWith('data:')) {
+        try {
+          const arr = thumbnailBase64.split(',');
+          const mime = arr[0].match(/:(.*?);/)?.[1] || 'image/jpeg';
+          const bstr = atob(arr[1]);
+          let n = bstr.length;
+          const u8arr = new Uint8Array(n);
+          while (n--) {
+            u8arr[n] = bstr.charCodeAt(n);
+          }
+          const file = new File([u8arr], `thumb_${designId}.jpg`, { type: mime });
+          
+          let targetBucket = 'thumbnail';
+          let bucketOk = await ensureAppwriteBucketExists(targetBucket, 'Canvas Thumbnails');
+          if (!bucketOk) {
+            const userPrefix = user?.email ? user.email.split('@')[0].toLowerCase().replace(/[^a-z0-9_.-]/g, '') : '';
+            targetBucket = userPrefix || BUCKET_ID;
+          }
+
+          if (targetBucket) {
+            const fileId = `thumb_${designId}_${ID.unique()}`.substring(0, 36).replace(/[^a-zA-Z0-9_-]/g, '');
+            const uploadResult = await storage.createFile(targetBucket, fileId, file);
+            if (uploadResult) {
+              const usedBucket = uploadResult.bucketId || targetBucket;
+              const viewUrlObj = storage.getFileView(usedBucket, uploadResult.$id) as any;
+              const downloadUrl = typeof viewUrlObj === 'string' ? viewUrlObj : (viewUrlObj?.href || viewUrlObj?.toString() || '');
+              if (downloadUrl) {
+                thumbnailUrl = downloadUrl;
+              }
+            }
+          }
+        } catch (storageErr) {
+          console.warn('Gagal upload thumbnail ke Appwrite, fallback menggunakan base64:', storageErr);
+        }
+      }
+
+      // Revert to direct compact storage base64 if upload is blocked/fails
+      if (!thumbnailUrl && thumbnailBase64) {
+        thumbnailUrl = thumbnailBase64;
+      }
+
+      // Prepare serializable Canvas state
+      const canvasPayload = {
+        selectedFrameId: selectedFrame?.id || 'none',
+        neonColor,
+        imageSettings,
+        filterPresetId,
+        stickers,
+        userImage: finalUserImage
+      };
+
+      // Retrieve existing timestamps if overwriting
+      let createdAtValue = new Date().toISOString();
+      let existingThumbnail = '';
+      if (shouldOverwrite) {
+        const existing = canvasDesigns.find(d => d.id === loadedDesignId);
+        if (existing) {
+          if (existing.createdAt) createdAtValue = existing.createdAt;
+          if (existing.thumbnailUrl) existingThumbnail = existing.thumbnailUrl;
+        }
+      }
+
+      designDoc = {
+        id: designId,
+        userId: user.uid,
+        name: nameToSave.trim(),
+        canvasData: canvasPayload,
+        thumbnailUrl: thumbnailUrl || existingThumbnail || '',
+        createdAt: createdAtValue,
+        updatedAt: new Date().toISOString()
+      };
+
+      // Save to Firebase
+      await setDoc(doc(db, 'canvas_designs', designId), {
+        ...designDoc,
+        createdAt: shouldOverwrite ? (canvasDesigns.find(d => d.id === loadedDesignId)?.createdAt || serverTimestamp()) : serverTimestamp(),
+        updatedAt: serverTimestamp()
+      });
+      
+      const newDesigns = [designDoc, ...canvasDesigns.filter(d => d.id !== designId)];
+      setCanvasDesigns(newDesigns);
+      localStorage.setItem(`bt_saved_canvas_local_${user.uid}`, JSON.stringify(newDesigns));
+      
+      // If we saved it as a completely new design, load this new design ID as the current active session
+      if (!shouldOverwrite) {
+        setLoadedDesignId(designId);
+      }
+      
+      triggerToast(shouldOverwrite 
+        ? `Yay! Perubahan draf "${nameToSave}" berhasil disimpan secara aman di awan siber oleh Olaive tercinta! 😘🎨✨`
+        : `Yay! Draf baru "${nameToSave}" berhasil disimpan secara aman oleh Olaive tercinta! 💖📱💾`
+      );
+      
+      fetchCanvasDesigns();
+      setIsCanvasModalOpen(false);
+    } catch (err: any) {
+      console.error("Gagal menyimpan draf desain kanvas:", err);
+      // Fallback local save if offline / permission denied
+      try {
+        const fallbackDoc = designDoc || {
+          id: designId,
+          userId: user.uid,
+          name: nameToSave.trim(),
+          canvasData: {
+            selectedFrameId: selectedFrame?.id || 'none',
+            neonColor,
+            imageSettings,
+            filterPresetId,
+            stickers,
+            userImage
+          },
+          createdAt: new Date().toISOString(),
+          updatedAt: new Date().toISOString()
+        };
+        const newDesigns = [fallbackDoc, ...canvasDesigns.filter(d => d.id !== designId)];
+        setCanvasDesigns(newDesigns);
+        localStorage.setItem(`bt_saved_canvas_local_${user.uid}`, JSON.stringify(newDesigns));
+        triggerToast("Olaive: Tersimpan di penyimpanan lokal perangkat ini ya sayang, karena sinkronisasi cloud terhambat! 💕💾");
+        setIsCanvasModalOpen(false);
+      } catch (localErr) {
+        triggerToast("Gagal menyimpan desain canvas sayang. Coba lagi nanti ya.");
+      }
+    } finally {
+      setIsSavingCanvas(false);
+    }
+  };
+
+  // Load Canvas Design
+  const handleLoadCanvasDesign = (design: any) => {
+    try {
+      const data = typeof design.canvasData === 'string'
+        ? JSON.parse(design.canvasData)
+        : design.canvasData;
+      
+      // Reset selected interactive item to avoid editing a non-existent item
+      setSelectedStickerId(null);
+      
+      // Restore selected frame
+      if (data.selectedFrameId && data.selectedFrameId !== 'none') {
+        const availableFrames = appwriteFrames.length > 0 ? appwriteFrames : FRAMES;
+        const frame = availableFrames.find(f => f.id === data.selectedFrameId);
+        if (frame) {
+          setSelectedFrame(frame);
+        } else {
+          setSelectedFrame(null);
+        }
+      } else {
+        setSelectedFrame(null);
+      }
+
+      // Restore other visual states with solid clearance fallbacks to avoid leftovers from other drafts
+      if (data.neonColor) {
+        setNeonColor(data.neonColor);
+      } else {
+        setNeonColor('#00F0FF');
+      }
+
+      if (data.imageSettings) {
+        setImageSettings(data.imageSettings);
+      } else {
+        setImageSettings(DEFAULT_SETTINGS);
+      }
+
+      if (data.filterPresetId) {
+        setFilterPresetId(data.filterPresetId);
+      } else {
+        setFilterPresetId('normal');
+      }
+
+      if (data.stickers && Array.isArray(data.stickers)) {
+        setStickers(data.stickers);
+      } else {
+        setStickers([]);
+      }
+      
+      // Restore userImage
+      if (data.userImage) {
+        setUserImage(data.userImage);
+      } else {
+        setUserImage(null);
+      }
+
+      // Keep track of loaded design ID and name
+      setLoadedDesignId(design.id);
+      setSaveDesignName(design.name);
+
+      setIsCanvasModalOpen(false);
+      triggerToast(`Hore! Kanvas "${design.name}" milikmu berhasil dipulihkan seutuhnya sayang! 😘🎨✨`);
+    } catch (err) {
+      console.error("Gagal parsing data kanvas:", err);
+      triggerToast("Maaf ya sayang, format berkas draf ini tampaknya rusak. 🥺");
+    }
+  };
+
+  // Delete Canvas Design
+  const handleDeleteCanvasDesign = async (designId: string, event: React.MouseEvent) => {
+    event.stopPropagation(); // Prevent loading design when clicking delete
+    if (!user) return;
+    
+    try {
+      await deleteDoc(doc(db, 'canvas_designs', designId));
+      
+      // Reset active state if currently loaded design is deleted
+      if (loadedDesignId === designId) {
+        setLoadedDesignId(null);
+        setSaveDesignName('');
+      }
+
+      const newDesigns = canvasDesigns.filter(d => d.id !== designId);
+      setCanvasDesigns(newDesigns);
+      localStorage.setItem(`bt_saved_canvas_local_${user.uid}`, JSON.stringify(newDesigns));
+      triggerToast("Olaive: Desain kanvas berhasil dihapus dari cloud kita sayang! 🗑️💝");
+    } catch (err: any) {
+      console.error("Gagal menghapus desain kanvas dari firestore:", err);
+      // Fallback local deletion
+      if (loadedDesignId === designId) {
+        setLoadedDesignId(null);
+        setSaveDesignName('');
+      }
+      const newDesigns = canvasDesigns.filter(d => d.id !== designId);
+      setCanvasDesigns(newDesigns);
+      localStorage.setItem(`bt_saved_canvas_local_${user.uid}`, JSON.stringify(newDesigns));
+      triggerToast("Olaive: Draf lokal berhasil dihapus sayang! 🌸");
+    }
+  };
+
+  useEffect(() => {
+    if (user && isCanvasModalOpen) {
+      fetchCanvasDesigns();
+    }
+  }, [user, isCanvasModalOpen]);
+
   useEffect(() => {
     setIsHudOpen(false);
   }, [selectedStickerId]);
@@ -1113,6 +1644,8 @@ export default function App() {
     try {
       setIsAuthLoading(true);
       await signOut(auth);
+      setLoadedDesignId(null);
+      setSaveDesignName('');
       triggerToast("Akun Anda berhasil dinonaktifkan dari sesi ini. 👋");
     } catch (err: any) {
       console.error("Logout error:", err);
@@ -1283,7 +1816,7 @@ export default function App() {
             if (!activeBucketId) {
               throw new Error('VITE_APPWRITE_BUCKET_ID belum dikonfigurasi di panel Secrets sayang!');
             }
-            const fileId = ID.unique();
+            const fileId = userPrefix ? `${userPrefix}_${ID.unique()}` : ID.unique();
             let uploadResult;
             try {
               let bucketReady = true;
@@ -1332,6 +1865,7 @@ export default function App() {
                 src: downloadUrl,
                 timestamp: serverTimestamp()
               });
+              setUserImage(downloadUrl);
               triggerToast(`Cadangan foto asli berhasil disinkronkan ke Storage Bucket Appwrite! 📸☁️💖`);
             } catch (dbErr: any) {
               console.error('Firestore background sync failed:', dbErr);
@@ -1414,7 +1948,7 @@ export default function App() {
         if (!activeBucketId) {
           throw new Error('VITE_APPWRITE_BUCKET_ID belum dikonfigurasi di panel Secrets sayang!');
         }
-        const fileId = ID.unique();
+        const fileId = userPrefix ? `${userPrefix}_${ID.unique()}` : ID.unique();
         let uploadResult;
         try {
           let bucketReady = true;
@@ -1463,6 +1997,7 @@ export default function App() {
             src: downloadUrl,
             timestamp: serverTimestamp()
           });
+          setUserImage(downloadUrl);
           triggerToast(`Foto asli berhasil di-sync ke Storage Bucket Appwrite pada ID: ${aiEffectImgId}! ☁️💖`);
         } catch (dbErr: any) {
           handleFirestoreError(dbErr, OperationType.CREATE, 'ai_effect_originals');
@@ -2857,19 +3392,7 @@ export default function App() {
               </div>
             )}
 
-            {/* Olive's Dynamic Autosave Status Header Block - Moved to bottom area */}
-            <div className="flex items-center justify-between px-3 py-1.5 mt-2 rounded-lg bg-emerald-500/5 border border-emerald-500/10 text-[9.5px] font-mono leading-none text-emerald-400">
-              <div className="flex items-center gap-1.5">
-                <span className="relative flex h-2 w-2">
-                  <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"></span>
-                  <span className="relative inline-flex rounded-full h-2 w-2 bg-emerald-500 animate-pulse"></span>
-                </span>
-                <span className="uppercase tracking-widest font-bold">AUTOSAVE AKTIF</span>
-              </div>
-              <span className="text-[8.5px] text-emerald-400/80 truncate">
-                Draf karyamu aman disimpan di memori IndexedDB oleh Olive! 💚✨
-              </span>
-            </div>
+
 
             {/* Hidden File Input Picker */}
             <input 
@@ -4766,11 +5289,6 @@ export default function App() {
                           </span>
                         </div>
                       </div>
-                      {user?.email === 'bungtemin@gmail.com' ? (
-                        <span className="text-[7.5px] font-sans text-zinc-500 uppercase tracking-widest group-hover:translate-x-1 transition-transform">GO ➔</span>
-                      ) : (
-                        <span className="text-[7.5px] font-mono text-neon-pink font-extrabold tracking-wider uppercase">LOCKED</span>
-                      )}
                     </button>
                   </div>
                 </motion.div>
@@ -4795,6 +5313,34 @@ export default function App() {
                 <X className="w-5 h-5 shrink-0" />
               ) : (
                 <Menu className="w-5 h-5 shrink-0 text-neon-cyan" />
+              )}
+            </motion.button>
+          </div>
+        )}
+      </AnimatePresence>
+
+      {/* LEFT-SIDE DEDICATED CANVAS FLOATING SAVER BUTTON */}
+      <AnimatePresence>
+        {currentPage === 'beranda' && !activeTab && user && (
+          <div className="fixed bottom-20 left-4 md:left-8 z-45" id="left-canvas-saver-container">
+            <motion.button
+              whileTap={{ scale: 0.92 }}
+              onClick={() => {
+                setIsCanvasModalOpen(true);
+              }}
+              className={`w-12 h-12 rounded-full flex flex-col items-center justify-center transition-all duration-300 border shadow-[0_4px_20px_rgba(0,0,0,0.5)] focus:outline-none relative group ${
+                theme === 'dark'
+                  ? 'bg-[#08080a]/90 hover:bg-black text-emerald-400 border-emerald-500/40 hover:border-emerald-400 shadow-[0_0_15px_rgba(16,185,129,0.15)]'
+                  : 'bg-white hover:bg-zinc-50 text-emerald-600 border-black/10 shadow-[0_4px_20px_rgba(0,0,0,0.1)]'
+              }`}
+              title="Penyimpanan Draf Canva"
+            >
+              <div className="absolute inset-0 rounded-full bg-gradient-to-tr from-emerald-500/10 to-teal-400/10 opacity-75 animate-ping group-hover:opacity-100 duration-1000 pointer-events-none" />
+              <Save className="w-5 h-5 shrink-0 text-emerald-400 group-hover:rotate-12 transition-transform duration-300" />
+              {canvasDesigns.length > 0 && (
+                <span className="absolute -top-1.5 -right-1.5 bg-emerald-500 text-black text-[8px] font-mono font-black h-4 min-w-[16px] px-1 rounded-full flex items-center justify-center border border-zinc-950 animate-bounce">
+                  {canvasDesigns.length}
+                </span>
               )}
             </motion.button>
           </div>
@@ -5841,6 +6387,286 @@ export default function App() {
           </motion.div>
         )}
       </AnimatePresence>
+
+      {/* CLOUD CANVAS SAVE & RESTORE DIALOG MODAL */}
+      <AnimatePresence>
+        {isCanvasModalOpen && (
+          <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
+            {/* Backdrop */}
+            <motion.div
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              exit={{ opacity: 0 }}
+              onClick={() => setIsCanvasModalOpen(false)}
+              className="absolute inset-0 bg-black/85 backdrop-blur-md"
+            />
+
+            {/* Modal Body */}
+            <motion.div
+              initial={{ opacity: 0, scale: 0.96, y: 15 }}
+              animate={{ opacity: 1, scale: 1, y: 0 }}
+              exit={{ opacity: 0, scale: 0.96, y: 15 }}
+              className={`relative w-full max-w-sm rounded-2xl border p-4 shadow-[0_12px_40px_rgba(0,240,255,0.15)] overflow-hidden flex flex-col max-h-[80vh] ${
+                theme === 'dark'
+                  ? 'bg-[#08080a]/95 border-emerald-500/20 text-zinc-100 shadow-[0_0_30px_rgba(16,185,129,0.06)]'
+                  : 'bg-white border-zinc-200 text-zinc-900 shadow-xl'
+              }`}
+            >
+              {/* Decorative Glow Line */}
+              <div className="absolute top-0 left-0 right-0 h-1 bg-gradient-to-r from-emerald-500 via-teal-400 to-cyan-400 animate-pulse" />
+
+              {/* Close Button */}
+              <button
+                onClick={() => setIsCanvasModalOpen(false)}
+                className={`absolute top-3.5 right-3.5 p-1 rounded-full hover:bg-white/10 transition-colors ${
+                  theme === 'dark' ? 'text-zinc-400 hover:text-white' : 'text-zinc-500 hover:text-zinc-800 hover:bg-zinc-100'
+                }`}
+              >
+                <X className="w-4 h-4" />
+              </button>
+
+              {/* Modal Header */}
+              <div className="mb-3 flex items-center gap-2">
+                <div className="p-1.5 bg-emerald-500/10 rounded-xl border border-emerald-500/20 text-emerald-400">
+                  <Save className="w-4 h-4 animate-pulse" />
+                </div>
+                <div>
+                  <h3 className="text-xs font-mono font-black tracking-wider uppercase text-emerald-400">
+                    Sesi & Draf Cloud
+                  </h3>
+                  <p className="text-[9px] text-zinc-500 font-sans leading-none uppercase font-semibold">
+                    Simpan draf kanvasmu dengan aman, sayang 💕
+                  </p>
+                </div>
+              </div>
+
+              {/* Tab Navigation */}
+              <div className="flex border-b border-zinc-500/10 mb-3 text-[10px] uppercase font-mono font-black">
+                <button
+                  onClick={() => setCanvasModalTab('save')}
+                  className={`flex-1 py-1.5 border-b-2 transition-all flex items-center justify-center gap-1.5 ${
+                    canvasModalTab === 'save'
+                      ? 'border-emerald-500 text-emerald-400 font-extrabold'
+                      : 'border-transparent text-zinc-500 hover:text-zinc-400'
+                  }`}
+                >
+                  <Save className="w-3 h-3" />
+                  Simpan Draf
+                </button>
+                <button
+                  onClick={() => {
+                    setCanvasModalTab('open');
+                    fetchCanvasDesigns();
+                  }}
+                  className={`flex-1 py-1.5 border-b-2 transition-all flex items-center justify-center gap-1.5 ${
+                    canvasModalTab === 'open'
+                      ? 'border-teal-500 text-teal-400 font-extrabold'
+                      : 'border-transparent text-zinc-500 hover:text-zinc-400'
+                  }`}
+                >
+                  <FolderOpen className="w-3 h-3" />
+                  Buka Draf ({canvasDesigns.length})
+                </button>
+              </div>
+
+              {/* SAVE TAB CONTENT */}
+              {canvasModalTab === 'save' && (
+                <div className={`border rounded-xl p-3 mb-1 flex flex-col gap-2.5 ${
+                  theme === 'dark' ? 'bg-white/5 border-white/5' : 'bg-emerald-50/30 border-emerald-100/70'
+                }`}>
+                  {loadedDesignId ? (
+                    <div className="space-y-2">
+                      {/* Active Draft Bar */}
+                      <div className="px-2 py-1.5 rounded-lg bg-emerald-500/10 border border-emerald-500/25 flex items-center justify-between gap-2">
+                        <p className="text-[9.5px] font-sans text-emerald-400 font-bold truncate max-w-[170px]">
+                          📍 Draft Aktif: {canvasDesigns.find(d => d.id === loadedDesignId)?.name || saveDesignName || 'Aktif'}
+                        </p>
+                        <span className="text-[7.5px] font-mono text-emerald-400/80 uppercase font-black shrink-0">
+                          Olaive Active!
+                        </span>
+                      </div>
+
+                      {/* Overwrite Save Button */}
+                      <button
+                        onClick={() => handleSaveCanvasDesign(canvasDesigns.find(d => d.id === loadedDesignId)?.name || saveDesignName || 'Draf Desain', false)}
+                        disabled={isSavingCanvas}
+                        className="w-full bg-emerald-500 hover:bg-emerald-600 disabled:bg-zinc-750 text-[#08080a] py-2 rounded-lg text-[10px] font-mono font-black uppercase tracking-wider flex items-center justify-center gap-1.5 transition-colors"
+                      >
+                        {isSavingCanvas ? (
+                          <RefreshCw className="w-3 animate-spin" />
+                        ) : (
+                          <Save className="w-3 h-3" />
+                        )}
+                        Kemas & Perbarui (Save)
+                      </button>
+
+                      {/* Minimal Separator */}
+                      <div className="relative flex py-0.5 items-center">
+                        <div className="flex-grow border-t border-zinc-800/40"></div>
+                        <span className="flex-shrink mx-1.5 text-[7.5px] font-mono font-black text-zinc-500 uppercase tracking-widest">ATAU SIMPAN BARU</span>
+                        <div className="flex-grow border-t border-zinc-800/40"></div>
+                      </div>
+                    </div>
+                  ) : null}
+
+                  {/* Save New/Save As Inputs */}
+                  <div className="space-y-1.5">
+                    <div className="flex flex-col gap-1.5">
+                      <input
+                        type="text"
+                        value={saveDesignName}
+                        onChange={(e) => setSaveDesignName(e.target.value)}
+                        placeholder="Nama Draf Baru... 💖"
+                        className={`w-full rounded-lg px-2.5 py-1.5 text-[11px] font-sans transition-colors focus:outline-none ${
+                          theme === 'dark'
+                            ? 'bg-black/40 border border-white/10 text-zinc-100 placeholder:text-zinc-500 focus:border-emerald-500'
+                            : 'bg-white border border-emerald-200 text-zinc-850 placeholder:text-zinc-450 focus:border-emerald-500'
+                        }`}
+                      />
+                      <button
+                        onClick={() => handleSaveCanvasDesign(saveDesignName, true)}
+                        disabled={isSavingCanvas}
+                        className="w-full bg-teal-500 hover:bg-teal-600 disabled:bg-zinc-750 text-[#08080a] py-2 rounded-lg text-[10px] font-mono font-black uppercase tracking-wider flex items-center justify-center gap-1.5 transition-colors"
+                      >
+                        {isSavingCanvas ? (
+                          <RefreshCw className="w-3 animate-spin" />
+                        ) : (
+                          <Copy className="w-3 h-3" />
+                        )}
+                        Simpan Draf Baru (Save As)
+                      </button>
+                    </div>
+                  </div>
+                </div>
+              )}
+
+              {/* OPEN TAB CONTENT */}
+              {canvasModalTab === 'open' && (
+                <div className="flex-1 overflow-y-auto pr-0.5 max-h-[45vh] flex flex-col">
+                  <div className="flex justify-between items-center mb-1.5 px-0.5">
+                    <span className="text-[8px] font-mono tracking-wider uppercase font-black text-zinc-500">
+                      Semua Draf Tersimpan ({canvasDesigns.length})
+                    </span>
+                    <button
+                      onClick={fetchCanvasDesigns}
+                      className="p-1 rounded hover:bg-white/5 text-zinc-400 hover:text-emerald-400 transition-colors"
+                      title="Segarkan daftar"
+                    >
+                      <RefreshCw className={`w-3 h-3 ${isLoadingCanvasDesigns ? 'animate-spin' : ''}`} />
+                    </button>
+                  </div>
+
+                  {isLoadingCanvasDesigns ? (
+                    <div className="flex flex-col items-center justify-center py-8 gap-1">
+                      <RefreshCw className="w-4 h-4 text-emerald-400 animate-spin" />
+                      <span className="text-[8.5px] font-mono text-zinc-500 uppercase font-black">
+                        Mencari draf manismu...
+                      </span>
+                    </div>
+                  ) : canvasDesigns.length === 0 ? (
+                    <div className="text-center py-8 border border-dashed border-zinc-800/40 rounded-xl flex flex-col items-center justify-center">
+                      <FolderOpen className="w-6 h-6 text-zinc-700/80 mb-1" />
+                      <p className="text-[8.5px] font-mono text-zinc-500 uppercase tracking-wide px-4 leading-normal">
+                        Belum ada draf tersimpan sayang 🌸
+                      </p>
+                    </div>
+                  ) : (
+                    <div className="grid gap-1.5 pr-0.5 max-h-[38vh] overflow-y-auto">
+                      {canvasDesigns.map((design) => {
+                        let frameName = "Tanpa Bingkai";
+                        let hasThumbnail = design.thumbnailUrl || '';
+                        
+                        try {
+                          const parsed = typeof design.canvasData === 'string'
+                            ? JSON.parse(design.canvasData)
+                            : design.canvasData;
+                          const availableFrames = appwriteFrames.length > 0 ? appwriteFrames : FRAMES;
+                          const found = availableFrames.find(f => f.id === parsed.selectedFrameId);
+                          if (found) frameName = found.name;
+                          if (!hasThumbnail && parsed.userImage) {
+                            hasThumbnail = parsed.userImage;
+                          }
+                        } catch(e) {}
+
+                        return (
+                          <div
+                            key={design.id}
+                            onClick={() => {
+                              handleLoadCanvasDesign(design);
+                              setCanvasModalTab('save');
+                            }}
+                            className={`border rounded-lg p-1.5 flex items-center justify-between group cursor-pointer transition-all duration-150 ${
+                              loadedDesignId === design.id
+                                ? 'bg-emerald-500/10 border-emerald-500/30'
+                                : theme === 'dark'
+                                ? 'bg-white/5 border-white/5 hover:border-emerald-500/30'
+                                : 'bg-zinc-50 border-zinc-150 hover:bg-zinc-100 hover:border-emerald-350'
+                            }`}
+                          >
+                            <div className="flex items-center gap-2 flex-1 min-w-0">
+                              {/* Thumbnail preview canvas */}
+                              <div className="w-7 h-7 rounded bg-emerald-500/5 border border-emerald-500/15 overflow-hidden flex items-center justify-center shrink-0">
+                                {hasThumbnail ? (
+                                  <img 
+                                    src={hasThumbnail} 
+                                    alt="thumb" 
+                                    className="w-full h-full object-cover transition-transform group-hover:scale-110"
+                                    referrerPolicy="no-referrer"
+                                  />
+                                ) : (
+                                  <FolderOpen className="w-3.5 h-3.5 text-emerald-400" />
+                                )}
+                              </div>
+
+                              <div className="flex flex-col min-w-0">
+                                <span className={`text-[11px] font-sans font-bold truncate transition-colors ${
+                                  loadedDesignId === design.id
+                                    ? 'text-emerald-400'
+                                    : theme === 'dark'
+                                    ? 'text-zinc-200 group-hover:text-emerald-400'
+                                    : 'text-zinc-850 group-hover:text-emerald-600'
+                                }`}>
+                                  {design.name}
+                                </span>
+                                <span className="text-[7.5px] font-mono text-zinc-500 truncate uppercase mt-0.5">
+                                  {frameName}
+                                </span>
+                              </div>
+                            </div>
+                            
+                            <div className="flex items-center gap-1.5 shrink-0 ml-1.5">
+                              <button
+                                onClick={(e) => handleDeleteCanvasDesign(design.id, e)}
+                                className="p-1 rounded text-zinc-500 hover:text-rose-400 hover:bg-rose-500/10 transition-all"
+                                title="Hapus draf ini"
+                              >
+                                <Trash2 className="w-3 h-3" />
+                              </button>
+                              <span className={`text-[7.5px] font-mono font-black py-1 px-1.5 rounded transition-all ${
+                                loadedDesignId === design.id
+                                  ? 'bg-emerald-500 text-[#08080a]'
+                                  : 'bg-emerald-500/10 text-emerald-400 group-hover:bg-emerald-500 group-hover:text-[#08080a]'
+                              }`}>
+                                BUKA
+                              </span>
+                            </div>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  )}
+                </div>
+              )}
+
+              {/* Modal Footer */}
+              <div className="mt-3 border-t border-zinc-900 pt-2 text-center text-[7.5px] font-mono text-zinc-500">
+                Penyimpanan aman untuk: <b>{user?.email}</b> 💚
+              </div>
+            </motion.div>
+          </div>
+        )}
+      </AnimatePresence>
+
       <DeleteConfirmationModal
         isOpen={isDeleteModalOpen}
         onClose={() => setIsDeleteModalOpen(false)}

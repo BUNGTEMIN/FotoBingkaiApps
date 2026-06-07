@@ -94,6 +94,40 @@
         }
       },
       "required": ["parentId", "url", "prompt"]
+    },
+    "canvas_design": {
+      "title": "Canvas Design",
+      "description": "A saved canvas design state containing settings, stickers, active frame, and user image",
+      "type": "object",
+      "properties": {
+        "id": {
+          "type": "string",
+          "description": "Unique id for the saved canvas design"
+        },
+        "userId": {
+          "type": "string",
+          "description": "The firebase auth UID of the owner"
+        },
+        "name": {
+          "type": "string",
+          "description": "The name of this saved canvas configuration slot"
+        },
+        "canvasData": {
+          "type": "object",
+          "description": "Active design states such as stickers, image settings, color, frames"
+        },
+        "createdAt": {
+          "type": "string",
+          "format": "date-time",
+          "description": "Creation timestamp"
+        },
+        "updatedAt": {
+          "type": "string",
+          "format": "date-time",
+          "description": "Last updated timestamp"
+        }
+      },
+      "required": ["id", "userId", "name", "canvasData"]
     }
   },
   "firestore": {
@@ -108,6 +142,10 @@
     "ai_effect_variants/{docId}": {
       "schema": "ai_effect_variant",
       "description": "Generated stylistic AI variants of user images"
+    },
+    "canvas_designs/{designId}": {
+      "schema": "canvas_design",
+      "description": "Collection of saved canvas layout presets/projects per user"
     }
   }
 }
