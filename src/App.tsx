@@ -853,22 +853,12 @@ export default function App() {
       }
       const file = new File([u8arr], `canvas_img_${Date.now()}.png`, { type: mime });
       
-      const userPrefix = user?.email ? user.email.split('@')[0].toLowerCase().replace(/[^a-z0-9_.-]/g, '') : '';
-      let activeBucketId = userPrefix || BUCKET_ID;
-      
+      const activeBucketId = BUCKET_ID;
       if (!activeBucketId) {
         throw new Error('VITE_APPWRITE_STORAGE_BUCKET_ID belum dikonfigurasi sayang!');
       }
       
-      const fileId = userPrefix ? `${userPrefix}_${ID.unique()}` : ID.unique();
-      let bucketReady = true;
-      if (userPrefix && activeBucketId !== BUCKET_ID) {
-        bucketReady = await ensureAppwriteBucketExists(activeBucketId, `Bucket ${userPrefix}`);
-      }
-      if (!bucketReady && BUCKET_ID) {
-        activeBucketId = BUCKET_ID;
-      }
-      
+      const fileId = ID.unique();
       const uploadResult = await storage.createFile(activeBucketId, fileId, file);
       if (uploadResult) {
         const usedBucketId = uploadResult.bucketId || activeBucketId;
@@ -891,11 +881,11 @@ export default function App() {
     if (!stickersList || stickersList.length === 0) return [];
     
     const uploadedList = [...stickersList];
-    const userPrefix = user?.email ? user.email.split('@')[0].toLowerCase().replace(/[^a-z0-9_.-]/g, '') : '';
-    let activeBucketId = userPrefix || BUCKET_ID;
+    const activeBucketId = BUCKET_ID;
     
     if (!activeBucketId) {
-      activeBucketId = BUCKET_ID;
+      console.warn('BUCKET_ID belum dikonfigurasi!');
+      return stickersList;
     }
     
     for (let i = 0; i < uploadedList.length; i++) {
@@ -914,14 +904,6 @@ export default function App() {
             u8arr[n] = bstr.charCodeAt(n);
           }
           const file = new File([u8arr], `sticker_upload_${Date.now()}_${i}.png`, { type: mime });
-          
-          let bucketReady = true;
-          if (userPrefix && activeBucketId !== BUCKET_ID) {
-            bucketReady = await ensureAppwriteBucketExists(activeBucketId, `Bucket ${userPrefix}`);
-          }
-          if (!bucketReady && BUCKET_ID) {
-            activeBucketId = BUCKET_ID;
-          }
           
           const fileId = `stk_${Date.now()}_${i}_${ID.unique()}`.substring(0, 36).replace(/[^a-zA-Z0-9_-]/g, '');
           const uploadResult = await storage.createFile(activeBucketId, fileId, file);
@@ -1049,8 +1031,7 @@ export default function App() {
           let targetBucket = 'thumbnail';
           let bucketOk = await ensureAppwriteBucketExists(targetBucket, 'Canvas Thumbnails');
           if (!bucketOk) {
-            const userPrefix = user?.email ? user.email.split('@')[0].toLowerCase().replace(/[^a-z0-9_.-]/g, '') : '';
-            targetBucket = userPrefix || BUCKET_ID;
+            targetBucket = BUCKET_ID || '';
           }
 
           if (targetBucket) {
@@ -1810,39 +1791,15 @@ export default function App() {
           let downloadUrl = '';
 
           try {
-            const userPrefix = user?.email ? user.email.split('@')[0].toLowerCase().replace(/[^a-z0-9_.-]/g, '') : '';
-            let activeBucketId = userPrefix || BUCKET_ID;
+            const activeBucketId = BUCKET_ID;
 
             if (!activeBucketId) {
               throw new Error('VITE_APPWRITE_BUCKET_ID belum dikonfigurasi di panel Secrets sayang!');
             }
-            const fileId = userPrefix ? `${userPrefix}_${ID.unique()}` : ID.unique();
-            let uploadResult;
-            try {
-              let bucketReady = true;
-              if (userPrefix && activeBucketId !== BUCKET_ID) {
-                // Pastikan bucket sudah ada atau dibuat secara dinamis sebelum mengunggah sayang
-                bucketReady = await ensureAppwriteBucketExists(activeBucketId, `Bucket ${userPrefix}`);
-              }
-              
-              if (!bucketReady && BUCKET_ID) {
-                console.warn(`[Appwrite] Bucket pribadi '${userPrefix}' tidak siap. Mengalihkan ke standard bucket: ${BUCKET_ID}`);
-                activeBucketId = BUCKET_ID;
-              }
-
-              console.log(`[Appwrite] Mencoba mengunggah ke target bucket: ${activeBucketId}`);
-              uploadResult = await storage.createFile(activeBucketId, fileId, file);
-              directUploadSuccess = true;
-            } catch (err: any) {
-              // Jika bucket pribadi belum terbuat atau error, otomatis alihkan ke bucket standar agar tidak gagal sayang
-              if (userPrefix && activeBucketId !== BUCKET_ID && BUCKET_ID) {
-                console.warn(`[Appwrite] Mengunggah ke bucket pribadi '${userPrefix}' gagal (${err?.message || err}). Mengalihkan ke standard fallback bucket: ${BUCKET_ID}`);
-                uploadResult = await storage.createFile(BUCKET_ID, fileId, file);
-                directUploadSuccess = true;
-              } else {
-                throw err;
-              }
-            }
+            const fileId = ID.unique();
+            console.log(`[Appwrite] Mencoba mengunggah ke target bucket: ${activeBucketId}`);
+            const uploadResult = await storage.createFile(activeBucketId, fileId, file);
+            directUploadSuccess = true;
 
             if (directUploadSuccess && uploadResult) {
               const usedBucketId = uploadResult.bucketId || activeBucketId;
@@ -1942,39 +1899,15 @@ export default function App() {
 
       try {
         // Try Appwrite Storage first
-        const userPrefix = user?.email ? user.email.split('@')[0].toLowerCase().replace(/[^a-z0-9_.-]/g, '') : '';
-        let activeBucketId = userPrefix || BUCKET_ID;
+        const activeBucketId = BUCKET_ID;
 
         if (!activeBucketId) {
           throw new Error('VITE_APPWRITE_BUCKET_ID belum dikonfigurasi di panel Secrets sayang!');
         }
-        const fileId = userPrefix ? `${userPrefix}_${ID.unique()}` : ID.unique();
-        let uploadResult;
-        try {
-          let bucketReady = true;
-          if (userPrefix && activeBucketId !== BUCKET_ID) {
-            // Ambil atau buat bucket secara dinamis sebelum mengunggah sayang
-            bucketReady = await ensureAppwriteBucketExists(activeBucketId, `Bucket ${userPrefix}`);
-          }
-
-          if (!bucketReady && BUCKET_ID) {
-            console.warn(`[Appwrite Async Sync] Bucket pribadi '${userPrefix}' tidak siap. Mengalihkan ke standard bucket: ${BUCKET_ID}`);
-            activeBucketId = BUCKET_ID;
-          }
-
-          console.log(`[Appwrite Async Sync] Mencoba mengunggah ke target bucket: ${activeBucketId}`);
-          uploadResult = await storage.createFile(activeBucketId, fileId, file);
-          directUploadSuccess = true;
-        } catch (err: any) {
-          // Jika bucket pribadi gagal, alihkan kembali ke bucket standar
-          if (userPrefix && activeBucketId !== BUCKET_ID && BUCKET_ID) {
-            console.warn(`[Appwrite Async Sync] Mengunggah ke bucket pribadi '${userPrefix}' gagal (${err?.message || err}). Mengalihkan ke standard fallback bucket: ${BUCKET_ID}`);
-            uploadResult = await storage.createFile(BUCKET_ID, fileId, file);
-            directUploadSuccess = true;
-          } else {
-            throw err;
-          }
-        }
+        const fileId = ID.unique();
+        console.log(`[Appwrite Async Sync] Mencoba mengunggah ke target bucket: ${activeBucketId}`);
+        const uploadResult = await storage.createFile(activeBucketId, fileId, file);
+        directUploadSuccess = true;
 
         if (directUploadSuccess && uploadResult) {
           const usedBucketId = uploadResult.bucketId || activeBucketId;
