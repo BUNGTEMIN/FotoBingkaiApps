@@ -124,6 +124,59 @@ const getSavedNeonColor = (): string => {
   return localStorage.getItem('bt_neon_color') || '#00f2fe';
 };
 
+const initIndexedDB = (): Promise<IDBDatabase> => {
+  return new Promise((resolve, reject) => {
+    if (typeof window === 'undefined' || !window.indexedDB) {
+      reject(new Error("IndexedDB tidak didukung di browser ini"));
+      return;
+    }
+    const request = indexedDB.open('BungteminDraftDB', 1);
+    request.onupgradeneeded = () => {
+      const db = request.result;
+      if (!db.objectStoreNames.contains('drafts')) {
+        db.createObjectStore('drafts');
+      }
+    };
+    request.onsuccess = () => resolve(request.result);
+    request.onerror = () => reject(request.error);
+  });
+};
+
+const saveDraftImageToIDB = async (imageSrc: string | null): Promise<void> => {
+  try {
+    const db = await initIndexedDB();
+    const tx = db.transaction('drafts', 'readwrite');
+    const store = tx.objectStore('drafts');
+    if (imageSrc) {
+      store.put(imageSrc, 'current_image');
+    } else {
+      store.delete('current_image');
+    }
+    return new Promise((resolve, reject) => {
+      tx.oncomplete = () => resolve();
+      tx.onerror = () => reject(tx.error);
+    });
+  } catch (err) {
+    console.warn("Gagal menyimpan draf gambar ke IndexedDB:", err);
+  }
+};
+
+const loadDraftImageFromIDB = async (): Promise<string | null> => {
+  try {
+    const db = await initIndexedDB();
+    const tx = db.transaction('drafts', 'readonly');
+    const store = tx.objectStore('drafts');
+    const request = store.get('current_image');
+    return new Promise((resolve, reject) => {
+      request.onsuccess = () => resolve(request.result || null);
+      request.onerror = () => reject(request.error);
+    });
+  } catch (err) {
+    console.warn("Gagal memuat draf gambar dari IndexedDB:", err);
+    return null;
+  }
+};
+
 export default function App() {
   // Google Authentication State
   const [user, setUser] = useState<User | null>(null);
@@ -497,12 +550,33 @@ export default function App() {
   // State variables
   const [userImage, setUserImage] = useState<string | null>(() => {
     try {
-      return localStorage.getItem('bt_user_image');
+      const saved = localStorage.getItem('bt_user_image');
+      if (saved) return saved;
+      return null;
     } catch (err) {
       console.warn("Gagal memuat bt_user_image dari localStorage:", err);
       return null;
     }
   });
+
+  // Restore userImage from IndexedDB on initial mount if localStorage lacks it
+  useEffect(() => {
+    const checkAndRestoreFromIndexedDB = async () => {
+      try {
+        const idbImage = await loadDraftImageFromIDB();
+        if (idbImage && !userImage) {
+          setUserImage(idbImage);
+          console.log("[IndexedDB] Berhasil memulihkan foto draf berukuran besar!");
+          triggerToast("Sistem: Progres draf foto berukuran besar berhasil dipulihkan secara otomatis oleh Olive! 💖✨");
+        }
+      } catch (err) {
+        console.warn("Gagal memulihkan draf dari IndexedDB:", err);
+      }
+    };
+    if (!userImage) {
+      checkAndRestoreFromIndexedDB();
+    }
+  }, []);
 
   // Save changes to localStorage only if they are not null (or handle nulls explicitly without clearing initial values)
   useEffect(() => {
@@ -515,33 +589,39 @@ export default function App() {
         try {
           localStorage.removeItem('bt_user_image');
         } catch (e) {}
-        // Tampilkan pesan bahwa gambar terlalu besar untuk disimpan otomatis di browser cadangan
-        triggerToast("Sistem: Gambar terlalu besar untuk disimpan di memori otomatis browser, namun Anda tetap dapat melanjutkan pengeditan saat ini! 💖");
       }
+      // Simpan juga ke IndexedDB untuk cadangan tangguh ukuran besar tanpa batasan kuota
+      saveDraftImageToIDB(userImage);
     } else {
       try {
         localStorage.removeItem('bt_user_image');
       } catch (e) {}
+      saveDraftImageToIDB(null);
     }
   }, [userImage]);
 
   const [selectedFrame, setSelectedFrame] = useState<Frame | null>(() => {
     if (typeof window === 'undefined') return null;
     const savedFrameId = localStorage.getItem('bt_selected_frame_id');
-    if (savedFrameId) {
-      if (savedFrameId === 'none') return null;
+    if (savedFrameId && savedFrameId !== 'none') {
+      const cached = localStorage.getItem('bt_appwrite_frames');
+      if (cached) {
+        try {
+          const parsed = JSON.parse(cached) as Frame[];
+          const found = parsed.find(f => f.id === savedFrameId);
+          if (found) return found;
+        } catch (e) {}
+      }
       const found = FRAMES.find(f => f.id === savedFrameId);
       if (found) return found;
     }
-    return null; 
+    return null;
   });
 
   // Save selected frame ID to localStorage
   useEffect(() => {
     if (selectedFrame) {
       localStorage.setItem('bt_selected_frame_id', selectedFrame.id);
-    } else {
-      localStorage.setItem('bt_selected_frame_id', 'none');
     }
   }, [selectedFrame]);
   const [customFrames, setCustomFrames] = useState<Frame[]>([]);
@@ -549,34 +629,36 @@ export default function App() {
 
   // Stable randomized presentation of frame templates
   const displayFrames = useMemo(() => {
-    const combined = [...FRAMES, ...appwriteFrames, ...customFrames];
+    const combined = appwriteFrames.length > 0 ? appwriteFrames : FRAMES;
     const arr = [...combined];
     for (let i = arr.length - 1; i > 0; i--) {
       const j = Math.floor(Math.random() * (i + 1));
       [arr[i], arr[j]] = [arr[j], arr[i]];
     }
     return arr;
-  }, [appwriteFrames, customFrames]);
+  }, [appwriteFrames]);
 
-  // Restore selected frame from local storage
+  // Restore selected frame from local storage (if a valid frame exists)
   useEffect(() => {
     const savedFrameId = localStorage.getItem('bt_selected_frame_id');
     console.log("DEBUG: Restoring selectedFrame, savedId:", savedFrameId);
-    if (savedFrameId) {
-      if (savedFrameId === 'none') {
-        setSelectedFrame(null);
-        return;
-      }
-      const allFrames = [...FRAMES, ...customFrames, ...appwriteFrames];
-      const frame = allFrames.find(f => f.id === savedFrameId);
+    
+    const availableFrames = appwriteFrames.length > 0 ? appwriteFrames : FRAMES;
+    
+    if (savedFrameId && savedFrameId !== 'none') {
+      const frame = availableFrames.find(f => f.id === savedFrameId);
       if (frame) {
         console.log("DEBUG: Restoring selectedFrame, found frame:", frame.id);
         setSelectedFrame(frame);
-      } else {
-         console.log("DEBUG: Restoring selectedFrame, frame not found in allFrames yet");
+      } else if (availableFrames.length > 0) {
+        const randomIndex = Math.floor(Math.random() * availableFrames.length);
+        setSelectedFrame(availableFrames[randomIndex]);
       }
+    } else if (availableFrames.length > 0) {
+      const randomIndex = Math.floor(Math.random() * availableFrames.length);
+      setSelectedFrame(availableFrames[randomIndex]);
     }
-  }, [customFrames, appwriteFrames]);
+  }, [appwriteFrames]);
   const [isLoadingAppwrite, setIsLoadingAppwrite] = useState(false);
   const [neonColor, setNeonColor] = useState<string>(getSavedNeonColor); // default tech cyan
   const [imageSettings, setImageSettings] = useState<ImageSettings>(getSavedSettings);
@@ -891,16 +973,6 @@ export default function App() {
       console.error(e);
     }
   }, []);
-
-  // Set random frame on startup if none is selected from the randomized displayFrames
-  useEffect(() => {
-    const savedFrameId = localStorage.getItem('bt_selected_frame_id');
-    if (savedFrameId === 'none') return; // User explicitly selected "no frame/copot bingkai"
-    if (selectedFrame) return; 
-    if (displayFrames.length > 0) {
-      setSelectedFrame(displayFrames[0]);
-    }
-  }, [displayFrames, selectedFrame]);
 
   // Listen to Auth State changes for Auto Login with Google
   useEffect(() => {
@@ -1879,27 +1951,6 @@ export default function App() {
               <div className="lg:hidden mb-4 space-y-3 w-full animate-fadeIn">
                 {/* Horizontal Frame Selection Carousel (Slider Bingkai) */}
                 <div className="flex gap-2.5 overflow-x-auto pb-2 scrollbar-thin scrollbar-thumb-white/10 scrollbar-track-transparent w-full">
-                  {/* Tanpa Bingkai Option */}
-                  <button
-                    onClick={() => {
-                      setSelectedFrame(null);
-                      localStorage.setItem('bt_selected_frame_id', 'none');
-                      triggerToast('Sistem: Bingkai dinonaktifkan (Tanpa Bingkai) 🚫');
-                    }}
-                    className={`flex-none w-[56px] h-[56px] p-1 rounded transition-all duration-200 relative overflow-hidden flex flex-col items-center justify-center border ${
-                      selectedFrame === null 
-                        ? 'border-neon-cyan bg-cyan-950/25 shadow-[0_0_12px_rgba(0,240,255,0.25)] scale-102 z-10' 
-                        : 'border-white/10 hover:border-white/15 bg-black/50'
-                    }`}
-                    title="Tanpa Bingkai"
-                  >
-                    <Ban className="w-5 h-5 text-red-500/80 mb-0.5" />
-                    <span className="text-[7.5px] font-mono leading-none tracking-tighter opacity-70">NONE</span>
-                    {selectedFrame === null && (
-                      <div className="absolute top-1 right-1 w-1.5 h-1.5 rounded-full bg-neon-cyan shadow-[0_0_6px_#00F0FF]" />
-                    )}
-                  </button>
-
                   {displayFrames.map((frame) => {
                     const isSelected = frame.id === selectedFrame?.id;
                     return (
@@ -1941,6 +1992,20 @@ export default function App() {
                 </div>
               </div>
             )}
+
+            {/* Olive's Dynamic Autosave Status Header Block */}
+            <div className="flex items-center justify-between px-3 py-1.5 mb-2.5 rounded-lg bg-emerald-500/5 border border-emerald-500/10 text-[9.5px] font-mono leading-none text-emerald-400">
+              <div className="flex items-center gap-1.5">
+                <span className="relative flex h-2 w-2">
+                  <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"></span>
+                  <span className="relative inline-flex rounded-full h-2 w-2 bg-emerald-500 animate-pulse"></span>
+                </span>
+                <span className="uppercase tracking-widest font-bold">AUTOSAVE AKTIF</span>
+              </div>
+              <span className="text-[8.5px] text-emerald-400/80 truncate">
+                Draf karyamu aman disimpan di memori IndexedDB oleh Olive! 💚✨
+              </span>
+            </div>
 
             {/* Interactive Drag & Drop Area Box containing Canvas */}
             <div 
@@ -3250,7 +3315,8 @@ export default function App() {
               )}
 
               {activeTab === 'ai' && (
-                <div className="space-y-3">
+                user?.email === 'bungtemin@gmail.com' ? (
+                  <div className="space-y-3">
                   {/* Segment controller for AI mode */}
                   <div className={`flex p-0.5 rounded border transition-all duration-300 ${
                     theme === 'dark' ? 'bg-black border-white/10' : 'bg-black/5 border-black/5'
@@ -3265,17 +3331,6 @@ export default function App() {
                       }`}
                     >
                       ✨ AVATAR AI
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => { setAiMode('frame'); setAiError(null); }}
-                      className={`flex-1 py-1 px-1 rounded font-mono text-[8.5px] font-black tracking-wider uppercase transition-all ${
-                        aiMode === 'frame'
-                          ? 'bg-[#00F0FF] text-black shadow-[0_0_10px_rgba(0,240,255,0.25)] font-black'
-                          : theme === 'dark' ? 'text-zinc-550 hover:text-zinc-200' : 'text-zinc-500 hover:text-zinc-800'
-                      }`}
-                    >
-                      🎨 BINGKAI AI
                     </button>
                     <button
                       type="button"
@@ -3430,6 +3485,15 @@ export default function App() {
                           : 'GENERATE SLOGAN FUTURISTIK'}
                   </button>
                 </div>
+                ) : (
+                  <div className="p-6 text-center space-y-4 rounded-xl border border-dashed border-red-500/30 bg-red-950/10 flex flex-col items-center justify-center">
+                    <Lock className="w-10 h-10 text-red-500 animate-bounce" />
+                    <div>
+                      <h4 className="text-xs font-mono font-bold tracking-widest text-red-400 uppercase">AKSES SIBER DIKUNCI</h4>
+                      <p className="text-[10px] text-zinc-400 mt-1">Maaf ya sayang, fitur AI Generatif siber premium ini dikunci dan hanya dapat diakses oleh Admin Developer tercinta (Bung Temin) 💖🔐</p>
+                    </div>
+                  </div>
+                )
               )}
 
               {activeTab === 'download' && (
@@ -3845,24 +3909,40 @@ export default function App() {
                     {/* OPTION 2: AI GENERATIVE */}
                     <button
                       onClick={() => {
-                        setActiveTab(activeTab === 'ai' ? null : 'ai');
-                        setIsFloatingHubOpen(false);
+                        if (user?.email === 'bungtemin@gmail.com') {
+                          setActiveTab(activeTab === 'ai' ? null : 'ai');
+                          setIsFloatingHubOpen(false);
+                        } else {
+                          triggerToast('Maaf ya sayang, fitur AI Generatif siber ini hanya terbuka khusus untuk Admin (Bung Temin) tercinta sebagai fitur siber premium! 💖🔐');
+                        }
                       }}
                       className={`w-full p-2.5 rounded-xl border font-mono text-[10px] font-extrabold tracking-wider text-left transition-all duration-200 flex items-center justify-between group ${
-                        activeTab === 'ai'
-                          ? 'bg-amber-400/20 border-amber-400 text-amber-400 font-bold'
-                          : theme === 'dark'
-                            ? 'bg-white/5 border-white/5 text-zinc-300 hover:bg-white/8 hover:text-amber-400 hover:border-amber-400/30'
-                            : 'bg-black/5 border-black/5 text-zinc-750 hover:bg-black/8 hover:text-amber-600'
+                        user?.email === 'bungtemin@gmail.com'
+                          ? activeTab === 'ai'
+                            ? 'bg-amber-400/20 border-amber-400 text-amber-400 font-bold'
+                            : theme === 'dark'
+                              ? 'bg-white/5 border-white/5 text-zinc-300 hover:bg-white/8 hover:text-amber-400 hover:border-amber-400/30'
+                              : 'bg-black/5 border-black/5 text-zinc-750 hover:bg-black/8 hover:text-amber-600'
+                          : 'bg-zinc-950/45 border-zinc-900/60 text-zinc-500 opacity-75 hover:opacity-100 cursor-not-allowed'
                       }`}
                     >
                       <div className="flex items-center gap-2">
-                        <Sparkles className="w-4 h-4 text-amber-400 animate-pulse" />
+                        {user?.email === 'bungtemin@gmail.com' ? (
+                          <Sparkles className="w-4 h-4 text-amber-400 animate-pulse" />
+                        ) : (
+                          <Lock className="w-4 h-4 text-rose-450 animate-pulse" />
+                        )}
                         <div className="flex flex-col">
-                          <span className="text-[9px] uppercase font-black tracking-widest">✨ AI GENERATIF</span>
+                          <span className={`text-[9px] uppercase font-black tracking-widest ${user?.email === 'bungtemin@gmail.com' ? '' : 'text-zinc-500 line-through'}`}>
+                            {user?.email === 'bungtemin@gmail.com' ? '✨ AI GENERATIF' : '🔐 AI GENERATIF'}
+                          </span>
                         </div>
                       </div>
-                      <span className="text-[7.5px] font-sans text-zinc-500 uppercase tracking-widest group-hover:translate-x-1 transition-transform">GO ➔</span>
+                      {user?.email === 'bungtemin@gmail.com' ? (
+                        <span className="text-[7.5px] font-sans text-zinc-500 uppercase tracking-widest group-hover:translate-x-1 transition-transform">GO ➔</span>
+                      ) : (
+                        <span className="text-[7.5px] font-mono text-neon-pink font-extrabold tracking-wider uppercase">LOCKED</span>
+                      )}
                     </button>
                   </div>
                 </motion.div>
@@ -4352,46 +4432,6 @@ export default function App() {
         </div>
 
         <div className="flex flex-col sm:grid sm:grid-cols-2 lg:grid-cols-4 gap-4">
-          {/* Tanpa Bingkai Card */}
-          <div
-            onClick={() => {
-              setSelectedFrame(null);
-              localStorage.setItem('bt_selected_frame_id', 'none');
-              setCurrentPage('beranda');
-              triggerToast("Sistem: Bingkai dinonaktifkan! 🚫");
-            }}
-            className={`group cursor-pointer rounded-xl bg-[#0b0b0b] border p-4 flex flex-col items-center space-y-3.5 transition-all duration-300 relative overflow-hidden ${
-              selectedFrame === null
-                ? 'border-neon-cyan bg-cyan-950/20 shadow-[0_0_20px_rgba(0,240,255,0.15)]'
-                : 'border-white/10 hover:border-red-500/40 hover:bg-white/[0.02]'
-            }`}
-          >
-            <div className="scanlines absolute inset-0 opacity-10 pointer-events-none" />
-            <div className="relative aspect-square w-full rounded bg-black/60 overflow-hidden flex flex-col items-center justify-center p-4 border border-white/5">
-              <Ban className="w-16 h-16 text-red-500/80 mb-2 group-hover:scale-110 transition-transform duration-300" />
-              <span className="text-[11px] font-mono tracking-wider text-red-400 font-bold uppercase">TANPA BINGKAI</span>
-              <span className="text-[9px] font-mono text-zinc-500 mt-1 uppercase">Sembunyikan bingkai</span>
-            </div>
-            
-            <div className="text-center w-full">
-              <h4 className="text-[11px] font-bold tracking-wider text-white uppercase">MATIKAN BINGKAI</h4>
-              <p className="text-[9px] text-zinc-500 font-mono mt-0.5 uppercase">TAMPILKAN FOTO POLOS</p>
-            </div>
-
-            <div className="w-full pt-1">
-              <button 
-                onClick={() => {
-                  setSelectedFrame(null);
-                  localStorage.setItem('bt_selected_frame_id', 'none');
-                  setCurrentPage('beranda');
-                }}
-                className="w-full py-1.5 rounded bg-white/5 hover:bg-red-500 hover:text-white font-mono text-[9px] font-bold tracking-wider transition-all uppercase"
-              >
-                COPOT BINGKAI
-              </button>
-            </div>
-          </div>
-
           {displayFrames.map((frame) => {
             const isSelected = frame.id === selectedFrame?.id;
             const isCustom = customFrames.some(cf => cf.id === frame.id);
