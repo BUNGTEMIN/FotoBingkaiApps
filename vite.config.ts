@@ -42,6 +42,12 @@ export default defineConfig(() => {
           secure: false,
           rewrite: (path) => path.replace(/^\/api\/proxy\/upload_img/, '/api/upload_img'),
         },
+        '/api/proxy/ocr/remove_bg_base64': {
+          target: 'https://ocr.nufat.id',
+          changeOrigin: true,
+          secure: false,
+          rewrite: (path) => path.replace(/^\/api\/proxy\/ocr/, ''),
+        },
       },
     },
   };

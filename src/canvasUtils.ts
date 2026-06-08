@@ -185,6 +185,73 @@ export const renderToCanvas = async (
   if (!ctx) return;
 
   const size = params.size || 1080; // Custom resolution size or 1080px HD default (Canva standard)
+  
+  // PRELOAD ASSETS TO AVOID FLICKERING/BLACK SCREEN DURING DRAG
+  let userImgElement: HTMLImageElement | null = null;
+  let frameImgElement: HTMLImageElement | null = null;
+  let frameTempUrl: string | null = null;
+  const stickerImages: Record<string, HTMLImageElement> = {};
+
+  try {
+    const promises: Promise<void>[] = [];
+
+    // Preload user image
+    if (params.userImageSrc) {
+      promises.push(
+        loadImage(params.userImageSrc, false)
+          .then(img => { userImgElement = img; })
+          .catch(err => console.error("Error loading user image:", err))
+      );
+    }
+
+    // Preload frame
+    if (params.frame) {
+      if (params.frame.type === 'procedural') {
+        let svgString = '';
+        if (params.frame.renderSvg) {
+          svgString = params.frame.renderSvg(params.neonColor);
+        } else if (params.frame.svgElements) {
+          const rendered = params.frame.svgElements
+            .replace(/HIGHLIGHT_COLOR/g, params.neonColor)
+            .replace(/currentColor/g, params.neonColor);
+          svgString = `<svg width="1000" height="1000" viewBox="0 0 1000 1000" fill="none" xmlns="http://www.w3.org/2000/svg">\n            ${rendered}\n          </svg>`;
+        }
+        if (svgString) {
+          frameTempUrl = svgToDataUrl(svgString);
+          promises.push(
+            loadImage(frameTempUrl, true)
+              .then(img => { frameImgElement = img; })
+              .catch(() => {})
+          );
+        }
+      } else {
+        promises.push(
+          loadImage(resolveApiUrl(params.frame.src), true)
+            .then(img => { frameImgElement = img; })
+            .catch(() => {})
+        );
+      }
+    }
+
+    // Preload custom stickers if downloading
+    if (params.isDownloading) {
+      for (const item of params.stickers) {
+        if (item.type === 'sticker' && item.imageUrl) {
+          promises.push(
+            loadImage(item.imageUrl, true)
+              .then(img => { stickerImages[item.id] = img; })
+              .catch(() => {})
+          );
+        }
+      }
+    }
+
+    await Promise.all(promises);
+  } catch (err) {
+    console.warn("Soft error during preloading resources:", err);
+  }
+
+  // Set sizing only after everything is loaded so we don't clear the screen prematurely
   canvas.width = size;
   canvas.height = size;
   
@@ -196,9 +263,9 @@ export const renderToCanvas = async (
   ctx.fillRect(0, 0, size, size);
 
   // 2. Draw user image if available
-  if (params.userImageSrc) {
+  if (userImgElement) {
     try {
-      const img = await loadImage(params.userImageSrc, false); // Local upload doesn't need CORS
+      const img = userImgElement;
       ctx.save();
       
       // Apply absolute centered crop path first based on maskShape
@@ -309,49 +376,16 @@ export const renderToCanvas = async (
 
   // 3. Draw frame layer on top of user image
   if (params.frame) {
-    try {
-      let frameImg: HTMLImageElement;
-      let tempUrl: string | null = null;
-  
-      if (params.frame.type === 'procedural') {
-        let svgString = '';
-        if (params.frame.renderSvg) {
-          svgString = params.frame.renderSvg(params.neonColor);
-        } else if (params.frame.svgElements) {
-          // Fallback for custom frames retrieved from JSON/localStorage where renderSvg function is lost
-          const rendered = params.frame.svgElements
-            .replace(/HIGHLIGHT_COLOR/g, params.neonColor)
-            .replace(/currentColor/g, params.neonColor);
-          
-          svgString = `<svg width="1000" height="1000" viewBox="0 0 1000 1000" fill="none" xmlns="http://www.w3.org/2000/svg">
-            ${rendered}
-          </svg>`;
-        }
-        
-        if (svgString) {
-          tempUrl = svgToDataUrl(svgString);
-          frameImg = await loadImage(tempUrl, true);
-        } else {
-           // Should not happen, but safe fallback
-           frameImg = new Image();
-           frameImg.src = 'data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciPjwvc3ZnPg=='; // empty svg
-           await new Promise((res) => { frameImg.onload = res; frameImg.onerror = res; });
-        }
-      } else {
-        frameImg = await loadImage(resolveApiUrl(params.frame.src), true);
-      }
-  
+    if (frameImgElement) {
       ctx.save();
       ctx.filter = 'none'; // Ensure the frame remains completely authentic without photo filters
-      ctx.drawImage(frameImg, 0, 0, size, size);
+      ctx.drawImage(frameImgElement, 0, 0, size, size);
       ctx.restore();
-  
-      if (tempUrl && tempUrl.startsWith('blob:')) {
-        URL.revokeObjectURL(tempUrl);
-      }
-    } catch (err) {
-      console.error("CORS / Gagal memuat bingkai pada canvas:", err);
       
+      if (frameTempUrl && frameTempUrl.startsWith('blob:')) {
+        URL.revokeObjectURL(frameTempUrl);
+      }
+    } else {
       // Aesthetic error border drawn directly on canvas for diagnostics
       ctx.save();
       ctx.strokeStyle = params.neonColor;
@@ -401,11 +435,13 @@ export const renderToCanvas = async (
           }
         } else if (item.imageUrl) {
           try {
-            // Load and draw image sticker
-            const stickerImg = await loadImage(item.imageUrl, true);
-            ctx.drawImage(stickerImg, -sSize / 2, -sSize / 2, sSize, sSize);
+            // Use preloaded img if available
+            const stickerImg = stickerImages[item.id];
+            if (stickerImg) {
+              ctx.drawImage(stickerImg, -sSize / 2, -sSize / 2, sSize, sSize);
+            }
           } catch (err) {
-            console.error('Gagal memuat stiker gambar kustom pada canvas:', err);
+            console.error('Gagal menggambar stiker gambar kustom pada canvas:', err);
           }
         }
       } else if (item.type === 'text' && item.text) {

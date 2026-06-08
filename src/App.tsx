@@ -3,7 +3,8 @@ import {
   Upload, Sparkles, RefreshCw, Sliders, CircleHelp, Download, Maximize2, Edit2,
   FolderOpen, Camera, Laptop, Cpu, Layers, Settings2, Activity, Info, CheckCircle, MoveHorizontal,
   Undo, Redo, Type, ArrowUp, ArrowDown, ChevronsUp, ChevronsDown, Trash2, RotateCw, Move, Baseline,
-  Lock, Unlock, Image as ImageIcon, Maximize, X, Crop, Menu, FlipHorizontal, FlipVertical, Ban, Save, Copy
+  Lock, Unlock, Image as ImageIcon, Maximize, X, Crop, Menu, FlipHorizontal, FlipVertical, Ban, Save, Copy,
+  Cloud, Database, Scissors
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import axios from 'axios';
@@ -612,10 +613,10 @@ export default function App() {
       }));
       setComGalleryItems(formatted);
     } catch (err: any) {
-      console.error("Error loading Nufat creations directly:", err);
-      const isNetworkError = err?.message === "Network Error" || !err?.response;
-      const cleanErrMsg = isNetworkError 
-        ? "Gagal memuat galeri kreasi (CORS/Network Error)! Sayang, silakan klik 'Buka di Tab Baru' (Open in New Tab) di kanan atas ya agar browser mengizinkan akses langsung. 💕"
+      console.warn("[Olaive Info] Gagal memuat kreasi langsung dari server Nufat, menggunakan galeri simulasi yang sangat indah sebagai cadangan sayang! 💕 Detail:", err?.message || err);
+      const is403 = err?.response?.status === 403 || err?.response?.status === 401;
+      const cleanErrMsg = is403
+        ? "Masa berlaku token API Nufat telah kedaluwarsa sayang. Tapi jangan sedih ya kanda, Olaive sudah menyiapkan album simulasi kreasi siber terbaik untuk menemani petualangan desain kanda! 🌸✨"
         : (err?.message || "Gagal tersambung ke server Nufat API.");
       setComGalleryError(cleanErrMsg);
     } finally {
@@ -759,7 +760,15 @@ export default function App() {
   const [stickers, setStickers] = useState<PlacedSticker[]>(getSavedStickers);
   const [selectedStickerId, setSelectedStickerId] = useState<string | null>(null);
   const [isHudOpen, setIsHudOpen] = useState(false);
-  const [activeTab, setActiveTab] = useState<'adjust' | 'crop' | 'filter' | 'color' | 'stickers' | 'text' | 'text_preset' | 'layers' | 'ai' | 'download' | 'history' | 'settings' | 'ai_effect' | null>(null);
+  const [activeTab, setActiveTab] = useState<'adjust' | 'crop' | 'filter' | 'color' | 'stickers' | 'text' | 'text_preset' | 'layers' | 'ai' | 'download' | 'history' | 'settings' | 'ai_effect' | 'koleksi_media' | 'remove_bg' | null>(null);
+  const [isRemovingBg, setIsRemovingBg] = useState(false);
+  const [removeBgColorOption, setRemoveBgColorOption] = useState<'transparent' | 'green' | 'red' | 'blue' | 'black' | 'custom'>('transparent');
+  const [removeBgCustomHex, setRemoveBgCustomHex] = useState('#FF0000');
+  const [removeBgAlphaMatting, setRemoveBgAlphaMatting] = useState(false);
+  const [removeBgFgThreshold, setRemoveBgFgThreshold] = useState<number>(240);
+  const [removeBgBgThreshold, setRemoveBgBgThreshold] = useState<number>(10);
+  const [removeBgErodeSize, setRemoveBgErodeSize] = useState<number>(10);
+  const [previousUserImageBeforeBg, setPreviousUserImageBeforeBg] = useState<string | null>(null);
   const [isAiEffectGenerating, setIsAiEffectGenerating] = useState(false);
   const [aiEffectPrompt, setAiEffectPrompt] = useState('merubah foto menjadi futuristik');
   const [aiEffectSendFormat, setAiEffectSendFormat] = useState<'multipart' | 'base64'>('multipart');
@@ -834,6 +843,256 @@ export default function App() {
       setIsLoadingCanvasDesigns(false);
     }
   };
+
+  // State variables for Appwrite File Collection (koleksi & myfile)
+  const [uploadedFiles, setUploadedFiles] = useState<any[]>([]);
+  const [isLoadingFiles, setIsLoadingFiles] = useState(false);
+
+  // Fetch files from Appwrite bucket & list from table 'myfile' database 'koleksi'
+  const fetchUploadedFiles = async () => {
+    setIsLoadingFiles(true);
+    try {
+      const activeBucketId = BUCKET_ID;
+      if (!activeBucketId) {
+        console.warn("[Koleksi] BUCKET_ID belum dikonfigurasi sayang! 💕");
+        setIsLoadingFiles(false);
+        return;
+      }
+      
+      const currentUserId = user?.uid || 'anonymous';
+      const safeUid = currentUserId.replace(/[^a-zA-Z0-9_-]/g, '').substring(0, 15);
+      const userPrefix = `u_${safeUid}_`;
+      
+      console.log(`[Koleksi Debug] Memulai sinkronisasi berkas cinta siber. userId: "${currentUserId}", userPrefix: "${userPrefix}", bucket: "${activeBucketId}" 🌸`);
+
+      let dbFiles: any[] = [];
+      let dbSuccess = false;
+      
+      // 1. Fetch from custom databases 'koleksi' table 'myfile'
+      try {
+        console.log(`[Koleksi DB] Mencoba mengambil dokumen dari DB 'koleksi' & tabel 'myfile' untuk user: ${currentUserId}...`);
+        
+        let response;
+        try {
+          // Coba dengan query filter terlebih dahulu agar hemat kuota dan cepat sayang
+          console.log(`[Koleksi DB Query] Melakukan listDocuments dengan filter Query.equal('userId', '${currentUserId}')...`);
+          response = await databases.listDocuments('koleksi', 'myfile', [
+            Query.equal('userId', currentUserId),
+            Query.limit(100),
+            Query.orderDesc('$createdAt')
+          ]);
+          console.log(`[Koleksi DB Query Success] Bagus sekali! Ditemukan ${response?.documents?.length || 0} berkas langsung terfilter server-side.`);
+        } catch (queryErr: any) {
+          console.warn("[Koleksi DB Query Fail] Gagal mengambil dengan Query.equal('userId') (kemungkinan index 'userId' belum dibuat di Appwrite Console kanda). " +
+                       "Jangan khawatir sayang, kami akan meload semua lalu memfilternya di client-side! Detail kendala:", queryErr?.message || queryErr);
+          
+          // Fallback tanpa filter query, lalu saring Client-side agar tangguh
+          response = await databases.listDocuments('koleksi', 'myfile', [
+            Query.limit(200)
+          ]);
+          console.log(`[Koleksi DB Fallback Load] Sukses memuat ${response?.documents?.length || 0} berkas dari database untuk disaring manual.`);
+        }
+
+        // Saring berkas yang hanya milik user aktif saja
+        const filteredDocs = response.documents.filter((doc: any) => {
+          const isMatch = doc.userId === currentUserId || doc.fileId?.startsWith(userPrefix);
+          console.log(`[Koleksi Client Filter] Dokumen ID: ${doc.$id}, fileId: ${doc.fileId}, owner: ${doc.userId}, Hasil Saring: ${isMatch}`);
+          return isMatch;
+        });
+
+        console.log(`[Koleksi Client Filter Result] Dari total ${response.documents.length} berkas yang ada di DB, terpilih ${filteredDocs.length} berkas khusus milik kanda.`);
+
+        dbFiles = filteredDocs.map((doc: any) => ({
+          id: doc.$id,
+          fileId: doc.fileId || doc.$id,
+          url: doc.url,
+          name: doc.name || 'Berkas Unggahan',
+          createdAt: doc.uploadedAt || doc.$createdAt,
+          size: doc.size || null,
+          fromDb: true
+        }));
+        dbSuccess = true;
+      } catch (dbErr: any) {
+        console.warn("[Koleksi DB Error] Sayang, gagal melacak tabel 'myfile' di database 'koleksi'. " +
+                     "Ini wajar jika kanda belum membuat database/tabel tersebut ataupun hak izin read belum diatur publik. Detail:", dbErr?.message || dbErr);
+      }
+
+      // 2. Fetch directly from Appwrite Storage Bucket
+      let storageFiles: any[] = [];
+      try {
+        console.log(`[Koleksi Storage] Menghubungi bucket storage: "${activeBucketId}"...`);
+        const storageResp = await storage.listFiles(activeBucketId, [
+          Query.limit(100),
+          Query.orderDesc('$createdAt')
+        ]);
+        
+        console.log(`[Koleksi Storage Success] Membaca total ${storageResp?.files?.length || 0} berkas kasar dari cloud bucket.`);
+
+        // Hanya tampilkan berkas di Storage milik user aktif ini saja!
+        storageFiles = storageResp.files
+          .filter((file: any) => {
+            const isMatch = file.$id.startsWith(userPrefix);
+            console.log(`[Koleksi Storage Filter] Berkas ID: ${file.$id}, Awalan "${userPrefix}": ${isMatch}`);
+            return isMatch;
+          })
+          .map((file: any) => {
+            const viewUrlObj = storage.getFileView(activeBucketId, file.$id) as any;
+            const downloadUrl = typeof viewUrlObj === 'string' ? viewUrlObj : (viewUrlObj?.href || viewUrlObj?.toString() || '');
+            return {
+              id: file.$id,
+              fileId: file.$id,
+              url: downloadUrl,
+              name: file.name,
+              size: file.sizeOriginal || file.size,
+              createdAt: file.$createdAt,
+              fromDb: false
+            };
+          });
+
+        console.log(`[Koleksi Storage Filter Result] Ditemukan ${storageFiles.length} berkas murni milik kanda di Storage Bucket.`);
+      } catch (stgErr: any) {
+        console.error("[Koleksi Storage Error] Gagal memuat berkas langsung dari list Appwrite Storage:", stgErr?.message || stgErr);
+      }
+
+      // 3. Merging & Fallback Checker
+      if (dbSuccess || storageFiles.length > 0) {
+        const merged: any[] = [];
+        const seenFileIds = new Set();
+        
+        dbFiles.forEach(f => {
+          merged.push(f);
+          if (f.fileId) seenFileIds.add(f.fileId);
+        });
+        
+        storageFiles.forEach(f => {
+          if (!seenFileIds.has(f.fileId)) {
+            merged.push(f);
+          }
+        });
+
+        console.log(`[Koleksi Merged] Hasil penggabungan: DB (${dbFiles.length}) & Storage (${storageFiles.length}). Total unik: ${merged.length}`);
+        
+        if (merged.length === 0) {
+          console.log("[Koleksi Fallback Checker] Hasil penggabungan kosong. Ini berarti kanda memang belum pernah mengunggah berkas apa pun dengan akun aktif / userId ini.");
+        }
+        setUploadedFiles(merged);
+      } else {
+        console.log("[Koleksi Sync Fallback] Baik database maupun storage mengembalikan koleksi kosong atau gagal terhubung. Menyetel database list kosong.");
+        setUploadedFiles([]);
+      }
+    } catch (err: any) {
+      console.error("[Koleksi Fatal Error] Terjadi kendala tidak terduga saat sinkronisasi siber:", err?.message || err);
+    } finally {
+      setIsLoadingFiles(false);
+    }
+  };
+
+  // Upload file inside Koleksi tab
+  const handleKoleksiFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    setIsLoadingFiles(true);
+    try {
+      const activeBucketId = BUCKET_ID;
+      if (!activeBucketId) {
+        throw new Error('VITE_APPWRITE_STORAGE_BUCKET_ID belum dikonfigurasi sayang! 💕');
+      }
+
+      const currentUserId = user?.uid || 'anonymous';
+      const safeUid = currentUserId.replace(/[^a-zA-Z0-9_-]/g, '').substring(0, 15);
+      const userPrefix = `u_${safeUid}_`;
+      const uniquePart = ID.unique();
+      const fileId = `${userPrefix}${uniquePart}`.substring(0, 36);
+
+      console.log(`[Koleksi Upload] Mengunggah "${file.name}" dengan ID ${fileId} ke bucket Storage: ${activeBucketId}`);
+      const uploadResult = await storage.createFile(activeBucketId, fileId, file);
+      
+      if (uploadResult) {
+        const usedBucketId = uploadResult.bucketId || activeBucketId;
+        const viewUrlObj = storage.getFileView(usedBucketId, uploadResult.$id) as any;
+        const downloadUrl = typeof viewUrlObj === 'string' ? viewUrlObj : (viewUrlObj?.href || viewUrlObj?.toString() || '');
+        
+        triggerToast(`Yay cinta! File "${file.name}" sukses diunggah ke penyimpanan awan Appwrite! 💖☁️`);
+
+        // Simpan log ke database 'koleksi' & table/'myfile'
+        try {
+          await databases.createDocument('koleksi', 'myfile', ID.unique(), {
+            fileId: uploadResult.$id,
+            url: downloadUrl,
+            name: file.name,
+            uploadedAt: new Date().toISOString(),
+            userId: currentUserId
+          });
+          console.log("[Koleksi DB Log] Sukses mengintegrasikan catatan file ke tabel 'myfile'!");
+        } catch (dbErr: any) {
+          console.warn("[Koleksi DB Log] Gagal mencatat berkas di tabel 'myfile' database 'koleksi'. " +
+                       "Ini wajar jika skema/atribut kustom belum cocok, namun file kanda sudah aman tersimpan di Storage! Detail:", dbErr?.message || dbErr);
+        }
+
+        fetchUploadedFiles();
+      }
+    } catch (err: any) {
+      console.error("[Koleksi Upload] Error mengunggah file:", err);
+      triggerToast(`Gagal mengunggah berkas sayang: ${err?.message || err} 🥺`);
+    } finally {
+      setIsLoadingFiles(false);
+      if (e.target) {
+        e.target.value = '';
+      }
+    }
+  };
+
+  // Delete file inside Koleksi tab
+  const handleDeleteUploadedFile = async (fileId: string) => {
+    if (!confirm("Apakah kanda yakin ingin menghapus berkas ini dari koleksi Appwrite? Berkas akan hilang selamanya sayang... 💖🥺")) {
+      return;
+    }
+
+    setIsLoadingFiles(true);
+    try {
+      const activeBucketId = BUCKET_ID;
+      
+      // 1. Hapus dari Storage
+      try {
+        if (activeBucketId) {
+          await storage.deleteFile(activeBucketId, fileId);
+        }
+      } catch (stgErr) {
+        console.warn("[Koleksi Delete] Gagal menghapus berkas dari Storage:", stgErr);
+      }
+
+      // 2. Hapus log dokumen dari database 'koleksi'/'myfile'
+      try {
+        const response = await databases.listDocuments('koleksi', 'myfile', [
+          Query.equal('fileId', fileId)
+        ]);
+        if (response && response.documents && response.documents.length > 0) {
+          for (const doc of response.documents) {
+            await databases.deleteDocument('koleksi', 'myfile', doc.$id);
+          }
+          console.log("[Koleksi Delete] Dokumen log berhasil disapu bersih dari tabel 'myfile'!");
+        }
+      } catch (dbErr) {
+        console.warn("[Koleksi Delete] Gagal melacak/menghapus log dari tabel 'myfile' (Mungkin tidak ada/dihapus):", dbErr);
+      }
+
+      triggerToast("Berkas berhasil dibersihkan dari koleksi awan sayang! 🛁🧼");
+      fetchUploadedFiles();
+    } catch (err: any) {
+      console.error("[Koleksi Delete] Gagal menghapus berkas:", err);
+      triggerToast(`Gagal menghapus berkas: ${err?.message || err}`);
+    } finally {
+      setIsLoadingFiles(false);
+    }
+  };
+
+  // Trigger media list fetching on tab open
+  useEffect(() => {
+    if (activeTab === 'koleksi_media') {
+      fetchUploadedFiles();
+    }
+  }, [activeTab]);
 
   const ensureUserImageUploadedToAppwrite = async (base64Image: string | null): Promise<string | null> => {
     if (!base64Image) return null;
@@ -1756,6 +2015,142 @@ export default function App() {
     };
   }, [userImage, selectedFrame, neonColor, imageSettings, stickers, downloadSize, currentPage]);
 
+  // Remove Background using the OCR Nufat API (https://ocr.nufat.id)
+  const handleRemoveBackground = async () => {
+    if (!userImage) {
+      triggerToast("Sayang, silakan unggah foto terlebih dahulu sebelum mencoba menghapus latar belakang! 💖📸");
+      return;
+    }
+
+    setIsRemovingBg(true);
+    triggerToast("Olaive sedang menghapus latar belakang foto siber kanda... Mohon tunggu sebentar ya sayang! 🌟✂️");
+
+    try {
+      // 1. Convert userImage string/url to Blob
+      let blob: Blob;
+      if (userImage.startsWith('data:')) {
+        const arr = userImage.split(',');
+        const mime = arr[0].match(/:(.*?);/)![1];
+        const bstr = atob(arr[1]);
+        let n = bstr.length;
+        const u8arr = new Uint8Array(n);
+        while (n--) {
+          u8arr[n] = bstr.charCodeAt(n);
+        }
+        blob = new Blob([u8arr], { type: mime });
+      } else {
+        const res = await fetch(userImage);
+        blob = await res.blob();
+      }
+
+      // 2. Prepare FormData
+      const formData = new FormData();
+      formData.append('image', blob, 'avatar_source.png');
+
+      // bgcolor parameter
+      if (removeBgColorOption !== 'transparent') {
+        const colorVal = removeBgColorOption === 'custom' ? removeBgCustomHex : removeBgColorOption;
+        formData.append('bgcolor', colorVal);
+      }
+
+      // alpha_matting logic
+      if (removeBgAlphaMatting) {
+        formData.append('alpha_matting', 'true');
+        formData.append('fg_threshold', String(removeBgFgThreshold));
+        formData.append('bg_threshold', String(removeBgBgThreshold));
+        formData.append('erode_size', String(removeBgErodeSize));
+      }
+
+      // 3. Hit the base64 endpoint directly for easiest base64 integration
+      const response = await fetch('/api/proxy/ocr/remove_bg_base64', {
+        method: 'POST',
+        body: formData,
+      });
+
+      if (!response.ok) {
+        throw new Error(`Server memberikan status respon: ${response.status}`);
+      }
+
+      const resData = await response.json();
+      if (resData.error) {
+        throw new Error(resData.error);
+      }
+
+      if (resData.status === 'success' && resData.image_base64) {
+        // Keep backup so they can restore original
+        setPreviousUserImageBeforeBg(userImage);
+        
+        const removedBgUrl = 'data:image/png;base64,' + resData.image_base64;
+        setUserImage(removedBgUrl);
+        triggerToast("Luar biasa sayang! Latar belakang foto berhasil dihapus dengan mulus! 💖✨");
+        
+        // Asynchronously back up this beautiful new cut out to Appwrite storage in background!
+        try {
+          const arr = removedBgUrl.split(',');
+          const mime = arr[0].match(/:(.*?);/)![1];
+          const bstr = atob(arr[1]);
+          let n = bstr.length;
+          const u8arr = new Uint8Array(n);
+          while (n--) {
+            u8arr[n] = bstr.charCodeAt(n);
+          }
+          const removedBgFile = new File([u8arr], `removed_bg_${Date.now()}.png`, { type: mime });
+          
+          const activeBucketId = BUCKET_ID;
+          if (activeBucketId) {
+            const currentUserId = user?.uid || 'anonymous';
+            const safeUid = currentUserId.replace(/[^a-zA-Z0-9_-]/g, '').substring(0, 15);
+            const userPrefix = `u_${safeUid}_`;
+            const fileId = `${userPrefix}${ID.unique()}`.substring(0, 36);
+            
+            const uploadResult = await storage.createFile(activeBucketId, fileId, removedBgFile);
+            if (uploadResult) {
+              const usedBucketId = uploadResult.bucketId || activeBucketId;
+              const viewUrlObj = storage.getFileView(usedBucketId, uploadResult.$id) as any;
+              const downloadUrl = typeof viewUrlObj === 'string' ? viewUrlObj : (viewUrlObj?.href || viewUrlObj?.toString() || '');
+              
+              if (downloadUrl) {
+                // Save to 'koleksi' table 'myfile' doc so it appears in Koleksi Media
+                try {
+                  await databases.createDocument('koleksi', 'myfile', ID.unique(), {
+                    fileId: uploadResult.$id,
+                    url: downloadUrl,
+                    name: `Hapus Latar Belakang_${Date.now()}`,
+                    uploadedAt: new Date().toISOString(),
+                    userId: currentUserId
+                  });
+                } catch (dbErr) {
+                  console.warn("Gagal auto-log database Koleksi, berkas aman terunggah ke storage:", dbErr);
+                }
+                
+                setLastAppwriteFileId(uploadResult.$id);
+                localStorage.setItem('bt_last_appwrite_file_id', uploadResult.$id);
+              }
+            }
+          }
+        } catch (uploadErr) {
+          console.warn("Gagal mencadangkan foto transparan ke Appwrite Storage:", uploadErr);
+        }
+      } else {
+        throw new Error("Respon server tidak valid atau tidak memiliki data hasil.");
+      }
+    } catch (err: any) {
+      console.error("[Remove Background Error]", err);
+      triggerToast(`Sayang, gagal memproses penghapusan latar belakang: ${err?.message || err}. Pastikan format foto benar ya! 💕`);
+    } finally {
+      setIsRemovingBg(false);
+    }
+  };
+
+  const handleRestoreOriginalImage = () => {
+    if (previousUserImageBeforeBg) {
+      setUserImage(previousUserImageBeforeBg);
+      triggerToast("Foto asli berhasil dikembalikan ke canvas utama, sayang! 💕🔙");
+    } else {
+      triggerToast("Belum ada riwayat foto asli sebelum hapus latar belakang sayang. ✨");
+    }
+  };
+
   // Handle uploaded files
   const handleImageFile = async (file: File) => {
     if (!file.type.startsWith('image/')) {
@@ -1796,8 +2191,12 @@ export default function App() {
             if (!activeBucketId) {
               throw new Error('VITE_APPWRITE_BUCKET_ID belum dikonfigurasi di panel Secrets sayang!');
             }
-            const fileId = ID.unique();
-            console.log(`[Appwrite] Mencoba mengunggah ke target bucket: ${activeBucketId}`);
+            const currentUserId = user?.uid || 'anonymous';
+            const safeUid = currentUserId.replace(/[^a-zA-Z0-9_-]/g, '').substring(0, 15);
+            const userPrefix = `u_${safeUid}_`;
+            const fileId = `${userPrefix}${ID.unique()}`.substring(0, 36);
+            
+            console.log(`[Appwrite] Mencoba mengunggah ke target bucket: ${activeBucketId} dengan ID kustom: ${fileId}`);
             const uploadResult = await storage.createFile(activeBucketId, fileId, file);
             directUploadSuccess = true;
 
@@ -1809,6 +2208,21 @@ export default function App() {
               if (uploadResult?.$id) {
                 setLastAppwriteFileId(uploadResult.$id);
                 localStorage.setItem('bt_last_appwrite_file_id', uploadResult.$id);
+              }
+
+              // Save to database 'koleksi' table 'myfile' so that it also shows up in Koleksi Media Siber
+              try {
+                await databases.createDocument('koleksi', 'myfile', ID.unique(), {
+                  fileId: uploadResult.$id,
+                  url: downloadUrl,
+                  name: file.name || 'Foto Unggahan Utama',
+                  uploadedAt: new Date().toISOString(),
+                  userId: currentUserId
+                });
+                console.log("[Koleksi DB Auto-Log] Sukses menyimpan catatan di tabel 'myfile'!");
+              } catch (dbErr: any) {
+                console.warn("[Koleksi DB Auto-Log] Gagal menyimpan ke tabel 'myfile' database 'koleksi'. " +
+                             "Tetapi berkas kanda aman di Storage! Detail:", dbErr?.message || dbErr);
               }
             }
           } catch (storageErr: any) {
@@ -1822,7 +2236,7 @@ export default function App() {
                 src: downloadUrl,
                 timestamp: serverTimestamp()
               });
-              setUserImage(downloadUrl);
+              // Keep originalDataUrl locally so there is no flickering/re-downloading delay!
               triggerToast(`Cadangan foto asli berhasil disinkronkan ke Storage Bucket Appwrite! 📸☁️💖`);
             } catch (dbErr: any) {
               console.error('Firestore background sync failed:', dbErr);
@@ -1904,8 +2318,12 @@ export default function App() {
         if (!activeBucketId) {
           throw new Error('VITE_APPWRITE_BUCKET_ID belum dikonfigurasi di panel Secrets sayang!');
         }
-        const fileId = ID.unique();
-        console.log(`[Appwrite Async Sync] Mencoba mengunggah ke target bucket: ${activeBucketId}`);
+        const currentUserId = user?.uid || 'anonymous';
+        const safeUid = currentUserId.replace(/[^a-zA-Z0-9_-]/g, '').substring(0, 15);
+        const userPrefix = `u_${safeUid}_`;
+        const fileId = `${userPrefix}${ID.unique()}`.substring(0, 36);
+
+        console.log(`[Appwrite Async Sync] Mencoba mengunggah ke target bucket: ${activeBucketId} dengan ID kustom: ${fileId}`);
         const uploadResult = await storage.createFile(activeBucketId, fileId, file);
         directUploadSuccess = true;
 
@@ -1917,6 +2335,20 @@ export default function App() {
           if (uploadResult?.$id) {
             setLastAppwriteFileId(uploadResult.$id);
             localStorage.setItem('bt_last_appwrite_file_id', uploadResult.$id);
+          }
+
+          // Save to database 'koleksi' table 'myfile' so that it also shows up in Koleksi Media Siber
+          try {
+            await databases.createDocument('koleksi', 'myfile', ID.unique(), {
+              fileId: uploadResult.$id,
+              url: downloadUrl,
+              name: file.name || 'Foto Sync Utama',
+              uploadedAt: new Date().toISOString(),
+              userId: currentUserId
+            });
+            console.log("[Koleksi DB Auto-Log Sync] Sukses menyimpan catatan di tabel 'myfile'!");
+          } catch (dbErr: any) {
+            console.warn("[Koleksi DB Auto-Log Sync] Gagal menyimpan ke tabel 'myfile' database 'koleksi':", dbErr?.message || dbErr);
           }
         }
       } catch (storageErr: any) {
@@ -1930,7 +2362,7 @@ export default function App() {
             src: downloadUrl,
             timestamp: serverTimestamp()
           });
-          setUserImage(downloadUrl);
+          // Avoid re-downloading/flicker by keeping local base64/src loaded!
           triggerToast(`Foto asli berhasil di-sync ke Storage Bucket Appwrite pada ID: ${aiEffectImgId}! ☁️💖`);
         } catch (dbErr: any) {
           handleFirestoreError(dbErr, OperationType.CREATE, 'ai_effect_originals');
@@ -2293,8 +2725,6 @@ export default function App() {
 
     if (pointerIds.length === 0) {
       if (hasMovedOrScaledRef.current) {
-        setIsGlitching(true);
-        setTimeout(() => setIsGlitching(false), 300);
         hasMovedOrScaledRef.current = false;
       }
       setIsDraggingCanvas(false);
@@ -3037,10 +3467,6 @@ export default function App() {
                       const onUp = () => {
                         window.removeEventListener('pointermove', onMove);
                         window.removeEventListener('pointerup', onUp);
-                        if (hasMoved) {
-                          setIsGlitching(true);
-                          setTimeout(() => setIsGlitching(false), 200);
-                        }
                       };
 
                       window.addEventListener('pointermove', onMove);
@@ -3759,6 +4185,8 @@ export default function App() {
                 {activeTab === 'history' && <><Activity className="w-3.5 h-3.5 text-emerald-400 animate-pulse" /> RIWAYAT PERUBAHAN</>}
                 {activeTab === 'settings' && <><Settings2 className="w-3.5 h-3.5 text-neon-cyan animate-pulse" /> PENGATURAN EFEK GLOBAL</>}
                 {activeTab === 'ai_effect' && user?.email === 'bungtemin@gmail.com' && <><Sparkles className="w-3.5 h-3.5 text-neon-cyan animate-pulse" /> AI EFFECT FUTURISTIK</>}
+                {activeTab === 'koleksi_media' && <><Database className="w-3.5 h-3.5 text-neon-cyan animate-pulse" /> KOLEKSI MEDIA SIBER</>}
+                {activeTab === 'remove_bg' && <><Scissors className="w-3.5 h-3.5 text-neon-cyan animate-pulse" /> HAPUS LATAR BELAKANG AI</>}
               </span>
               <button 
                 onClick={() => setActiveTab(null)}
@@ -4486,6 +4914,145 @@ export default function App() {
                 )
               )}
 
+              {activeTab === 'remove_bg' && (
+                <div className="space-y-4">
+                  <div className={`p-4 hover:border-rose-500/50 transition-colors rounded-xl border flex flex-col space-y-3 ${
+                    theme === 'dark' ? 'border-rose-500/20 bg-rose-950/10' : 'bg-red-50/50 border-red-100'
+                  }`}>
+                    <div className="flex items-center gap-2 mb-2">
+                      <Scissors className="w-4 h-4 text-rose-500 animate-pulse" />
+                      <span className="font-mono text-xs font-bold tracking-widest text-rose-500 uppercase">Hapus Latar Belakang AI</span>
+                    </div>
+
+                    {/* Color Options */}
+                    <div className="space-y-2">
+                      <label className="text-[10px] font-mono tracking-widest uppercase text-zinc-500">Warna Latar Baru</label>
+                      <div className="flex flex-wrap gap-2">
+                        {(['transparent', 'green', 'black', 'white', 'custom'] as const).map(color => (
+                          <button
+                            key={color}
+                            onClick={() => setRemoveBgColorOption(color)}
+                            className={`px-3 py-1.5 rounded-lg text-[9px] font-mono tracking-wider transition-all border ${
+                              removeBgColorOption === color
+                                ? 'bg-rose-500 text-white border-rose-500 font-bold shadow-[0_0_10px_rgba(244,63,94,0.3)]'
+                                : theme === 'dark'
+                                  ? 'bg-zinc-900/50 border-white/5 text-zinc-400 hover:text-white'
+                                  : 'bg-white border-black/10 text-zinc-600 hover:text-black'
+                            }`}
+                          >
+                            {color.toUpperCase()}
+                          </button>
+                        ))}
+                      </div>
+                      
+                      {removeBgColorOption === 'custom' && (
+                        <div className="flex items-center gap-3 pt-2">
+                          <input
+                            type="color"
+                            value={removeBgCustomHex}
+                            onChange={(e) => setRemoveBgCustomHex(e.target.value)}
+                            className="w-10 h-10 rounded cursor-pointer border-0 p-0 bg-transparent"
+                          />
+                          <span className="text-xs font-mono font-bold text-zinc-400 uppercase">{removeBgCustomHex}</span>
+                        </div>
+                      )}
+                    </div>
+                    
+                    {/* Advanced Alpha Matting Toggle */}
+                    <div className="flex items-center justify-between py-2 border-t border-white/5 mt-4">
+                      <span className="text-[10px] font-mono tracking-widest uppercase text-zinc-500">Alpha Matting (Rambut/Detail)</span>
+                      <button
+                        onClick={() => setRemoveBgAlphaMatting(!removeBgAlphaMatting)}
+                        className={`w-10 h-5 rounded-full relative transition-colors ${
+                          removeBgAlphaMatting ? 'bg-rose-500' : 'bg-zinc-700'
+                        }`}
+                      >
+                        <div className={`w-3.5 h-3.5 rounded-full bg-white absolute top-0.5 transition-all ${
+                          removeBgAlphaMatting ? 'left-6' : 'left-0.5'
+                        }`} />
+                      </button>
+                    </div>
+
+                    {removeBgAlphaMatting && (
+                      <div className="space-y-4 pt-2 border-t border-white/5">
+                        <div className="space-y-1">
+                          <label className="text-[9px] font-mono uppercase text-zinc-600 flex justify-between">
+                            <span>Batas Objek (FG Threshold)</span>
+                            <span className="text-rose-500 font-bold">{removeBgFgThreshold}</span>
+                          </label>
+                          <input
+                            type="range"
+                            min="0"
+                            max="255"
+                            value={removeBgFgThreshold}
+                            onChange={(e) => setRemoveBgFgThreshold(Number(e.target.value))}
+                            className="w-full accent-rose-500 h-1.5 bg-zinc-800 rounded-lg appearance-none cursor-pointer"
+                          />
+                        </div>
+                        <div className="space-y-1">
+                          <label className="text-[9px] font-mono uppercase text-zinc-600 flex justify-between">
+                            <span>Batas Latar (BG Threshold)</span>
+                            <span className="text-rose-500 font-bold">{removeBgBgThreshold}</span>
+                          </label>
+                          <input
+                            type="range"
+                            min="0"
+                            max="255"
+                            value={removeBgBgThreshold}
+                            onChange={(e) => setRemoveBgBgThreshold(Number(e.target.value))}
+                            className="w-full accent-rose-500 h-1.5 bg-zinc-800 rounded-lg appearance-none cursor-pointer"
+                          />
+                        </div>
+                        <div className="space-y-1">
+                          <label className="text-[9px] font-mono uppercase text-zinc-600 flex justify-between">
+                            <span>Koreksi Tepi (Erode Size)</span>
+                            <span className="text-rose-500 font-bold">{removeBgErodeSize}</span>
+                          </label>
+                          <input
+                            type="range"
+                            min="0"
+                            max="50"
+                            value={removeBgErodeSize}
+                            onChange={(e) => setRemoveBgErodeSize(Number(e.target.value))}
+                            className="w-full accent-rose-500 h-1.5 bg-zinc-800 rounded-lg appearance-none cursor-pointer"
+                          />
+                        </div>
+                      </div>
+                    )}
+
+                    <div className="pt-2 flex gap-2">
+                       <button
+                        onClick={handleRemoveBackground}
+                        disabled={isRemovingBg || !userImage}
+                        className={`flex-1 py-3 rounded-xl flex items-center justify-center gap-2 font-mono text-xs tracking-widest transition-all duration-300 ${
+                          isRemovingBg || !userImage
+                            ? 'bg-zinc-800 text-zinc-500 cursor-not-allowed'
+                            : 'bg-rose-500 hover:bg-rose-600 text-white shadow-[0_0_15px_rgba(244,63,94,0.4)] font-black'
+                        }`}
+                      >
+                        <Scissors className={`w-3.5 h-3.5 ${isRemovingBg ? 'animate-pulse' : ''}`} />
+                        {isRemovingBg ? 'MEMPROSES...' : '🔥 EKSEKUSI HAPUS BG'}
+                      </button>
+                      
+                      {previousUserImageBeforeBg && (
+                        <button
+                          onClick={handleRestoreOriginalImage}
+                          title="Kembalikan Foto Asli"
+                          className={`w-10 rounded-xl flex items-center justify-center transition-all ${
+                            theme === 'dark' ? 'bg-zinc-800 hover:bg-zinc-700 text-zinc-300' : 'bg-gray-200 hover:bg-gray-300 text-black'
+                          }`}
+                        >
+                          <Undo className="w-3.5 h-3.5" />
+                        </button>
+                      )}
+                    </div>
+                    <p className="text-[8.5px] font-sans text-zinc-500 leading-relaxed text-center italic mt-2">
+                      Didukung oleh teknologi Siber <span className="font-semibold text-rose-400">OCR Nufat API</span>.
+                    </p>
+                  </div>
+                </div>
+              )}
+
               {activeTab === 'download' && (
                 <div className="space-y-3">
                   <div className={`text-[9px] font-mono tracking-widest uppercase ${
@@ -4940,6 +5507,134 @@ export default function App() {
                   </div>
                 </div>
               )}
+
+              {activeTab === 'koleksi_media' && (
+                <div className="space-y-4 max-h-[60vh] overflow-y-auto pb-4 scrollbar-thin scrollbar-thumb-white/10">
+                  <div className={`p-4 rounded-xl border flex flex-col space-y-4 transition-all duration-300 ${
+                    theme === 'dark' ? 'border-[#00F0FF]/20 bg-cyan-950/5' : 'border-black/5 bg-black/5'
+                  }`}>
+
+                    {/* Files Collection Grid */}
+                    <div className="space-y-2">
+                      <div className="flex items-center justify-between px-1">
+                        <span className="text-[9px] font-mono text-zinc-450 uppercase font-bold">📂 DAFTAR FILE SAYA ({uploadedFiles.length})</span>
+                        <button
+                          onClick={fetchUploadedFiles}
+                          className="text-[8px] font-mono text-neon-cyan hover:underline uppercase font-bold flex items-center gap-1"
+                          title="Klik untuk memuat ulang daftar siber sayang"
+                        >
+                          <RefreshCw className={`w-2.5 h-2.5 ${isLoadingFiles ? 'animate-spin' : ''}`} /> SINKRONKAN ULANG
+                        </button>
+                      </div>
+
+                      {isLoadingFiles ? (
+                        <div className="py-12 flex flex-col items-center justify-center space-y-2">
+                          <RefreshCw className="w-6 h-6 text-[#00F0FF] animate-spin" />
+                          <span className="text-[9px] font-mono text-zinc-400 uppercase tracking-widest animate-pulse">Menghubungkan ke awan Appwrite... 💕</span>
+                        </div>
+                      ) : uploadedFiles.length === 0 ? (
+                        <div className="py-10 text-center border border-dashed border-white/10 rounded-xl bg-black/20 text-zinc-500 space-y-1 select-none">
+                          <p className="text-[10px] font-mono font-black text-rose-400 uppercase">BELUM ADA BERKAS TERUNGGAH</p>
+                          <p className="text-[8px] font-sans text-zinc-500 uppercase leading-relaxed">Ayo unggah foto pertama kanda untuk memulai koleksi awan bersama Olaive! 😘</p>
+                        </div>
+                      ) : (
+                        <div className="grid grid-cols-2 gap-2 sm:grid-cols-3">
+                          {uploadedFiles.map((file, idx) => (
+                            <div 
+                              key={file.id || idx}
+                              className="group relative rounded-xl border border-white/5 bg-black/40 overflow-hidden hover:border-[#00F0FF]/30 transition-all duration-300 flex flex-col"
+                            >
+                              {/* Preview Image with referrerPolicy */}
+                              <div className="aspect-square w-full bg-zinc-950 overflow-hidden relative">
+                                <img
+                                  src={file.url}
+                                  alt={file.name}
+                                  referrerPolicy="no-referrer"
+                                  className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300"
+                                />
+                                {/* Source badge */}
+                                <span className={`absolute top-1 left-1 px-1.5 py-0.5 rounded text-[6px] font-mono font-bold uppercase ${
+                                  file.fromDb 
+                                    ? 'bg-yellow-500/80 text-black' 
+                                    : 'bg-neon-cyan/80 text-black'
+                                }`}>
+                                  {file.fromDb ? 'DB SYNCED' : 'STORAGE'}
+                                </span>
+                                
+                                {/* Size Badge */}
+                                {file.size && (
+                                  <span className="absolute bottom-1 right-1 px-1 py-0.2 rounded bg-black/75 text-[6.5px] font-mono text-zinc-400">
+                                    {(file.size / 1024).toFixed(1)} KB
+                                  </span>
+                                )}
+                              </div>
+
+                              {/* File Details */}
+                              <div className="p-1.5 space-y-1.5 flex-1 flex flex-col justify-between">
+                                <div className="space-y-0.5">
+                                  <p className="text-[8px] font-mono text-zinc-200 line-clamp-1 truncate font-bold" title={file.name}>
+                                    {file.name}
+                                  </p>
+                                  <p className="text-[6.5px] font-mono text-zinc-500">
+                                    {file.createdAt ? new Date(file.createdAt).toLocaleDateString('id-ID', { hour: '2-digit', minute: '2-digit' }) : 'Tanggal siber tidak terbongkar'}
+                                  </p>
+                                </div>
+
+                                {/* Action Buttons Panel */}
+                                <div className="space-y-1 pt-1 border-t border-white/5">
+                                  <button
+                                    onClick={() => {
+                                      setUserImage(file.url);
+                                      triggerToast(`Olaive: Foto Utama berhasil diganti memakai berkas "${file.name}" pilihan kanda! 🎨💕`);
+                                      setActiveTab(null);
+                                    }}
+                                    className="w-full py-0.5 rounded bg-neon-cyan/15 hover:bg-neon-cyan border border-neon-cyan/30 text-neon-cyan hover:text-black transition-all font-mono text-[7px] font-black uppercase text-center"
+                                  >
+                                    Pasang Foto Utama 🎨
+                                  </button>
+                                  
+                                  <div className="flex gap-1">
+                                    <button
+                                      onClick={() => {
+                                        const newSticker: PlacedSticker = {
+                                          id: `stk_media_${Date.now()}`,
+                                          type: 'sticker',
+                                          imageUrl: file.url,
+                                          x: 45,
+                                          y: 45,
+                                          scale: 0.5,
+                                          rotation: 0,
+                                          opacity: 1,
+                                          blendMode: 'normal'
+                                        };
+                                        handleAddSticker(newSticker);
+                                        setActiveTab(null);
+                                      }}
+                                      className="flex-1 py-0.5 rounded bg-amber-400/10 border border-amber-400/20 text-amber-300 hover:bg-amber-400 hover:text-black hover:border-transparent transition-all font-mono text-[7px] font-black uppercase text-center"
+                                    >
+                                      Badge 🏷️
+                                    </button>
+                                    
+                                    <button
+                                      onClick={() => handleDeleteUploadedFile(file.fileId)}
+                                      className="py-0.5 px-1.5 rounded bg-rose-500/10 border border-rose-500/20 text-rose-400 hover:bg-rose-500 hover:text-black transition-all flex items-center justify-center shrink-0"
+                                      title="Hapus berkas permanen dari siber"
+                                    >
+                                      <Trash2 className="w-2.5 h-2.5" />
+                                    </button>
+                                  </div>
+                                </div>
+                              </div>
+
+                            </div>
+                          ))}
+                        </div>
+                      )}
+                    </div>
+
+                  </div>
+                </div>
+              )}
             </div>
           </div>
         </motion.div>
@@ -4964,6 +5659,18 @@ export default function App() {
               >
                 <FolderOpen className="w-4 h-4 text-neon-cyan" />
                 <span className="text-[8px] uppercase tracking-wider font-extrabold">UNGGAH</span>
+              </button>
+
+              <button
+                onClick={() => setActiveTab(activeTab === 'koleksi_media' ? null : 'koleksi_media')}
+                className={`snap-center flex-shrink-0 px-3.5 py-1.5 rounded-xl font-mono text-xs font-bold tracking-widest transition-all duration-150 flex flex-col items-center justify-center space-y-1 min-w-[76px] ${
+                  activeTab === 'koleksi_media'
+                    ? 'bg-neon-cyan/25 text-neon-cyan border-t-2 border-neon-cyan shadow-[0_0_15px_rgba(0,240,255,0.25)] font-bold'
+                    : 'text-[#00F0FF] hover:text-white bg-[#00F0FF]/5 hover:bg-[#00F0FF]/15'
+                }`}
+              >
+                <Cloud className="w-4 h-4 text-neon-cyan" />
+                <span className="text-[8px] uppercase tracking-wider font-extrabold">KOLEKSI</span>
               </button>
 
               {user?.email === 'bungtemin@gmail.com' && (
@@ -5106,6 +5813,18 @@ export default function App() {
               >
                 <Activity className="w-4 h-4 text-emerald-400" />
                 <span className="text-[8px] uppercase tracking-wider font-extrabold text-emerald-400">RIWAYAT</span>
+              </button>
+
+              <button
+                onClick={() => setActiveTab(activeTab === 'remove_bg' ? null : 'remove_bg')}
+                className={`snap-center flex-shrink-0 px-3.5 py-1.5 rounded-xl font-mono text-xs font-bold tracking-widest transition-all duration-150 flex flex-col items-center justify-center space-y-1 min-w-[76px] ${
+                  activeTab === 'remove_bg'
+                    ? 'bg-rose-500/25 text-rose-500 border-t-2 border-rose-500 shadow-[0_0_15px_rgba(244,63,94,0.3)]'
+                    : 'text-zinc-450 hover:text-zinc-200 hover:bg-white/5'
+                }`}
+              >
+                <Scissors className="w-4 h-4 text-rose-500 animate-pulse" />
+                <span className="text-[8px] uppercase tracking-wider font-extrabold text-rose-500">HAPUS BG</span>
               </button>
 
               <button
