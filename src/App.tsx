@@ -3675,69 +3675,76 @@ export default function App() {
                     }`}
                   >
                     {item.type === 'text' ? (
-                      <span
-                        style={{
-                          fontFamily: item.fontFamily || 'Orbitron',
-                          fontSize: `${baseSizePercentage}cqw`,
-                          letterSpacing: item.letterSpacing ? `${item.letterSpacing}px` : 'normal',
-                          mixBlendMode: item.blendMode || 'normal',
-                          ...(item.textStyle === 'neon' 
-                              ? {
-                                  color: '#fff',
-                                  textShadow: `0 0 5px #fff, 0 0 10px #fff, 0 0 20px ${item.color || neonColor}, 0 0 40px ${item.color || neonColor}`
-                                }
-                              : item.textStyle === 'chrome'
-                              ? {
-                                  background: 'linear-gradient(to bottom, #dbe2ea 0%, #879ab6 50%, #46566d 51%, #1f2735 100%)',
-                                  WebkitBackgroundClip: 'text',
-                                  WebkitTextFillColor: 'transparent',
-                                  WebkitTextStroke: '1px #fff',
-                                  filter: 'drop-shadow(0px 2px 2px rgba(0,0,0,0.8))'
-                                }
-                              : item.textStyle === 'glitch'
-                              ? {
-                                  color: '#fff',
-                                  textShadow: '2px 0 #0ff, -2px 0 #f0f'
-                                }
-                              : item.textStyle === 'hologram'
-                              ? {
-                                  background: 'linear-gradient(to bottom, rgba(0,255,255,0.9), rgba(255,0,255,0.8), rgba(0,255,255,0.9))',
-                                  WebkitBackgroundClip: 'text',
-                                  WebkitTextFillColor: 'transparent',
-                                  WebkitTextStroke: '1px rgba(255,255,255,0.8)',
-                                  filter: 'drop-shadow(0px 0px 5px #0ff)'
-                                }
-                              : item.textStyle === '3d'
-                              ? {
-                                  color: '#fff',
-                                  textShadow: `1.5px 1.5px 0 ${item.color || neonColor}, 3px 3px 0 ${item.color || neonColor}, 4.5px 4.5px 0 ${item.color || neonColor}, 6px 6px 0 ${item.color || neonColor}, 7.5px 7.5px 0 #000`,
-                                  WebkitTextStroke: '1px #000',
-                                }
-                              : item.textStyle === 'double-neon'
-                              ? {
-                                  color: '#fff',
-                                  textShadow: `-3px -3px 15px #00f2fe, 3px 3px 15px #f35588, 0 0 5px ${item.color || neonColor}`,
-                                  WebkitTextStroke: `1px ${item.color || neonColor}`
-                                }
-                              : item.textStyle === 'curved'
-                              ? {
-                                  color: '#fff',
-                                  textShadow: `0 0 8px ${item.color || neonColor}`,
-                                  WebkitTextStroke: `1px #000`,
-                                  borderBottom: `2px dashed ${item.color || neonColor}`,
-                                  borderRadius: '50% 50% 0 0'
-                                }
-                              : {
-                                  color: '#fff',
-                                  textShadow: `0 0 8px ${item.color || neonColor}`,
-                                  borderBottom: `2px solid ${item.color || neonColor}`
-                                }
-                          )
-                        }}
-                        className="font-extrabold whitespace-nowrap block select-none uppercase tracking-wide leading-none"
-                      >
-                        {item.text}
-                      </span>
+                      (() => {
+                        const fFamily = item.fontFamily || 'Orbitron';
+                        const fWeight = (fFamily === 'Bebas Neue' || fFamily === 'Press Start 2P' || fFamily === 'Revalia' || fFamily === 'Share Tech Mono') ? 'normal' : 'bold';
+                        return (
+                          <span
+                            style={{
+                              fontFamily: fFamily,
+                              fontWeight: fWeight,
+                              fontSize: `${baseSizePercentage}cqw`,
+                              letterSpacing: item.letterSpacing ? `${item.letterSpacing}px` : 'normal',
+                              mixBlendMode: item.blendMode || 'normal',
+                              ...(item.textStyle === 'neon' 
+                                  ? {
+                                      color: '#fff',
+                                      textShadow: `0 0 5px #fff, 0 0 10px #fff, 0 0 20px ${item.color || neonColor}, 0 0 40px ${item.color || neonColor}`
+                                    }
+                                  : item.textStyle === 'chrome'
+                                  ? {
+                                      background: 'linear-gradient(to bottom, #dbe2ea 0%, #879ab6 50%, #46566d 51%, #1f2735 100%)',
+                                      WebkitBackgroundClip: 'text',
+                                      WebkitTextFillColor: 'transparent',
+                                      WebkitTextStroke: '1px #fff',
+                                      filter: 'drop-shadow(0px 2px 2px rgba(0,0,0,0.8))'
+                                    }
+                                  : item.textStyle === 'glitch'
+                                  ? {
+                                      color: '#fff',
+                                      textShadow: '2px 0 #0ff, -2px 0 #f0f'
+                                    }
+                                  : item.textStyle === 'hologram'
+                                  ? {
+                                      background: 'linear-gradient(to bottom, rgba(0,255,255,0.9), rgba(255,0,255,0.8), rgba(0,255,255,0.9))',
+                                      WebkitBackgroundClip: 'text',
+                                      WebkitTextFillColor: 'transparent',
+                                      WebkitTextStroke: '1px rgba(255,255,255,0.8)',
+                                      filter: 'drop-shadow(0px 0px 5px #0ff)'
+                                    }
+                                  : item.textStyle === '3d'
+                                  ? {
+                                      color: '#fff',
+                                      textShadow: `1.5px 1.5px 0 ${item.color || neonColor}, 3px 3px 0 ${item.color || neonColor}, 4.5px 4.5px 0 ${item.color || neonColor}, 6px 6px 0 ${item.color || neonColor}, 7.5px 7.5px 0 #000`,
+                                      WebkitTextStroke: '1px #000',
+                                    }
+                                  : item.textStyle === 'double-neon'
+                                  ? {
+                                      color: '#fff',
+                                      textShadow: `-3px -3px 15px #00f2fe, 3px 3px 15px #f35588, 0 0 5px ${item.color || neonColor}`,
+                                      WebkitTextStroke: `1px ${item.color || neonColor}`
+                                    }
+                                  : item.textStyle === 'curved'
+                                  ? {
+                                      color: '#fff',
+                                      textShadow: `0 0 8px ${item.color || neonColor}`,
+                                      WebkitTextStroke: `1px #000`,
+                                      borderBottom: `2px dashed ${item.color || neonColor}`,
+                                      borderRadius: '50% 50% 0 0'
+                                    }
+                                  : {
+                                      color: '#fff',
+                                      textShadow: `0 0 8px ${item.color || neonColor}`,
+                                      borderBottom: `2px solid ${item.color || neonColor}`
+                                    }
+                              )
+                            }}
+                            className="whitespace-nowrap block select-none uppercase tracking-wide leading-none"
+                          >
+                            {item.text}
+                          </span>
+                        );
+                      })()
                     ) : item.imageUrl ? (
                       <img
                         src={item.imageUrl}

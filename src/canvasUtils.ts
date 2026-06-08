@@ -233,7 +233,7 @@ export const renderToCanvas = async (
       }
     }
 
-    // Preload custom stickers if downloading
+    // Preload custom stickers and web fonts if downloading
     if (params.isDownloading) {
       for (const item of params.stickers) {
         if (item.type === 'sticker' && item.imageUrl) {
@@ -241,6 +241,25 @@ export const renderToCanvas = async (
             loadImage(item.imageUrl, true)
               .then(img => { stickerImages[item.id] = img; })
               .catch(() => {})
+          );
+        } else if (item.type === 'text') {
+          const family = item.fontFamily || 'Orbitron';
+          promises.push(
+            (async () => {
+              try {
+                if ('fonts' in document) {
+                  // Preload standard, bold and ultra-bold specs to guarantee canvas finds the loaded face
+                  await Promise.all([
+                    (document as any).fonts.load(`12px "${family}"`),
+                    (document as any).fonts.load(`bold 12px "${family}"`),
+                    (document as any).fonts.load(`900 12px "${family}"`)
+                  ]);
+                  await (document as any).fonts.ready;
+                }
+              } catch (e) {
+                console.warn(`Font load failed for canvas text: ${family}`, e);
+              }
+            })()
           );
         }
       }
@@ -407,38 +426,51 @@ export const renderToCanvas = async (
       ctx.translate(xPos, yPos);
       ctx.rotate((item.rotation * Math.PI) / 180);
 
-      const sSize = item.scale * 150; // Reference sticker size
+      // Menghitung ukuran proporsional terhadap canvas size agar identik antara preview dan download
+      const scaleFactor = size / 1080;
+      const sSize = item.type === 'text' 
+        ? (item.scale * 0.15 * size) 
+        : (item.scale * 0.225 * size);
 
       if (item.type === 'sticker') {
         if (item.stickerId) {
           const path = params.presetStickerSvgPaths[item.stickerId];
           if (path) {
-            ctx.strokeStyle = item.color || params.neonColor;
-            ctx.lineWidth = 4;
-            ctx.lineCap = 'round';
-            ctx.lineJoin = 'round';
-            
-            // Render simple SVG Path beautifully scaled
+            // Render simple SVG Path beautifully scaled, counter-scaling strokes to maintain exact proportional thicknesses
             const p = new Path2D(path);
             ctx.save();
-            ctx.scale(sSize/100, sSize/100);
+            const sScale = sSize / 100;
+            ctx.scale(sScale, sScale);
             ctx.translate(-50, -50); // center path
+            
+            ctx.strokeStyle = item.color || params.neonColor;
+            ctx.lineWidth = (4 * scaleFactor) / sScale;
+            ctx.lineCap = 'round';
+            ctx.lineJoin = 'round';
             ctx.stroke(p);
             
-            // Add double glowing stroke path
+            // Add double glowing stroke path with proportional shadow/glow
             ctx.shadowColor = item.color || params.neonColor;
-            ctx.shadowBlur = 10;
+            ctx.shadowBlur = (10 * scaleFactor) / sScale;
             ctx.strokeStyle = '#ffffff';
-            ctx.lineWidth = 1.5;
+            ctx.lineWidth = (1.5 * scaleFactor) / sScale;
             ctx.stroke(p);
             ctx.restore();
           }
         } else if (item.imageUrl) {
           try {
-            // Use preloaded img if available
+            // Use preloaded img if available and preserve its original aspect ratio (prevents squishing)
             const stickerImg = stickerImages[item.id];
             if (stickerImg) {
-              ctx.drawImage(stickerImg, -sSize / 2, -sSize / 2, sSize, sSize);
+              const imgRatio = stickerImg.width / stickerImg.height;
+              let sW = sSize;
+              let sH = sSize;
+              if (imgRatio > 1) { // Landscape
+                sH = sSize / imgRatio;
+              } else { // Portrait or Square
+                sW = sSize * imgRatio;
+              }
+              ctx.drawImage(stickerImg, -sW / 2, -sH / 2, sW, sH);
             }
           } catch (err) {
             console.error('Gagal menggambar stiker gambar kustom pada canvas:', err);
@@ -449,49 +481,76 @@ export const renderToCanvas = async (
         item.text = textToDraw; // Simplify by just modifying the item text directly!
         
         const fFamily = item.fontFamily || 'Orbitron';
-        ctx.font = `bold ${Math.round(sSize)}px "${fFamily}", sans-serif`;
+        // Fallback to normal weight for fonts that only have a 400 weight to avoid bad canvas substitution/faux bolding
+        const fWeight = (fFamily === 'Bebas Neue' || fFamily === 'Press Start 2P' || fFamily === 'Revalia' || fFamily === 'Share Tech Mono') ? 'normal' : 'bold';
+        ctx.font = `${fWeight} ${Math.round(sSize)}px "${fFamily}", sans-serif`;
         ctx.textAlign = 'center';
         ctx.textBaseline = 'middle';
         
+        // Exact pixel scaling factor from the nominal 400px screen preview container to high-res canvas
+        const pxScale = 2.7 * scaleFactor;
+
         if ('letterSpacing' in ctx) {
-          (ctx as any).letterSpacing = '0.025em';
+          // Exactly map letterSpacing if customized by user, or respect 'normal' tracking (0px)
+          const spacingPx = item.letterSpacing ? (item.letterSpacing * pxScale) : 0;
+          (ctx as any).letterSpacing = spacingPx > 0 ? `${spacingPx}px` : 'normal';
         }
         
         const baseColor = item.color || params.neonColor;
         const style = item.textStyle || 'plain';
 
         if (style === 'neon') {
-          // Neon glow effect
-          ctx.shadowColor = baseColor;
-          ctx.shadowBlur = 15;
+          ctx.save();
           ctx.fillStyle = '#ffffff';
-          ctx.fillText(item.text, 0, 0);
-          
-          ctx.shadowBlur = 30;
+
+          // Outer Glow 4 (Base color wide glow)
+          ctx.shadowColor = baseColor;
+          ctx.shadowBlur = 40 * pxScale;
           ctx.fillText(item.text, 0, 0);
 
-          ctx.shadowBlur = 5;
-          ctx.lineWidth = 2;
-          ctx.strokeStyle = baseColor;
-          ctx.strokeText(item.text, 0, 0);
+          // Outer Glow 3 (Base color medium glow)
+          ctx.shadowColor = baseColor;
+          ctx.shadowBlur = 20 * pxScale;
+          ctx.fillText(item.text, 0, 0);
+
+          // Inner Glow 2 (White tight glow)
+          ctx.shadowColor = '#ffffff';
+          ctx.shadowBlur = 10 * pxScale;
+          ctx.fillText(item.text, 0, 0);
+
+          // Inner Glow 1 (White tightest glow)
+          ctx.shadowColor = '#ffffff';
+          ctx.shadowBlur = 5 * pxScale;
+          ctx.fillText(item.text, 0, 0);
+
+          ctx.restore();
         } else if (style === 'glitch') {
-          // Glitch split effect
+          ctx.save();
           ctx.shadowBlur = 0;
           
-          ctx.globalAlpha = 0.8;
+          // Cyan split offset exactly matching screen direction and size
+          ctx.globalAlpha = 0.82;
           ctx.fillStyle = '#0ff'; // cyan
-          ctx.fillText(item.text, -3, 0);
+          ctx.fillText(item.text, 2 * pxScale, 0);
           
+          // Magenta split offset exactly matching screen direction and size
           ctx.fillStyle = '#f0f'; // magenta
-          ctx.fillText(item.text, 3, 0);
+          ctx.fillText(item.text, -2 * pxScale, 0);
           
-          ctx.globalAlpha = 1;
+          // White foreground layer centered
+          ctx.globalAlpha = 1.0;
           ctx.fillStyle = '#ffffff';
           ctx.fillText(item.text, 0, 0);
+          
+          ctx.restore();
         } else if (style === 'hologram') {
-          // Holographic semitransparent effect
+          ctx.save();
+          
+          // Soft cyan holographic environmental drop shadow
           ctx.shadowColor = '#0ff';
-          ctx.shadowBlur = 10;
+          ctx.shadowBlur = 5 * pxScale;
+          ctx.shadowOffsetX = 0;
+          ctx.shadowOffsetY = 0;
           
           const gradient = ctx.createLinearGradient(0, -sSize/2, 0, sSize/2);
           gradient.addColorStop(0, 'rgba(0, 255, 255, 0.9)');
@@ -501,73 +560,105 @@ export const renderToCanvas = async (
           ctx.fillStyle = gradient;
           ctx.fillText(item.text, 0, 0);
           
-          // Slight white stroke
-          ctx.lineWidth = 1;
-          ctx.strokeStyle = 'rgba(255,255,255,0.8)';
+          // Slight white stroke matching 1px container resolution
+          ctx.shadowBlur = 0;
+          ctx.lineWidth = 1 * pxScale;
+          ctx.strokeStyle = 'rgba(255,255,255,0.82)';
           ctx.strokeText(item.text, 0, 0);
+          ctx.restore();
         } else if (style === 'chrome') {
-          // Metallic chrome effect
-          const gradient = ctx.createLinearGradient(0, -sSize/2, 0, sSize/2);
-          gradient.addColorStop(0, '#ffffff');
-          gradient.addColorStop(0.48, '#aaaaaa');
-          gradient.addColorStop(0.5, '#222222');
-          gradient.addColorStop(0.52, '#000000');
-          gradient.addColorStop(1, '#666666');
+          ctx.save();
           
-          ctx.shadowColor = '#000000';
-          ctx.shadowBlur = 10;
+          // True mirror gradient matching screen spectrum
+          const gradient = ctx.createLinearGradient(0, -sSize/2, 0, sSize/2);
+          gradient.addColorStop(0, '#dbe2ea');
+          gradient.addColorStop(0.5, '#879ab6');
+          gradient.addColorStop(0.51, '#46566d');
+          gradient.addColorStop(1, '#1f2735');
+          
+          // Solid drop shadow backing
+          ctx.shadowColor = 'rgba(0,0,0,0.8)';
+          ctx.shadowOffsetX = 0;
+          ctx.shadowOffsetY = 2 * pxScale;
+          ctx.shadowBlur = 2 * pxScale;
+          
           ctx.fillStyle = gradient;
           ctx.fillText(item.text, 0, 0);
           
+          // Crisp clean white chrome outline definition 
           ctx.shadowBlur = 0;
-          ctx.lineWidth = 1;
+          ctx.shadowOffsetX = 0;
+          ctx.shadowOffsetY = 0;
+          ctx.lineWidth = 1 * pxScale;
           ctx.strokeStyle = '#ffffff';
           ctx.strokeText(item.text, 0, 0);
-        } else if (style === '3d') {
-          // 3D Text effect
-          const steps = Math.min(Math.round(sSize / 10), 10);
-          ctx.shadowBlur = 0;
-          for (let i = steps; i > 0; i--) {
-            ctx.fillStyle = i === 1 ? '#ffffff' : baseColor;
-            ctx.fillText(item.text, i * 1.5, i * 1.5);
-            if (i > 1) {
-              ctx.strokeStyle = '#000000';
-              ctx.lineWidth = 1;
-              ctx.strokeText(item.text, i * 1.5, i * 1.5);
-            }
-          }
-          ctx.lineWidth = 2;
-          ctx.strokeStyle = '#000';
-          ctx.strokeText(item.text, 1.5, 1.5);
-        } else if (style === 'double-neon') {
-          // Double Neon
-          ctx.shadowColor = '#00f2fe'; // cyan
-          ctx.shadowBlur = 15;
-          ctx.fillStyle = '#ffffff';
-          ctx.fillText(item.text, -3, -3);
           
-          ctx.shadowColor = '#f35588'; // pink
-          ctx.shadowBlur = 15;
-          ctx.fillText(item.text, 3, 3);
-
+          ctx.restore();
+        } else if (style === '3d') {
+          ctx.save();
           ctx.shadowBlur = 0;
-          ctx.lineWidth = 2;
+          
+          // Solid black final shadow layer at 7.5px depth
+          ctx.fillStyle = '#000000';
+          ctx.fillText(item.text, 7.5 * pxScale, 7.5 * pxScale);
+
+          // Render step values mirroring the CSS textShadow offset stack for identical isometric 3D look
+          const offsetSteps = [6.0, 4.5, 3.0, 1.5];
+          offsetSteps.forEach(offset => {
+            ctx.fillStyle = baseColor;
+            ctx.fillText(item.text, offset * pxScale, offset * offset * 0 === 0 ? offset * pxScale : offset);
+          });
+
+          // Draw the front pure white text
+          ctx.fillStyle = '#ffffff';
+          ctx.fillText(item.text, 0, 0);
+
+          // Outline stroke the front text for perfect contrast separation
+          ctx.strokeStyle = '#000000';
+          ctx.lineWidth = 1 * pxScale;
+          ctx.strokeText(item.text, 0, 0);
+          
+          ctx.restore();
+        } else if (style === 'double-neon') {
+          ctx.save();
+          
+          // Cyberspace blue left-top cyan glow
+          ctx.shadowColor = '#00f2fe';
+          ctx.shadowBlur = 15 * pxScale;
+          ctx.shadowOffsetX = -3 * pxScale;
+          ctx.shadowOffsetY = -3 * pxScale;
+          ctx.fillStyle = '#ffffff';
+          ctx.fillText(item.text, 0, 0);
+          
+          // Cyberpunk hot-pink right-bottom magenta glow
+          ctx.shadowColor = '#f35588';
+          ctx.shadowBlur = 15 * pxScale;
+          ctx.shadowOffsetX = 3 * pxScale;
+          ctx.shadowOffsetY = 3 * pxScale;
+          ctx.fillText(item.text, 0, 0);
+
+          // Ambient central colored backglow
+          ctx.shadowColor = baseColor;
+          ctx.shadowBlur = 5 * pxScale;
+          ctx.shadowOffsetX = 0;
+          ctx.shadowOffsetY = 0;
+          ctx.fillText(item.text, 0, 0);
+
+          // Neon stroke color matching
+          ctx.shadowBlur = 0;
+          ctx.lineWidth = 1 * pxScale;
           ctx.strokeStyle = baseColor;
           ctx.strokeText(item.text, 0, 0);
-        } else if (style === 'curved') {
-          // Curved text
-          ctx.shadowColor = baseColor;
-          ctx.shadowBlur = 8;
-          ctx.fillStyle = '#ffffff';
           
+          ctx.restore();
+        } else if (style === 'curved') {
           const textWidth = ctx.measureText(item.text).width;
-          const radius = Math.max(textWidth * 0.8, Math.max(sSize, 50)); 
+          const radius = Math.max(textWidth * 0.8, Math.max(sSize, 50 * pxScale)); 
           const angleStart = -Math.PI / 2; // top 
           const totalAngle = textWidth / radius;
           const startAngle = angleStart - totalAngle / 2;
           
           ctx.save();
-          // Adjust so text still feels somewhat centered along its primary row
           ctx.translate(0, radius - sSize/2);
           for(let i=0; i<item.text.length; i++) {
             const char = item.text[i];
@@ -576,35 +667,40 @@ export const renderToCanvas = async (
             
             ctx.save();
             let currentAngle = startAngle + (ctx.measureText(item.text.substring(0, i)).width / radius) + angleStep/2;
-            ctx.rotate(currentAngle - Math.PI/2 + Math.PI/2);
+            ctx.rotate(currentAngle);
             ctx.translate(0, -radius);
             
+            // Standard backglow
             ctx.shadowColor = baseColor;
-            ctx.shadowBlur = 5;
+            ctx.shadowBlur = 8 * pxScale;
+            ctx.fillStyle = '#ffffff';
             ctx.fillText(char, 0, 0);
             
+            // Text stroke outline
             ctx.shadowBlur = 0;
-            ctx.strokeStyle = '#000';
-            ctx.lineWidth = 2;
+            ctx.strokeStyle = '#000000';
+            ctx.lineWidth = 1 * pxScale;
             ctx.strokeText(char, 0, 0);
             ctx.restore();
           }
           ctx.restore();
         } else {
-          // Default Plain text with slight shadow and underline
+          // Default Plain text with exact backing shadow and thin colored underline
+          ctx.save();
           ctx.shadowColor = baseColor;
-          ctx.shadowBlur = 8;
+          ctx.shadowBlur = 8 * pxScale;
           ctx.fillStyle = '#ffffff';
           ctx.fillText(item.text, 0, 0);
   
           ctx.shadowBlur = 0;
           ctx.strokeStyle = baseColor;
-          ctx.lineWidth = 2;
+          ctx.lineWidth = 2 * pxScale;
           const textWidth = ctx.measureText(item.text).width;
           ctx.beginPath();
-          ctx.moveTo(-textWidth/2 - 10, sSize/2 + 6);
-          ctx.lineTo(textWidth/2 + 10, sSize/2 + 6);
+          ctx.moveTo(-textWidth/2 - 10 * pxScale, sSize/2 + 6 * pxScale);
+          ctx.lineTo(textWidth/2 + 10 * pxScale, sSize/2 + 6 * pxScale);
           ctx.stroke();
+          ctx.restore();
         }
       }
       
