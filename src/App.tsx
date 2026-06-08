@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useRef, useMemo } from 'react';
 import { 
-  Upload, Sparkles, RefreshCw, Sliders, CircleHelp, Download, Maximize2, Edit2,
+  Upload, Sparkles, RefreshCw, Sliders, CircleHelp, Download, Maximize2, Edit2, Pencil,
   FolderOpen, Camera, Laptop, Cpu, Layers, Settings2, Activity, Info, CheckCircle, MoveHorizontal,
   Undo, Redo, Type, ArrowUp, ArrowDown, ChevronsUp, ChevronsDown, Trash2, RotateCw, Move, Baseline,
   Lock, Unlock, Image as ImageIcon, Maximize, X, Crop, Menu, FlipHorizontal, FlipVertical, Ban, Save, Copy,
@@ -2875,7 +2875,7 @@ export default function App() {
       setIsDraggingCanvas(false);
 
       // DESELECT: Jika ada stiker terpilih dan user melakukan single tap lepas di kanvas background kosong (tanpa pergerakan / drag)
-      if (selectedStickerId && initialPointerCount === 1 && !wasDragging) {
+      if (selectedStickerId && initialPointerCount === 1 && !wasDragging && e.target === e.currentTarget) {
         setSelectedStickerId(null);
         setIsHudOpen(false);
       }
@@ -3619,6 +3619,17 @@ export default function App() {
                       if (item.isLocked) return;
                       setSelectedStickerId(item.id);
 
+                      // Capture this pointer so events keep streaming even if dragging outside
+                      try {
+                        (pointerDownEvent.currentTarget as any).setPointerCapture(pointerDownEvent.pointerId);
+                      } catch (captureErr) {}
+
+                      // Track this pointer in the global active pointers ref
+                      activePointersRef.current[pointerDownEvent.pointerId] = {
+                        clientX: pointerDownEvent.clientX,
+                        clientY: pointerDownEvent.clientY
+                      };
+
                       const currentItemX = item.x;
                       const currentItemY = item.y;
                       const startClientX = pointerDownEvent.clientX;
@@ -3630,30 +3641,95 @@ export default function App() {
                       const parentWidth = parentRect.width || 400;
                       const parentHeight = parentRect.height || 400;
 
+                      // Initialize 2-finger pinching if we have two pointers active
+                      const pointerIds = Object.keys(activePointersRef.current);
+                      if (pointerIds.length === 2) {
+                        const p1 = activePointersRef.current[Number(pointerIds[0])];
+                        const p2 = activePointersRef.current[Number(pointerIds[1])];
+                        if (p1 && p2) {
+                          initialPinchDistanceRef.current = Math.hypot(p1.clientX - p2.clientX, p1.clientY - p2.clientY);
+                          initialStickerPinchScaleRef.current = item.scale;
+                          initialStickerPinchRotationRef.current = item.rotation || 0;
+                          const angle = Math.atan2(p2.clientY - p1.clientY, p2.clientX - p1.clientX) * (180 / Math.PI);
+                          initialStickerPinchAngleRef.current = angle;
+                        }
+                      }
+
                       let hasMoved = false;
 
                       const onMove = (moveEvent: PointerEvent) => {
-                        hasMoved = true;
-                        const deltaX = moveEvent.clientX - startClientX;
-                        const deltaY = moveEvent.clientY - startClientY;
+                        // Update position of the moving pointer in the global ref
+                        if (activePointersRef.current[moveEvent.pointerId]) {
+                          activePointersRef.current[moveEvent.pointerId] = {
+                            clientX: moveEvent.clientX,
+                            clientY: moveEvent.clientY
+                          };
+                        }
+
+                        const currentPointerIds = Object.keys(activePointersRef.current);
                         
-                        // Scale delta so movement sensitivity is comfortable
-                        const newXPercent = Math.max(0, Math.min(100, currentItemX + (deltaX / parentWidth) * 100));
-                        const newYPercent = Math.max(0, Math.min(100, currentItemY + (deltaY / parentHeight) * 100));
-                        
-                        handleUpdateSticker(item.id, { 
-                          x: parseFloat(newXPercent.toFixed(1)), 
-                          y: parseFloat(newYPercent.toFixed(1)) 
-                        });
+                        if (currentPointerIds.length === 2 && initialPinchDistanceRef.current !== null) {
+                          // Pinch scaling + rotation logic
+                          const p1 = activePointersRef.current[Number(currentPointerIds[0])];
+                          const p2 = activePointersRef.current[Number(currentPointerIds[1])];
+                          if (p1 && p2) {
+                            const currentDistance = Math.hypot(p1.clientX - p2.clientX, p1.clientY - p2.clientY);
+                            if (initialPinchDistanceRef.current > 0) {
+                              const factor = currentDistance / initialPinchDistanceRef.current;
+                              const targetScale = Math.max(0.05, initialStickerPinchScaleRef.current * factor);
+
+                              let targetRotation = initialStickerPinchRotationRef.current;
+                              if (initialStickerPinchAngleRef.current !== null) {
+                                const currentAngle = Math.atan2(p2.clientY - p1.clientY, p2.clientX - p1.clientX) * (180 / Math.PI);
+                                const angleDelta = currentAngle - initialStickerPinchAngleRef.current;
+                                targetRotation = (initialStickerPinchRotationRef.current + angleDelta) % 360;
+                                if (targetRotation < 0) targetRotation += 360;
+                              }
+
+                              handleUpdateSticker(item.id, {
+                                scale: parseFloat(targetScale.toFixed(2)),
+                                rotation: Math.round(targetRotation)
+                              });
+                            }
+                          }
+                        } else if (currentPointerIds.length === 1) {
+                          // Standard single-finger drag
+                          hasMoved = true;
+                          const deltaX = moveEvent.clientX - startClientX;
+                          const deltaY = moveEvent.clientY - startClientY;
+                          
+                          const newXPercent = Math.max(0, Math.min(100, currentItemX + (deltaX / parentWidth) * 100));
+                          const newYPercent = Math.max(0, Math.min(100, currentItemY + (deltaY / parentHeight) * 100));
+                          
+                          handleUpdateSticker(item.id, { 
+                            x: parseFloat(newXPercent.toFixed(1)), 
+                            y: parseFloat(newYPercent.toFixed(1)) 
+                          });
+                        }
                       };
 
-                      const onUp = () => {
-                        window.removeEventListener('pointermove', onMove);
-                        window.removeEventListener('pointerup', onUp);
+                      const onUp = (upEvent: PointerEvent) => {
+                        delete activePointersRef.current[upEvent.pointerId];
+                        try {
+                          (pointerDownEvent.currentTarget as any).releasePointerCapture(upEvent.pointerId);
+                        } catch (releaseErr) {}
+
+                        const remainingPointerIds = Object.keys(activePointersRef.current);
+                        if (remainingPointerIds.length < 2) {
+                          initialPinchDistanceRef.current = null;
+                          initialStickerPinchAngleRef.current = null;
+                        }
+
+                        if (remainingPointerIds.length === 0) {
+                          window.removeEventListener('pointermove', onMove);
+                          window.removeEventListener('pointerup', onUp);
+                          window.removeEventListener('pointercancel', onUp);
+                        }
                       };
 
                       window.addEventListener('pointermove', onMove);
                       window.addEventListener('pointerup', onUp);
+                      window.addEventListener('pointercancel', onUp);
                     }}
                     style={{
                       left: `${item.x}%`,
@@ -3790,20 +3866,43 @@ export default function App() {
                         </div>
 
                         {/* Menu/Settings link to display/highlight HUD overlay */}
-                        <div 
-                          className="absolute -top-3 -left-3 w-6 h-6 bg-cyan-600 hover:bg-cyan-500 text-white rounded-full cursor-pointer flex items-center justify-center border border-white shadow-[0_0_10px_rgba(0,240,255,0.5)] z-50 hover:scale-115 active:scale-90 transition-transform"
-                          title="Tampilkan Panel Menu SUNTING"
-                          onPointerDown={(e) => {
-                            e.stopPropagation();
-                            setIsHudOpen(true);
-                            triggerToast("Menu Pengeditan Terbuka! ⚙️");
-                          }}
-                        >
-                          {item.type === 'text' ? <Edit2 className="w-3 h-3 text-white" /> : <Settings2 className="w-3 h-3 text-white" />}
-                        </div>
+                        {isSelected && (
+                          <div className="absolute -top-3 -left-3 flex gap-1 z-50">
+                            <div 
+                              className="w-6 h-6 bg-cyan-600 hover:bg-cyan-500 text-white rounded-full cursor-pointer flex items-center justify-center border border-white shadow-[0_0_10px_rgba(0,240,255,0.5)] hover:scale-115 active:scale-90 transition-transform"
+                              title="Tampilkan Panel Menu SUNTING"
+                              onPointerDown={(e) => {
+                                e.stopPropagation();
+                                setIsHudOpen(true);
+                                triggerToast("Menu Pengeditan Terbuka! ⚙️");
+                              }}
+                            >
+                              {item.type === 'sticker' && item.imageUrl ? 
+                                <Edit2 className="w-3 h-3 text-white" /> : 
+                                (item.type === 'text' ? <Edit2 className="w-3 h-3 text-white" /> : <Settings2 className="w-3 h-3 text-white" />)
+                              }
+                            </div>
+                            {item.type === 'sticker' && (
+                              <div 
+                                className="w-6 h-6 bg-amber-500 hover:bg-amber-400 text-white rounded-full cursor-pointer flex items-center justify-center border border-white shadow-[0_0_10px_rgba(251,191,36,0.5)] hover:scale-115 active:scale-90 transition-transform"
+                                title="Pilih Blending Mode"
+                                onPointerDown={(e) => {
+                                  e.stopPropagation();
+                                  if (selectedStickerId !== item.id) setSelectedStickerId(item.id); // Ensure selected
+                                  setIsHudOpen(true);
+                                  // setActiveTab('adjust'); // Optionally set the tab if needed
+                                  triggerToast("Pilih Efek Blend Mode! ✨");
+                                }}
+                              >
+                                <Pencil className="w-3 h-3 text-white" />
+                              </div>
+                            )}
+                          </div>
+                        )}
                         
                         {/* Size / scale handle */}
-                        <div 
+                        {isSelected && (
+                          <div 
                           className="absolute -bottom-3 -right-3 w-6 h-6 bg-pink-600 hover:bg-pink-500 text-white rounded-full cursor-se-resize flex items-center justify-center border border-white shadow-[0_0_10px_rgba(236,72,153,0.5)] z-50 hover:scale-115 active:scale-90 transition-transform"
                           title="Tarik untuk Ubah Ukuran"
                           onPointerDown={(pointerEvent) => {
@@ -3826,6 +3925,7 @@ export default function App() {
                         >
                           <Maximize2 className="w-3 h-3 text-white" />
                         </div>
+                        )}
                         
                         {/* Rotation handle */}
                         <div 
@@ -3991,17 +4091,19 @@ export default function App() {
           const activeIndex = stickers.findIndex(s => s.id === selectedStickerId);
 
           return (
-            <motion.div
-              initial={{ opacity: 0, scale: 0.94, y: -20 }}
-              animate={{ opacity: 1, scale: 1, y: 0 }}
-              exit={{ opacity: 0, scale: 0.94, y: -20 }}
-              transition={{ type: 'spring', damping: 25, stiffness: 350 }}
-              className="fixed top-[74px] right-3 xs:right-6 md:right-10 z-50 w-[calc(100%-24px)] xs:w-[350px] shadow-[0_20px_50px_rgba(0,0,0,0.85)] rounded-2xl border backdrop-blur-xl flex flex-col transition-all duration-300"
-              style={{
-                borderColor: activeSelectedSticker.type === 'text' ? '#00F0FF' : '#f35588',
-                background: theme === 'dark' ? 'rgba(7, 7, 9, 0.94)' : 'rgba(255, 255, 255, 0.92)'
-              }}
-            >
+            <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/70 backdrop-blur-xs">
+              <div className="absolute inset-0 cursor-default" onClick={() => setIsHudOpen(false)} />
+              <motion.div
+                initial={{ opacity: 0, scale: 0.94, y: 30 }}
+                animate={{ opacity: 1, scale: 1, y: 0 }}
+                exit={{ opacity: 0, scale: 0.94, y: 30 }}
+                transition={{ type: 'spring', damping: 25, stiffness: 350 }}
+                className="relative z-10 w-full max-w-md shadow-[0_25px_60px_rgba(0,0,0,0.9)] rounded-2xl border backdrop-blur-xl flex flex-col transition-all duration-300"
+                style={{
+                  borderColor: activeSelectedSticker.type === 'text' ? '#00F0FF' : '#f35588',
+                  background: theme === 'dark' ? 'rgba(7, 7, 9, 0.97)' : 'rgba(255, 255, 255, 0.97)'
+                }}
+              >
               {/* Overlay Panel Header */}
               <div className={`p-4 border-b flex items-center justify-between ${
                 theme === 'dark' ? 'border-white/5 bg-black/45' : 'border-black/5 bg-black/5'
@@ -4038,7 +4140,7 @@ export default function App() {
                   </button>
                   <button
                     type="button"
-                    onClick={() => setSelectedStickerId(null)}
+                    onClick={() => setIsHudOpen(false)}
                     className={`p-1 px-2 text-[9px] font-mono rounded border transition-all uppercase font-bold ${
                       theme === 'dark'
                         ? 'text-zinc-350 hover:text-white bg-white/5 border-white/10'
@@ -4184,7 +4286,11 @@ export default function App() {
                       <span className={`${theme === 'dark' ? 'text-zinc-400' : 'text-zinc-650'} text-[10px] font-black block`}>EFEK BLEND (BLEND MODE):</span>
                       <select
                         value={activeSelectedSticker.blendMode || 'normal'}
-                        onChange={(e) => handleUpdateSticker(activeSelectedSticker.id, { blendMode: e.target.value as any })}
+                        onChange={(e) => {
+                          const newMode = e.target.value as any;
+                          handleUpdateSticker(activeSelectedSticker.id, { blendMode: newMode });
+                          triggerToast(`Efek Blend: ${newMode.toUpperCase()}`);
+                        }}
                         className={`w-full py-2 px-3 rounded-xl text-xs font-mono focus:outline-none focus:ring-1 focus:ring-[#00f2fe] ${
                           theme === 'dark'
                             ? 'bg-zinc-900 border border-white/10 text-white'
@@ -4320,7 +4426,11 @@ export default function App() {
                         <span className={`${theme === 'dark' ? 'text-zinc-400' : 'text-zinc-650'} text-[9.5px] font-bold block`}>EFEK BLEND (BLEND MODE):</span>
                         <select
                           value={activeSelectedSticker.blendMode || 'normal'}
-                          onChange={(e) => handleUpdateSticker(activeSelectedSticker.id, { blendMode: e.target.value as any })}
+                          onChange={(e) => {
+                            const newMode = e.target.value as any;
+                            handleUpdateSticker(activeSelectedSticker.id, { blendMode: newMode });
+                            triggerToast(`Efek Blend: ${newMode.toUpperCase()}`);
+                          }}
                           className={`w-full py-1 px-2.5 rounded-lg text-[10px] font-mono focus:outline-none focus:ring-1 focus:ring-[#00F0FF] ${
                             theme === 'dark'
                               ? 'bg-zinc-900 border border-white/5 text-white'
@@ -4363,6 +4473,7 @@ export default function App() {
                 💡 SENTUH & SERET LANGSUNG ELEMEN DI CANVAS UNTUK PENYESUAIAN INTUITIF.
               </div>
             </motion.div>
+          </div>
           );
         })()}
       </AnimatePresence>
