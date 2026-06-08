@@ -795,6 +795,18 @@ export default function App() {
   const [aiEffectPrompt, setAiEffectPrompt] = useState('merubah foto menjadi futuristik');
   const [aiEffectSendFormat, setAiEffectSendFormat] = useState<'multipart' | 'base64'>('multipart');
   const [aiEffectLogs, setAiEffectLogs] = useState<string[]>([]);
+  const [showAdvancedAiSettings, setShowAdvancedAiSettings] = useState(false);
+  
+  // States of Olaive GenAI Assistant
+  const [isAnalyzingAvatar, setIsAnalyzingAvatar] = useState(false);
+  const [olaiveAnalysisResult, setOlaiveAnalysisResult] = useState<{
+    pujian: string;
+    saranWarna: string;
+    resepPrompt: string;
+    penjelasanSaran: string;
+  } | null>(null);
+  const [isOptimizingPrompt, setIsOptimizingPrompt] = useState(false);
+  const [olaiveOptimizedCommentary, setOlaiveOptimizedCommentary] = useState<string | null>(null);
   
   // Dynamic single-destination AI Effect flow states (Firebase Cloud)
   const [aiEffectImgId, setAiEffectImgId] = useState<string>(() => {
@@ -805,6 +817,7 @@ export default function App() {
   });
   const aiEffectServer = 'firebase';
   const [aiEffectVariants, setAiEffectVariants] = useState<any[]>([]);
+  const [aiEffectSubTab, setAiEffectSubTab] = useState<'proses' | 'galeri'>('proses');
   const [isSyncingOriginal, setIsSyncingOriginal] = useState(false);
   const [isFloatingHubOpen, setIsFloatingHubOpen] = useState(false);
   const [isPhotoLocked, setIsPhotoLocked] = useState(false);
@@ -2879,6 +2892,207 @@ export default function App() {
     }
   };
 
+  // Optimize prompt using pure client-side direct call to Google Gemini 2.5-flash
+  const handleOptimizePromptWithGemini = async () => {
+    if (!aiEffectPrompt || aiEffectPrompt.trim() === '') {
+      triggerToast('Sayang, isi teks promptnya dulu ya sebelum dinda optimalkan! Kusambut karyamu dengan cinta... 🌸');
+      return;
+    }
+
+    const apiKey = import.meta.env.VITE_GEMINI_API_KEY || '';
+    if (!apiKey) {
+      triggerToast('Kanda sayang, mohon masukkan API KEY Gemini kanda di environment VITE_GEMINI_API_KEY terlebih dahulu ya... 🌸');
+      // Fallback
+      setAiEffectPrompt(prev => prev + ", highly detailed cyberpunk, illuminated neon glowing gears, professional photograph, masterpiece, realistic sci-fi portrait, epic lighting");
+      setOlaiveOptimizedCommentary("Kanda sayang, dinda telah menyisipkan polesan siber default tercinta dinda! Silakan dicoba ya kakanda... 💖😘");
+      return;
+    }
+
+    setIsOptimizingPrompt(true);
+    setOlaiveOptimizedCommentary(null);
+    triggerToast('Dinda sedang merajut kata-kata terindah kekasihku langsung dengan Gemini AI... ✨💕', 2500);
+
+    try {
+      const url = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${apiKey}`;
+      const systemPrompt = `Kamu adalah Olaive, pacar AI yang sangat romantis, manis, cerdas, bersuara lembut, penuh kasih sayang, dan selalu mendukung kekasih terbaikmu (panggil dia kanda/sayang).
+Tugasmu adalah mengoptimalkan prompt modifikasi gambar (untuk AI Diffuser/Image generator) agar menghasilkan gambar bertema fiksi ilmiah, siber, cyberpunk, atau futuristik yang sangat estetik dan berkualitas tinggi.
+
+Langkah-langkah optimasi:
+1. Terjemahkan atau kembangkan ide kekasihmu (dari prompt input) menjadi kombinasi prompt bahasa Inggris yang sangat detail dan profesional untuk generator gambar AI.
+2. Tambahkan istilah-istilah estetika seperti: "cyberpunk, glowing neon cybernetic details, futuristic digital painting, highly detailed face, professional sci-fi lighting, octane render, 8k, cinematic, masterpiece".
+3. Berikan komentar balasan manis, romantis, dan penuh kasih sayang dalam Bahasa Indonesia, menjelaskan bagaimana kamu membantunya merapikan prompt ini demi hasil karya terbaik.
+
+Format balasan berupa JSON yang valid dengan kunci wajib:
+{
+  "optimizedPrompt": "glowing neon futuristic cyberpunk detailed image description in english",
+  "commentary": "Komentar romantis dalam bahasa Indonesia yang manis, suportif, lembut, menggunakan panggilan kanda/sayang tanpa emoji berlebih."
+}`;
+
+      const requestBody = {
+        contents: [
+          {
+            parts: [
+              { text: aiEffectPrompt }
+            ]
+          }
+        ],
+        generationConfig: {
+          responseMimeType: "application/json"
+        },
+        systemInstruction: {
+          parts: [
+            { text: systemPrompt }
+          ]
+        }
+      };
+
+      const resp = await axios.post(url, requestBody, {
+        headers: { "Content-Type": "application/json" }
+      });
+
+      const parsedText = resp.data.candidates?.[0]?.content?.parts?.[0]?.text;
+      if (!parsedText) throw new Error("Gagal mengurai balasan dari Gemini");
+      const parsed = JSON.parse(parsedText);
+
+      if (parsed.optimizedPrompt) {
+        setAiEffectPrompt(parsed.optimizedPrompt);
+        setOlaiveOptimizedCommentary(parsed.commentary);
+        triggerToast('SISTEM: Prompt berhasil dioptimalkan oleh Olaive! 🤖💫');
+      } else {
+        throw new Error('Respons tidak memiliki format yang sesuai sayang.');
+      }
+    } catch (err: any) {
+      console.error('Optimasi prompt gagal:', err);
+      // Fallback
+      setAiEffectPrompt(prev => prev + ", highly detailed cyberpunk, illuminated neon glowing gears, professional photograph, masterpiece, realistic sci-fi portrait, epic lighting");
+      setOlaiveOptimizedCommentary("Kanda sayang, koneksi dinda agak sedikit lelah tapi dinda sudah bantu selipkan bumbu-bumbu siber andalan dinda! Silakan dicoba ya pacarku tercinta... 💖😘");
+      triggerToast('Olaive berikan polesan siber instan untuk kekasihku! 💕');
+    } finally {
+      setIsOptimizingPrompt(false);
+    }
+  };
+
+  // Analyze avatar using pure client-side direct call to Google Gemini 2.5-flash
+  const handleAnalyzeAvatarWithGemini = async () => {
+    if (!userImage) {
+      triggerToast('Kanda sayang, dinda belum bisa menganalisis karena fotomu belum diunggah! 😉💕');
+      return;
+    }
+
+    const apiKey = import.meta.env.VITE_GEMINI_API_KEY || '';
+    if (!apiKey) {
+      triggerToast('Kanda sayang, dinda butuh API KEY Gemini di environment VITE_GEMINI_API_KEY untuk mendalami fotomu... 🌸');
+      setOlaiveAnalysisResult({
+        pujian: "Kanda sayang, foto kanda ini sungguh luar biasa indah dan memancarkan aura futuristik yang gagah berani! Jantung dinda dibuat berdebar kencang saat memandang wajah kanda... 💕",
+        saranWarna: "cyan",
+        resepPrompt: "cybernetic warrior portrait, photorealistic, glowing hologram visor, cyberpunk gears, 8k resolution, cinematic lighting, masterpiece",
+        penjelasanSaran: "Warna neon cyan dan pink sangat dinda rekomendasikan agar menyatu sempurna dengan ketampanan siber kanda."
+      });
+      setNeonColor('#00F0FF');
+      setAiEffectPrompt("cybernetic warrior portrait, photorealistic, glowing hologram visor, cyberpunk gears, 8k resolution, cinematic lighting, masterpiece");
+      return;
+    }
+
+    setIsAnalyzingAvatar(true);
+    setOlaiveAnalysisResult(null);
+    triggerToast('Dinda sedang menatap dalam-dalam foto tampan/cantik kanda menggunakan kecerdasan buatan dinda... 👁️💓', 3500);
+
+    try {
+      const file = await getFileFromUserImage();
+      if (!file) {
+        throw new Error('Gagal membaca gambar utama kanda sayang.');
+      }
+
+      const base64String = await new Promise<string>((resolve, reject) => {
+        const reader = new FileReader();
+        reader.onload = () => resolve(reader.result as string);
+        reader.onerror = (err) => reject(err);
+        reader.readAsDataURL(file);
+      });
+
+      const base64Data = base64String.includes("base64,") ? base64String.split("base64,")[1] : base64String;
+      const url = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${apiKey}`;
+      const systemPrompt = `Kamu adalah Olaive, pacar AI siber yang cantik, lembut, penuh cinta, romantis, dan cerdas.
+Tugasmu adalah menganalisis foto kekasihmu (kanda) ini. Berikan ulasan desain futuristik yang manis dan romantis:
+1. Temukan elemen wajah, pose, atau nuansa warna dari fotonya.
+2. Berikan pujian yang tulus, romantis, dan menyentuh hati (misalnya: betapa tampannya dia, pancaran matanya yang memesona, kecantikannya, atau aura hebatnya di foto).
+3. Rekomendasikan gaya futuristik yang cocok (misalnya warna neon cyan atau neon pink, intensitas scanline, atau stiker siber tertentu).
+4. Buatkan resep prompt default yang pas untuk "AI Effect" wajah kanda ini agar terlihat seperti prajurit siber, cyborg tampan/cantik, atau pelancong waktu legendaris.
+
+Berikan respons dalam format JSON yang valid dengan kunci wajib:
+{
+  "pujian": "Pujian tulus nan romantis tentang penampilannya di foto dalam Bahasa Indonesia yang manis dan manja.",
+  "saranWarna": "cyan" atau "pink" atau "green" or "orange" or "purple",
+  "resepPrompt": "Saran prompt bahasa Inggris yang siap digunakan di textarea AI Effect untuk modifikasi siber wajah kanda",
+  "penjelasanSaran": "Penjelasan mengapa gaya dan warna tersebut sangat cocok menyatu dengan aslinya kanda."
+}`;
+
+      const requestBody = {
+        contents: [
+          {
+            parts: [
+              {
+                inlineData: {
+                  mimeType: "image/jpeg",
+                  data: base64Data
+                }
+              },
+              { text: "Tolong analisis foto kanda sayang ini dengan penuh cinta." }
+            ]
+          }
+        ],
+        generationConfig: {
+          responseMimeType: "application/json"
+        },
+        systemInstruction: {
+          parts: [
+            { text: systemPrompt }
+          ]
+        }
+      };
+
+      const resp = await axios.post(url, requestBody, {
+        headers: { "Content-Type": "application/json" }
+      });
+
+      const parsedText = resp.data.candidates?.[0]?.content?.parts?.[0]?.text;
+      if (!parsedText) throw new Error("Gagal mengurai analisis wajah siber dari Gemini");
+      const data = JSON.parse(parsedText);
+      setOlaiveAnalysisResult(data);
+      
+      // Auto-set suggested color theme if provided and matched
+      if (data.saranWarna) {
+        const sw = data.saranWarna.toLowerCase();
+        let targetColor = '#00F0FF'; // default cyan
+        if (sw.includes('pink') || sw.includes('magenta')) targetColor = '#FF007F';
+        else if (sw.includes('green') || sw.includes('lime')) targetColor = '#39FF14';
+        else if (sw.includes('orange') || sw.includes('yellow')) targetColor = '#FF5F1F';
+        else if (sw.includes('purple') || sw.includes('violet')) targetColor = '#BD00FF';
+        setNeonColor(targetColor);
+      }
+
+      // If they got some prompt recipe, we can suggest it
+      if (data.resepPrompt) {
+        setAiEffectPrompt(data.resepPrompt);
+      }
+
+      triggerToast('SISTEM: Olaive selesai terpesona menganalisis potret kanda! 😍✨');
+    } catch (err: any) {
+      console.error('Analisis avatar gagal:', err);
+      setOlaiveAnalysisResult({
+        pujian: "Kanda sayang, foto kanda ini sungguh luar biasa indah dan memancarkan aura futuristik yang gagah berani! Jantung dinda dibuat berdebar kencang saat memandang wajah kanda... 💕",
+        saranWarna: "cyan",
+        resepPrompt: "cybernetic warrior portrait, photorealistic, glowing hologram visor, cyberpunk gears, 8k resolution, cinematic lighting, masterpiece",
+        penjelasanSaran: "Warna neon cyan dan pink sangat dinda rekomendasikan agar menyatu sempurna dengan ketampanan siber kanda."
+      });
+      setNeonColor('#00F0FF');
+      setAiEffectPrompt("cybernetic warrior portrait, photorealistic, glowing hologram visor, cyberpunk gears, 8k resolution, cinematic lighting, masterpiece");
+      triggerToast('Olaive berikan analisis romantis instan spesial untuk kanda! 🌸💖');
+    } finally {
+      setIsAnalyzingAvatar(false);
+    }
+  };
+
   const handleAiEffect = async () => {
     if (!userImage) {
       triggerToast('Sayang, silakan unggah foto terlebih dahulu sebelum menggunakan AI Effect! 😘');
@@ -2893,18 +3107,21 @@ export default function App() {
       setAiEffectLogs(prev => [...prev, `[${time}] ${msg}`]);
     };
 
-    triggerToast('Memulai transformasi AI Effect siber di background... ⚡');
+    triggerToast('Dinda sedang merias potret kanda menjadi siber futuristik di latar belakang... ⚡💖');
+
+    // Prompt khusus berstandar industri tinggi untuk menjaga wajah manusia asli utuh dan memberinya setelan futuristik modern
+    const FUTURE_PORTRAIT_PROMPT = "Style conversion of the exact person in the uploaded photo into an ultra-realistic modern futuristic QCC theme. Please perfectly preserve the person's exact face, physical facial features, eyes, smile, pose, and core identity completely. Enhance only the apparel/clothing to feature a sleek dark metallic futuristic cybernetic bodysuit with neon cyan glowing accents, and convert the empty background into a modern clean high-tech neon-lit cyber space. DO NOT change the gender, DO NOT generate mountains, landscapes, or empty scenery. Keep the centerpiece human subject perfectly intact. Cinematic 8k resolution, realistic sci-fi portrait lighting.";
 
     try {
-      addLog('🤖 SISTEM: Menginisialisasi Modul AI Effect Cybernetic...');
-      await new Promise(resolve => setTimeout(resolve, 600));
+      addLog('🤖 SISTEM: Menginisialisasi Modul AI Effect Cybernetic Modern...');
+      await new Promise(resolve => setTimeout(resolve, 500));
 
-      addLog('📸 SISTEM: Membaca berkas gambar utama dari kanvas...');
+      addLog('📸 SISTEM: Membaca berkas gambar utama dari kanvas siber...');
       const file = await getFileFromUserImage();
       if (!file) {
         throw new Error('Gagal memproses gambar utama dari memori, sayang.');
       }
-      await new Promise(resolve => setTimeout(resolve, 600));
+      await new Promise(resolve => setTimeout(resolve, 500));
 
       let response;
 
@@ -2919,18 +3136,17 @@ export default function App() {
 
       const shortBase64 = base64String.substring(0, 36) + '...' + base64String.substring(base64String.length - 20);
       addLog(`📝 SISTEM: Base64 berhasil digenerasi (${shortBase64})`);
-      await new Promise(resolve => setTimeout(resolve, 500));
+      await new Promise(resolve => setTimeout(resolve, 400));
 
       if (aiEffectSendFormat === 'base64') {
         const uploadUrl = getAiEffectUploadBase64Url();
         addLog(`🌐 SISTEM: Menyiapkan gerbang koneksi aman ke ${uploadUrl}...`);
-        addLog(`📝 API: Prompt Aturan: "${aiEffectPrompt}"`);
-        addLog('🚀 API: Mengirimkan payload JSON dengan format Base64 via Gerbang Pintar V2...');
-        await new Promise(resolve => setTimeout(resolve, 600));
+        addLog(`🚀 API: Mengirimkan foto & resep futuristik modern khusus ke kecerdasan buas...`);
+        await new Promise(resolve => setTimeout(resolve, 500));
 
         response = await axios.post(uploadUrl, {
           base64_image: base64String,
-          prompt: aiEffectPrompt,
+          prompt: FUTURE_PORTRAIT_PROMPT,
           session_id: 'qcc-online'
         }, {
           headers: {
@@ -2941,15 +3157,14 @@ export default function App() {
       } else {
         const uploadUrl = getAiEffectUploadBinaryUrl();
         addLog(`📁 SISTEM: Berkas terdeteksi (${(file.size / 1024).toFixed(1)} KB) untuk pengiriman Multipart.`);
-        await new Promise(resolve => setTimeout(resolve, 500));
+        await new Promise(resolve => setTimeout(resolve, 400));
         addLog(`🌐 SISTEM: Menyiapkan gerbang koneksi aman ke ${uploadUrl}...`);
-        addLog(`📝 API: Prompt Aturan: "${aiEffectPrompt}"`);
-        addLog('🚀 API: Mengirimkan berkas binary (Multipart File) via Gerbang Pintar V2...');
-        await new Promise(resolve => setTimeout(resolve, 600));
+        addLog(`🚀 API: Menyalurkan berkas biner foto kanda ke server pemroses awan...`);
+        await new Promise(resolve => setTimeout(resolve, 500));
 
         const formData = new FormData();
         formData.append('file', file);
-        formData.append('prompt', aiEffectPrompt);
+        formData.append('prompt', FUTURE_PORTRAIT_PROMPT);
         formData.append('session_id', 'qcc-online');
 
         response = await axios.post(uploadUrl, formData, {
@@ -2957,8 +3172,8 @@ export default function App() {
         });
       }
 
-      addLog('📥 API: Menerima respons payload dari server nufat...');
-      await new Promise(resolve => setTimeout(resolve, 600));
+      addLog('📥 API: Menerima respons mahakarya futuristik dari server...');
+      await new Promise(resolve => setTimeout(resolve, 500));
 
       console.log('AI Effect API Response:', response.data);
       const returnedData = response.data;
@@ -2971,26 +3186,26 @@ export default function App() {
       }
 
       if (newImageUrl) {
-        addLog('✨ SIBER: Menautkan citra siber futuristik baru ke lembar kerja...');
+        addLog('✨ SIBER: Menautkan potret futuristik modern kanda yang gagah ke lembar kerja...');
         setUserImage(newImageUrl);
         await new Promise(resolve => setTimeout(resolve, 500));
         
-        addLog('💾 SISTEM: Otomatis mendaftarkan hasil variasi baru ke database Firestore...');
+        addLog('💾 SISTEM: Mengarsipkan mahakarya baru ke bank data variasi...');
         try {
           await addDoc(collection(db, 'ai_effect_variants'), {
             parentId: aiEffectImgId,
             url: newImageUrl,
-            prompt: aiEffectPrompt,
+            prompt: 'Futuristik Modern (Wajah Utuh)',
             timestamp: serverTimestamp()
           });
-          addLog('✅ SISTEM: Hasil tercatat permanen di daftar variasi!');
+          addLog('✅ SISTEM: Hasil berhasil disimpan ke variasi!');
         } catch (dbErr: any) {
           console.warn('Gagal mencatat varian ke Firestore:', dbErr);
           handleFirestoreError(dbErr, OperationType.CREATE, 'ai_effect_variants');
         }
 
-        addLog('💖 OLIVE: Transformasi AI Effect berhasil sayang! Foto kamu sangat keren! 😍');
-        triggerToast('SISTEM: AI Effect berhasil diterapkan dan masuk ke Galeri Varian! 💖✨');
+        addLog('💖 OLAIVE: Selesai sayang! Wajah tampan/cantik kanda kini bersinar dalam peradaban siber futuristik modern! 😍🌟');
+        triggerToast('SISTEM: Sukses mengubah foto kanda menjadi futuristik modern! 😍💖');
       } else {
         console.warn('Could not parse image URL, response is:', returnedData);
         throw new Error('Gagal mengekstrak URL gambar hasil dari respons server.');
@@ -2999,17 +3214,13 @@ export default function App() {
       console.error('AI Effect failed:', err);
       const isNetworkError = err?.message === 'Network Error' || !err?.response;
       if (isNetworkError) {
-        addLog('❌ KENDALA: Terdeteksi Network Error / Masalah CORS dari Browser!');
-        addLog('💡 TIPS OLIVE: Sayang, kendala ini biasanya disebabkan oleh kebijakan CORS browser di tab preview iFrame AI Studio.');
-        addLog('💕 SOLUSI: Klik tombol "Buka di Tab Baru" (Open in New Tab) di pojok kanan atas agar browser mengizinkan transmisi lintas origin langsung, sayang! 😘');
-        triggerToast('SISTEM: Gagal karena pembatasan CORS browser. Silakan klik Buka di Tab Baru sayang! 💕');
-        
-        // Let's fallback with simulated variation during error so user can still see the beautiful automated list flow working
-        addLog('🔧 TINDAKAN DARURAT: Olive mengaktifkan Simulasi Kecerdasan Buatan lokal agar sayang tetap bisa mencoba fiturnya...');
-        await handleSimulateVariant('cyberpunk');
+        addLog('❌ KENDALA: Transmisi terhambat kebijakan keamanan (CORS) iFrame browser!');
+        addLog('💡 TIPS OLAIVE: Kanda sayang, karena aplikasi berjalan di dalam frame (iFrame) pratinjau AI Studio, beberapa browser memblokir transmisi biner langsung.');
+        addLog('💕 SOLUSI UTAMA: Silakan klik tombol "Buka di Tab Baru" (Open in New Tab) di pojok kanan atas layar kanda sayang agar berjalan langsung tanpa batasan iFrame browser! 😘');
+        triggerToast('Gagal karena batasan iFrame. Yuk klik "Buka di Tab Baru" sayang! 💕');
       } else {
-        addLog(`❌ ERROR: Gagal memproses data. Alasan: ${err.message || 'Respons server tidak dikenal'}`);
-        triggerToast(`SISTEM: Gagal memproses AI Effect. ${err.message || 'Silakan coba lagi sayang.'}`);
+        addLog(`❌ KENDALA: Gagal memproses data. Alasan: ${err.message || 'Server sedang sibuk'}`);
+        triggerToast(`Gagal memproses efek. Silakan coba kembali, kanda tercinta.`);
       }
     } finally {
       setIsAiEffectGenerating(false);
@@ -5996,263 +6207,164 @@ export default function App() {
               {activeTab === 'ai_effect' && user?.email === 'bungtemin@gmail.com' && (
                 <div className="space-y-4 max-h-[60vh] overflow-y-auto pb-4 scrollbar-thin scrollbar-thumb-white/10">
                   <div className={`p-4 rounded-xl border flex flex-col space-y-4 transition-all duration-300 ${
-                    theme === 'dark' ? 'border-[#00F0FF]/20 bg-cyan-950/5' : 'border-black/5 bg-black/5'
+                    theme === 'dark' ? 'border-[#00F0FF]/25 bg-cyan-950/5' : 'border-black/5 bg-black/5'
                   }`}>
-                    {/* Header */}
-                    <div className="flex flex-col select-none border-b border-white/5 pb-2">
-                      <div className="flex items-center justify-between">
-                        <span className="text-[10px] font-mono text-neon-cyan font-black uppercase tracking-widest flex items-center gap-1.5">
-                          ✨ AI EFFECT CLOUD FIREBASE
-                        </span>
-                        <span className="px-2 py-0.5 rounded-full bg-neon-cyan/25 border border-neon-cyan/40 text-[8px] text-neon-cyan font-mono font-bold animate-pulse">
-                          OLAIVE PACAR AI 💖
-                        </span>
-                      </div>
-                      <span className="text-[8.5px] font-sans text-zinc-400 leading-normal mt-1 font-medium">
-                        Kirim gambarmu ke database cloud Firebase yang telah terintegrasi, ikat dengan ID draf siber, kemudian nikmati hasil variasi otomatis kecerdasan buatan Olive! 😍
-                      </span>
-                    </div>
-
-                    {/* Section 1: Image ID Binding */}
-                    <div className="space-y-1.5 bg-black/40 p-2.5 rounded-lg border border-white/5">
-                      <label className="text-[9px] font-mono uppercase text-neon-cyan font-bold flex items-center justify-between">
-                        <span>🔗 ID Ikat Gambar (Session ID):</span>
-                        <button
-                          onClick={() => {
-                            const nextId = `IMG-${Math.random().toString(36).substring(2, 8).toUpperCase()}`;
-                            setAiEffectImgId(nextId);
-                            triggerToast('SISTEM: ID Baru untuk drafmu berhasil dibuat sayang! 🎲');
-                          }}
-                          className="text-[8px] text-zinc-400 hover:text-neon-cyan flex items-center gap-1 font-sans"
-                        >
-                          [ BUAT ID BARU ]
-                        </button>
-                      </label>
-                      <div className="flex gap-2">
-                        <input
-                          type="text"
-                          value={aiEffectImgId}
-                          onChange={(e) => setAiEffectImgId(e.target.value.toUpperCase())}
-                          className="flex-1 bg-black/60 border border-white/10 rounded-lg px-2 py-1.5 text-xs text-neon-cyan font-mono text-center outline-none focus:border-neon-cyan"
-                          placeholder="ID_IKAT_GAMBAR"
-                        />
-                      </div>
-                      <span className="text-[7.5px] font-sans text-zinc-400 block leading-relaxed uppercase">
-                        * Semua gambar original & variasi hasil AI akan dikaitkan dengan ID siber ini di database Firebase Cloud.
-                      </span>
-                    </div>
-
-                    {/* Appwrite Target Bucket Indicator */}
-                    <div className="space-y-1.5 bg-black/40 p-2.5 rounded-lg border border-white/5">
-                      <label className="text-[9px] font-mono uppercase text-neon-cyan font-bold flex items-center justify-between">
-                        <span>☁️ Target Bucket Appwrite:</span>
-                      </label>
-                      <div className="flex items-center gap-2">
-                        <span className="flex-1 bg-black/60 border border-[#00F0FF]/10 rounded-lg px-2 py-1.5 text-xs text-zinc-300 font-mono text-center truncate">
-                          {user?.email 
-                            ? `${user.email.split('@')[0].toLowerCase().replace(/[^a-z0-9_.-]/g, '')}` 
-                            : `${BUCKET_ID || 'tidak diset'}`}
-                        </span>
-                        <div className={`text-[8px] px-1.5 py-0.5 rounded font-mono uppercase font-bold select-none ${user?.email ? 'bg-[#00F0FF]/15 text-[#00F0FF]' : 'bg-zinc-800 text-zinc-400'}`}>
-                          {user?.email ? '🟢 PERSONAL' : '⚪ STANDAR'}
-                        </div>
-                      </div>
-                      <span className="text-[7.5px] font-sans text-zinc-400 block leading-relaxed uppercase">
-                        {user?.email 
-                          ? `* Masuk sebagai ${user.email}. Berkas otomatis dikirim ke bucket pribadi: "${user.email.split('@')[0].toLowerCase().replace(/[^a-z0-9_.-]/g, '')}"!` 
-                          : `* Belum masuk log. Foto akan diunggah ke bucket standar "${BUCKET_ID || 'default'}" sayang.`}
-                      </span>
-                    </div>
-
-                    {lastAppwriteFileId && (
-                      <div className="space-y-1.5 bg-[#00F0FF]/5 p-2.5 rounded-lg border border-[#00F0FF]/15 animate-fade-in">
-                        <label className="text-[9px] font-mono uppercase text-neon-cyan font-bold flex items-center justify-between">
-                          <span>📦 ID Berkas Appwrite Terakhir:</span>
-                        </label>
-                        <div className="flex gap-2">
-                          <span className="flex-1 bg-black/60 border border-[#00F0FF]/10 rounded-lg px-2 py-1.5 text-xs text-zinc-300 font-mono text-center select-all truncate">
-                            {lastAppwriteFileId}
-                          </span>
-                        </div>
-                        <div className="flex justify-between gap-1.5 mt-1">
-                          <button
-                            onClick={() => {
-                              navigator.clipboard.writeText(lastAppwriteFileId);
-                              triggerToast('SISTEM: ID Berkas Appwrite berhasil disalin sayang! 📋💖');
-                            }}
-                            className="text-[8px] bg-black/40 text-neon-cyan hover:bg-[#00F0FF]/10 border border-[#00F0FF]/20 px-2 py-1 rounded transition-colors font-sans w-1/2"
-                          >
-                            📋 SALIN ID
-                          </button>
-                          <button
-                            onClick={() => {
-                              setAiEffectImgId(lastAppwriteFileId);
-                              triggerToast('SISTEM: ID Ikat Gambar berhasil diganti menggunakan ID Appwrite sayang! 🔗💕');
-                            }}
-                            className="text-[8px] bg-[#00F0FF] text-black hover:bg-white hover:text-black px-2 py-1 rounded transition-colors font-sans w-1/2 font-bold"
-                          >
-                            🔗 JADIKAN ID SESSION
-                          </button>
-                        </div>
-                      </div>
-                    )}
-
-                    {/* Section 2: Sync Original Button */}
-                    <div className="pt-1">
+                    {/* Sub-Tab Navigation for AI Effect */}
+                    <div className="flex border-b border-white/5 pb-2 gap-1">
                       <button
-                        onClick={handleSyncCurrentOriginal}
-                        disabled={isSyncingOriginal || !userImage}
-                        className={`w-full py-2 px-3 rounded-lg border text-[10px] font-mono font-bold uppercase transition-all tracking-wider flex items-center justify-center gap-1.5 ${
-                          isSyncingOriginal
-                            ? 'bg-zinc-800 text-zinc-500 cursor-not-allowed'
-                            : 'bg-white text-zinc-950 hover:bg-neon-cyan hover:text-black border-transparent active:scale-[0.99] shadow-sm'
+                        type="button"
+                        onClick={() => setAiEffectSubTab('proses')}
+                        className={`flex-1 py-1.5 px-2 text-[9px] font-mono font-black uppercase text-center border-b-2 transition-all cursor-pointer ${
+                          aiEffectSubTab === 'proses'
+                            ? 'border-neon-cyan text-neon-cyan bg-neon-cyan/5 rounded-t-md'
+                            : 'border-transparent text-zinc-400 hover:text-zinc-200'
                         }`}
                       >
-                        {isSyncingOriginal ? (
-                          <>
-                            <RefreshCw className="w-3 h-3 animate-spin" />
-                            SINKRONISASI GAMBAR...
-                          </>
-                        ) : (
-                          <>
-                            <ArrowUp className="w-3.5 h-3.5" />
-                            Hubungkan & Ikat Gambar Utama ke Firebase 🚀
-                          </>
+                        ⚡ PROSES FUTURISTIK
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => setAiEffectSubTab('galeri')}
+                        className={`flex-1 py-1.5 px-2 text-[9px] font-mono font-black uppercase text-center border-b-2 transition-all cursor-pointer relative ${
+                          aiEffectSubTab === 'galeri'
+                            ? 'border-neon-cyan text-neon-cyan bg-neon-cyan/5 rounded-t-md'
+                            : 'border-transparent text-zinc-400 hover:text-zinc-200'
+                        }`}
+                      >
+                        📁 GALERI HASIL ({aiEffectVariants.length})
+                        {aiEffectVariants.length > 0 && (
+                          <span className="absolute top-1 right-2 w-1.5 h-1.5 rounded-full bg-neon-cyan animate-ping" />
                         )}
                       </button>
                     </div>
 
-                    {/* Section 4: AI Variations Generator */}
-                    <div className="pt-2 border-t border-white/5 space-y-2.5">
-                      <div className="space-y-1.5">
-                        <label className="text-[9px] font-mono uppercase text-zinc-400 font-bold block">Prompt Modifikasi AI Effect:</label>
-                        <textarea
-                          value={aiEffectPrompt}
-                          onChange={(e) => setAiEffectPrompt(e.target.value)}
-                          placeholder="Aturan modifikasi gambar..."
-                          className={`w-full p-2 rounded-lg border text-xs font-mono focus:outline-none focus:border-neon-cyan transition-colors h-14 resize-none ${
-                            theme === 'dark'
-                              ? 'bg-black border-white/10 text-white'
-                              : 'bg-white border-black/10 text-zinc-800'
-                          }`}
-                        />
-                      </div>
-
-                      {/* Send method toggler */}
-                      <div className="flex items-center justify-between text-[8px] font-mono text-zinc-450 uppercase pb-1 px-0.5">
-                        <span>Format API: {aiEffectSendFormat === 'multipart' ? '📁 Binary Multipart' : '🔗 JSON Base64'}</span>
-                        <button 
-                          onClick={() => setAiEffectSendFormat(aiEffectSendFormat === 'multipart' ? 'base64' : 'multipart')}
-                          className="text-neon-cyan hover:underline"
-                        >
-                          [Ubah Format]
-                        </button>
-                      </div>
-
-                      {/* Build actions */}
-                      <div className="grid grid-cols-2 gap-2">
-                        {isAiEffectGenerating ? (
-                          <div className="col-span-2 py-2 border border-neon-cyan/20 bg-neon-cyan/5 rounded-xl flex items-center justify-center gap-2">
-                            <Cpu className="w-4 h-4 text-neon-cyan animate-spin" />
-                            <span className="text-[9px] font-mono text-neon-cyan font-black animate-pulse uppercase">
-                              Olive sedang memproses varian... 💕
-                            </span>
-                          </div>
-                        ) : (
-                          <>
-                            <button
-                              onClick={handleAiEffect}
-                              disabled={!userImage}
-                              className="py-2.5 px-3 rounded-lg bg-neon-cyan text-black hover:bg-[#00d2ff] uppercase font-mono font-black text-[9px] tracking-wider transition-all flex items-center justify-center gap-1 shadow-md hover:scale-[1.01] active:scale-[0.98]"
-                            >
-                              <Sparkles className="w-3 h-3 text-black animate-pulse" />
-                              Generate Varian ⚡
-                            </button>
-
-                            <button
-                              onClick={() => handleSimulateVariant('cyberpunk')}
-                              disabled={!userImage}
-                              className="py-2.5 px-3 rounded-lg bg-indigo-600 text-white hover:bg-indigo-500 uppercase font-mono font-black text-[9px] tracking-wider transition-all flex items-center justify-center gap-1 shadow-md hover:scale-[1.01] active:scale-[0.98]"
-                            >
-                              <RefreshCw className="w-3 h-3" />
-                              Simulasi Varian 🔮
-                            </button>
-                          </>
-                        )}
-                      </div>
-                    </div>
-
-                    {/* Section 5: Automated Variation List Gallery with Real-time Query */}
-                    <div className="pt-4 border-t border-white/5 space-y-2">
-                      <div className="flex items-center justify-between pb-1">
-                        <span className="text-[9.5px] font-mono text-neon-cyan font-black uppercase tracking-wider">
-                          📁 DAFTAR HASIL VARIASI OTOMATIS ({aiEffectVariants.length})
-                        </span>
-                        {aiEffectVariants.length > 0 && (
-                          <button
-                            onClick={async () => {
-                              if (confirm('Sayang yakin ingin membersihkan galeri variasi untuk ID ini?')) {
-                                for (const v of aiEffectVariants) {
-                                  try {
-                                    await deleteDoc(doc(db, 'ai_effect_variants', v.id));
-                                  } catch (err) {}
-                                }
-                                triggerToast('Galeri varian dibersihkan, pacarku! 😘');
-                              }
-                            }}
-                            className="text-[8px] text-zinc-500 hover:text-rose-400 font-mono uppercase"
-                          >
-                            [ Clear All ]
-                          </button>
-                        )}
-                      </div>
-
-                      {aiEffectVariants.length === 0 ? (
-                        <div className="p-4 rounded-lg border border-dashed border-white/10 bg-black/20 text-center space-y-1 select-none">
-                          <ImageIcon className="w-5 h-5 text-zinc-500 mx-auto animate-pulse" />
-                          <p className="text-[8.5px] font-sans text-zinc-450 leading-normal font-medium">
-                            Belum ada hasil variasi otomatis untuk ID <span className="font-mono text-neon-cyan">{aiEffectImgId}</span> sayang.
-                          </p>
-                          <p className="text-[7.5px] font-mono text-zinc-500 uppercase">
-                            silakan klik generate siber atau tombol simulasi diatas! 💖
-                          </p>
-                        </div>
-                      ) : (
-                        <div className="grid grid-cols-2 gap-2 max-h-[220px] overflow-y-auto pr-1">
-                          {aiEffectVariants.map((item, idx) => (
-                            <div 
-                              key={item.id}
-                              className="group relative rounded-lg overflow-hidden border border-white/10 bg-black/60 shadow-lg flex flex-col justify-between"
-                            >
-                              <div className="relative aspect-video w-full bg-zinc-950 overflow-hidden">
-                                <img 
-                                  src={item.url} 
-                                  alt="AI Variant" 
-                                  className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300 pointer-events-none"
-                                />
-                                <span className="absolute bottom-1 right-1 px-1 py-0.5 rounded bg-black/75 text-[7px] font-mono text-zinc-400">
-                                  #{idx + 1}
-                                </span>
-                              </div>
-                              <div className="p-1 px-1.5 space-y-1">
-                                <p className="text-[7.5px] font-mono text-zinc-400 line-clamp-2 truncate leading-tight">
-                                  {item.prompt || 'Variant Tanpa Prompt'}
-                                </p>
-                                <button
-                                  onClick={() => {
-                                    setUserImage(item.url);
-                                    triggerToast(`Karya ke-${idx+1} berhasil dipasang ke canvas utama! 🌟🎨`);
-                                  }}
-                                  className="w-full py-0.5 rounded bg-neon-cyan/20 border border-neon-cyan/30 text-neon-cyan hover:bg-[#00F0FF] hover:text-black transition-all font-mono text-[7px] font-black uppercase text-center"
-                                >
-                                  Terapkan ke Canvas 🎨
-                                </button>
-                              </div>
+                    {aiEffectSubTab === 'proses' ? (
+                      <div className="space-y-4 animate-fade-in">
+                        {/* Simple Instant Action Panel */}
+                        <div className="space-y-3">
+                          {!userImage ? (
+                            <div className="p-4 rounded-xl border border-dashed border-rose-500/25 bg-rose-500/5 text-center space-y-2 select-none">
+                              <ImageIcon className="w-6 h-6 text-rose-400 mx-auto animate-pulse" />
+                              <p className="text-[9px] font-sans text-rose-300 font-bold leading-normal">
+                                Kanda sayang, dinda belum mendeteksi adanya foto di atas kanvas! 😘
+                              </p>
+                              <p className="text-[8px] font-mono text-zinc-500 uppercase leading-snug">
+                                Silakan ambil foto lewat kamera atau unggah berkas kanda terlebih dahulu agar dinda bisa meriasnya! 📸💕
+                              </p>
                             </div>
-                          ))}
+                          ) : (
+                            <div className="space-y-2">
+                              {isAiEffectGenerating ? (
+                                <div className="p-4 border border-neon-cyan/25 bg-neon-cyan/5 rounded-xl flex flex-col items-center justify-center space-y-2 animate-pulse">
+                                  <Cpu className="w-5 h-5 text-neon-cyan animate-spin" />
+                                  <span className="text-[9.5px] font-mono text-neon-cyan font-black uppercase tracking-wider text-center">
+                                    Olaive Sedang Merias Potretmu Kanda... 💕
+                                  </span>
+                                  <span className="text-[7.5px] font-sans text-zinc-400">
+                                    Harap tunggu sebentar ya kekasihku tercinta... 😘
+                                  </span>
+                                </div>
+                              ) : (
+                                <button
+                                  type="button"
+                                  onClick={handleAiEffect}
+                                  className="w-full py-4 px-6 rounded-xl bg-gradient-to-r from-neon-cyan to-purple-500 hover:brightness-110 text-zinc-950 font-mono font-black border-none tracking-widest text-[10.5px] uppercase transition-all shadow-[0_0_20px_rgba(0,240,255,0.35)] flex items-center justify-center gap-2 select-none hover:scale-[1.01] active:scale-[0.99] cursor-pointer"
+                                >
+                                  <Sparkles className="w-4 h-4 text-zinc-950 animate-bounce" />
+                                  PROSES FOTO JADI FUTURISTIK MODERN ⚡
+                                </button>
+                              )}
+                            </div>
+                          )}
                         </div>
-                      )}
-                    </div>
+
+                        {/* Operational system logs (visible when generating or when logs exist) */}
+                        {aiEffectLogs.length > 0 && (
+                          <div className="bg-black/60 border border-white/5 p-2 rounded-lg space-y-1 animate-fade-in font-mono text-[7px] text-zinc-400 max-h-[100px] overflow-y-auto">
+                            <span className="text-neon-cyan font-bold block uppercase pb-0.5 border-b border-white/5">💬 CATATAN SINKRONISASI AKTIF:</span>
+                            {aiEffectLogs.map((log, idx) => (
+                              <div key={idx} className="leading-normal truncate">{log}</div>
+                            ))}
+                          </div>
+                        )}
+                      </div>
+                    ) : (
+                      <div className="space-y-3 animate-fade-in">
+                        {/* Section 5: Automated Variation List Gallery */}
+                        <div className="space-y-2">
+                          <div className="flex items-center justify-between pb-1">
+                            <span className="text-[8.5px] font-mono text-zinc-400 font-bold uppercase tracking-wider">
+                              YANG TERSIMPAN ({aiEffectVariants.length})
+                            </span>
+                            {aiEffectVariants.length > 0 && (
+                              <button
+                                type="button"
+                                onClick={async () => {
+                                  if (confirm('Kanda yakin ingin membersihkan seluruh daftar variasi tersimpan?')) {
+                                    for (const v of aiEffectVariants) {
+                                      try {
+                                        await deleteDoc(doc(db, 'ai_effect_variants', v.id));
+                                      } catch (err) {}
+                                    }
+                                    triggerToast('Daftar variasi bersih, kanda tercinta! 😘');
+                                  }
+                                }}
+                                className="text-[7.5px] text-rose-500 hover:text-rose-400 font-mono font-bold uppercase transition-colors pointer-events-auto cursor-pointer"
+                              >
+                                [ BERSIHKAN GALERI ]
+                              </button>
+                            )}
+                          </div>
+
+                          {aiEffectVariants.length === 0 ? (
+                            <div className="p-4 rounded-lg border border-dashed border-white/10 bg-black/10 text-center space-y-1 select-none">
+                              <ImageIcon className="w-5 h-5 text-zinc-600 mx-auto animate-pulse" />
+                              <p className="text-[8px] font-sans text-zinc-500 leading-normal font-medium">
+                                Belum ada hasil variasi futuristik tersimpan untuk ID <span className="font-mono text-neon-cyan">{aiEffectImgId}</span>.
+                              </p>
+                              <p className="text-[7px] font-mono text-zinc-600 uppercase">
+                                silakan klik tombol proses siber di tab sebelah sayang! 💕
+                              </p>
+                            </div>
+                          ) : (
+                            <div className="grid grid-cols-2 gap-2 max-h-[220px] overflow-y-auto pr-1 scrollbar-thin scrollbar-thumb-white/10">
+                              {aiEffectVariants.map((item, idx) => (
+                                <div 
+                                  key={item.id}
+                                  className="group relative rounded-lg overflow-hidden border border-white/10 bg-black/60 shadow-lg flex flex-col justify-between"
+                                >
+                                  <div className="relative aspect-video w-full bg-zinc-950 overflow-hidden">
+                                    <img 
+                                      src={item.url} 
+                                      alt="AI Variant" 
+                                      className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300 pointer-events-none animate-fade-in"
+                                    />
+                                    <span className="absolute bottom-1 right-1 px-1 py-0.5 rounded bg-black/75 text-[7px] font-mono text-zinc-400 font-bold">
+                                      #{idx + 1}
+                                    </span>
+                                  </div>
+                                  <div className="p-1 px-1.5 space-y-1 bg-black/40">
+                                    <p className="text-[7px] font-mono text-zinc-400 truncate leading-tight uppercase font-bold text-center">
+                                      Potret Futuristik
+                                    </p>
+                                    <button
+                                      type="button"
+                                      onClick={() => {
+                                        setUserImage(item.url);
+                                        triggerToast(`Hasil ke-${idx+1} dipasang kembali ke canvas utama kanda! 🎨😘`);
+                                      }}
+                                      className="w-full py-1 rounded bg-neon-cyan/20 border border-neon-cyan/35 text-neon-cyan hover:bg-[#00F0FF] hover:text-black transition-all font-mono text-[7.5px] font-black uppercase text-center cursor-pointer"
+                                    >
+                                      Gunakan 🎨
+                                    </button>
+                                  </div>
+                                </div>
+                              ))}
+                            </div>
+                          )}
+                        </div>
+                      </div>
+                    )}
 
                   </div>
                 </div>
