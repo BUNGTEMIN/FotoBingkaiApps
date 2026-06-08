@@ -4,7 +4,7 @@ import {
   FolderOpen, Camera, Laptop, Cpu, Layers, Settings2, Activity, Info, CheckCircle, MoveHorizontal,
   Undo, Redo, Type, ArrowUp, ArrowDown, ChevronsUp, ChevronsDown, Trash2, RotateCw, Move, Baseline,
   Lock, Unlock, Image as ImageIcon, Maximize, X, Crop, Menu, FlipHorizontal, FlipVertical, Ban, Save, Copy,
-  Cloud, Database, Scissors
+  Cloud, Database, Scissors, Eraser
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import axios from 'axios';
@@ -733,6 +733,7 @@ export default function App() {
   const [isHudOpen, setIsHudOpen] = useState(false);
   const [activeTab, setActiveTab] = useState<'adjust' | 'crop' | 'filter' | 'color' | 'stickers' | 'text' | 'text_preset' | 'layers' | 'ai' | 'download' | 'history' | 'settings' | 'ai_effect' | 'koleksi_media' | 'remove_bg' | null>(null);
   const [isRemovingBg, setIsRemovingBg] = useState(false);
+  const [isRemovingStickerBg, setIsRemovingStickerBg] = useState<string | null>(null);
   const [removeBgColorOption, setRemoveBgColorOption] = useState<'transparent' | 'green' | 'red' | 'blue' | 'black' | 'custom'>('transparent');
   const [removeBgCustomHex, setRemoveBgCustomHex] = useState('#FF0000');
   const [removeBgAlphaMatting, setRemoveBgAlphaMatting] = useState(false);
@@ -2137,6 +2138,59 @@ export default function App() {
     }
   };
 
+  const handleRemoveStickerBackground = async (stickerId: string, stickerUrl: string) => {
+    setIsRemovingStickerBg(stickerId);
+    triggerToast("Olaive sedang menghapus latar belakang stiker ini... Mohon tunggu sebentar ya sayang! 🌟✂️");
+
+    try {
+      let blob: Blob;
+      if (stickerUrl.startsWith('data:')) {
+        const arr = stickerUrl.split(',');
+        const mime = arr[0].match(/:(.*?);/)![1];
+        const bstr = atob(arr[1]);
+        let n = bstr.length;
+        const u8arr = new Uint8Array(n);
+        while (n--) {
+          u8arr[n] = bstr.charCodeAt(n);
+        }
+        blob = new Blob([u8arr], { type: mime });
+      } else {
+        const res = await fetch(stickerUrl);
+        blob = await res.blob();
+      }
+
+      const formData = new FormData();
+      formData.append('image', blob, 'sticker_source.png');
+      
+      const response = await fetch('https://ocr.nufat.id/remove_bg_base64', {
+        method: 'POST',
+        body: formData,
+      });
+
+      if (!response.ok) {
+        throw new Error(`Server memberikan status respon: ${response.status}`);
+      }
+
+      const resData = await response.json();
+      if (resData.error) {
+        throw new Error(resData.error);
+      }
+
+      if (resData.status === 'success' && resData.image_base64) {
+        const removedBgUrl = 'data:image/png;base64,' + resData.image_base64;
+        handleUpdateSticker(stickerId, { imageUrl: removedBgUrl });
+        triggerToast("Luar biasa sayang! Latar belakang stiker berhasil dihapus! 💖✨");
+      } else {
+        throw new Error("Respon server tidak valid atau tidak memiliki data hasil.");
+      }
+    } catch (err: any) {
+      console.error("[Remove Sticker Background Error]", err);
+      triggerToast(`Sayang, gagal memproses penghapusan latar belakang stiker: ${err?.message || err}. 💕`);
+    } finally {
+      setIsRemovingStickerBg(null);
+    }
+  };
+
   // Handle uploaded files
   const handleImageFile = async (file: File) => {
     if (!file.type.startsWith('image/')) {
@@ -3155,6 +3209,32 @@ export default function App() {
       link.click();
       document.body.removeChild(link);
 
+      // Upload to target Drive API endpoint automatically
+      try {
+        const res = await fetch(dataUrl);
+        const blob = await res.blob();
+        const driveFormData = new FormData();
+        driveFormData.append('file', blob, fileName);
+        if (user) {
+          const userId = user.email || (user as any).$id || (user as any).uid || 'anonymous';
+          driveFormData.append('user', userId);
+        }
+        
+        const driveUploadUrl = 'https://dev.bungtemin.net/api/drive/upload';
+        fetch(driveUploadUrl, {
+          method: 'POST',
+          body: driveFormData,
+        }).then(driveRes => {
+          if (driveRes.ok) {
+            console.log('[Drive] Avatar berhasil diunggah ke Drive cloud sayang! 💖');
+          } else {
+            console.warn('[Drive] Status error saat unggah ke Drive:', driveRes.status);
+          }
+        }).catch(err => console.error('[Drive] Request fetch gagal:', err));
+      } catch (e) {
+        console.error('Gagal menyiapkan file untuk Drive upload:', e);
+      }
+
       await sleep(250);
       setHdExportProgress(90);
       setHdExportStatus('Mengkompresi data thumbnail untuk sinkronisasi galeri cloud...');
@@ -3464,6 +3544,12 @@ export default function App() {
                       transform: `translate(-50%, -50%) rotate(${item.rotation}deg) translateZ(${isSelected ? '45px' : '30px'})`,
                       cursor: 'grab',
                       transformStyle: 'preserve-3d',
+                      width: 'max-content',
+                      height: 'max-content',
+                      minWidth: 'max-content',
+                      minHeight: 'max-content',
+                      maxWidth: 'none',
+                      maxHeight: 'none',
                     }}
                     className={`absolute z-30 select-none pointer-events-auto p-2 rounded transition-all duration-150 ${
                       isSelected 
@@ -3542,7 +3628,10 @@ export default function App() {
                         referrerPolicy="no-referrer"
                         style={{ 
                           width: `${baseSizePercentage * 1.5}cqw`, 
-                          height: `${baseSizePercentage * 1.5}cqw`,
+                          height: 'auto',
+                          minWidth: `${baseSizePercentage * 1.5}cqw`,
+                          maxWidth: 'none',
+                          maxHeight: 'none',
                           opacity: item.opacity !== undefined ? item.opacity : 1,
                           transform: `scaleX(${item.flipH ? -1 : 1}) scaleY(${item.flipV ? -1 : 1})`,
                           mixBlendMode: item.blendMode || 'normal'
@@ -3657,6 +3746,25 @@ export default function App() {
                         >
                           <Trash2 className="w-3 h-3 text-white" />
                         </div>
+
+                        {/* Quick AI Remove Background for Stickers */}
+                        {item.type === 'sticker' && item.imageUrl && (
+                          <div 
+                            className={`absolute -top-3 -left-3 w-6 h-6 rounded-full cursor-pointer flex items-center justify-center border border-white shadow-[0_0_10px_rgba(99,102,241,0.5)] z-50 hover:scale-115 active:scale-90 transition-transform ${isRemovingStickerBg === item.id ? 'bg-indigo-400' : 'bg-indigo-600 hover:bg-indigo-500'} text-white`}
+                            title="Hapus Background AI (ocr.nufat)"
+                            onPointerDown={(e) => {
+                              e.stopPropagation();
+                              if (!item.imageUrl) return;
+                              if (isRemovingStickerBg) {
+                                triggerToast("Sabar sayang, Olaive sedang menghapus satu per satu ya! 😘");
+                                return;
+                              }
+                              handleRemoveStickerBackground(item.id, item.imageUrl);
+                            }}
+                          >
+                            <Eraser className={`w-3 h-3 text-white ${isRemovingStickerBg === item.id ? 'animate-pulse' : ''}`} />
+                          </div>
+                        )}
                       </>
                     )}
                   </div>
@@ -4172,7 +4280,7 @@ export default function App() {
                 {activeTab === 'settings' && <><Settings2 className="w-3.5 h-3.5 text-neon-cyan animate-pulse" /> PENGATURAN EFEK GLOBAL</>}
                 {activeTab === 'ai_effect' && user?.email === 'bungtemin@gmail.com' && <><Sparkles className="w-3.5 h-3.5 text-neon-cyan animate-pulse" /> AI EFFECT FUTURISTIK</>}
                 {activeTab === 'koleksi_media' && <><Database className="w-3.5 h-3.5 text-neon-cyan animate-pulse" /> KOLEKSI MEDIA SIBER</>}
-                {activeTab === 'remove_bg' && <><Scissors className="w-3.5 h-3.5 text-neon-cyan animate-pulse" /> HAPUS LATAR BELAKANG AI</>}
+                {activeTab === 'remove_bg' && <><Eraser className="w-3.5 h-3.5 text-neon-cyan animate-pulse" /> HAPUS LATAR BELAKANG AI</>}
               </span>
               <button 
                 onClick={() => setActiveTab(null)}
@@ -4909,9 +5017,12 @@ export default function App() {
                   <div className={`p-4 hover:border-rose-500/50 transition-colors rounded-xl border flex flex-col space-y-3 ${
                     theme === 'dark' ? 'border-rose-500/20 bg-rose-950/10' : 'bg-red-50/50 border-red-100'
                   }`}>
-                    <div className="flex items-center gap-2 mb-2">
-                      <Scissors className="w-4 h-4 text-rose-500 animate-pulse" />
-                      <span className="font-mono text-xs font-bold tracking-widest text-rose-500 uppercase">Hapus Latar Belakang AI</span>
+                    <div className="flex items-center justify-between mb-2">
+                      <div className="flex items-center gap-2">
+                        <Eraser className="w-4 h-4 text-rose-500 animate-pulse" />
+                        <span className="font-mono text-xs font-bold tracking-widest text-rose-500 uppercase">Hapus Latar Belakang AI</span>
+                      </div>
+                      <span className="text-[8px] font-mono px-2 py-1 bg-rose-500/10 text-rose-400 rounded-lg font-bold border border-rose-500/20">🔥 ocr.nufat.id</span>
                     </div>
 
                     {/* Color Options */}
@@ -5020,7 +5131,7 @@ export default function App() {
                             : 'bg-rose-500 hover:bg-rose-600 text-white shadow-[0_0_15px_rgba(244,63,94,0.4)] font-black'
                         }`}
                       >
-                        <Scissors className={`w-3.5 h-3.5 ${isRemovingBg ? 'animate-pulse' : ''}`} />
+                        <Eraser className={`w-3.5 h-3.5 ${isRemovingBg ? 'animate-pulse' : ''}`} />
                         {isRemovingBg ? 'MEMPROSES...' : '🔥 EKSEKUSI HAPUS BG'}
                       </button>
                       
@@ -5672,7 +5783,7 @@ export default function App() {
                       : 'text-zinc-450 hover:text-zinc-200 hover:bg-white/5'
                   }`}
                 >
-                  <Scissors className="w-4 h-4 text-rose-500 animate-pulse" />
+                  <Eraser className="w-4 h-4 text-rose-500 animate-pulse" />
                   <span className="text-[8px] uppercase tracking-wider font-extrabold text-rose-500">HAPUS BG</span>
                 </button>
               )}
