@@ -205,7 +205,7 @@ export const renderToCanvas = async (
     }
 
     // Preload frame
-    if (params.frame) {
+    if (params.frame && params.frame.id !== 'none') {
       if (params.frame.type === 'procedural') {
         let svgString = '';
         if (params.frame.renderSvg) {
@@ -394,7 +394,7 @@ export const renderToCanvas = async (
   }
 
   // 3. Draw frame layer on top of user image
-  if (params.frame) {
+  if (params.frame && params.frame.id !== 'none') {
     if (frameImgElement) {
       ctx.save();
       ctx.filter = 'none'; // Ensure the frame remains completely authentic without photo filters

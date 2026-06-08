@@ -4,7 +4,7 @@ import {
   FolderOpen, Camera, Laptop, Cpu, Layers, Settings2, Activity, Info, CheckCircle, MoveHorizontal,
   Undo, Redo, Type, ArrowUp, ArrowDown, ChevronsUp, ChevronsDown, Trash2, RotateCw, Move, Baseline,
   Lock, Unlock, Image as ImageIcon, Maximize, X, Crop, Menu, FlipHorizontal, FlipVertical, Ban, Save, Copy,
-  Cloud, Database, Scissors, Eraser
+  Cloud, Database, Scissors, Eraser, Heart, Share2
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import axios from 'axios';
@@ -31,6 +31,7 @@ import { Frame, ImageSettings, PlacedSticker } from './types';
 import { FRAMES, FILTER_PRESETS, PRESET_STICKERS } from './presets';
 import { renderToCanvas, resolveApiUrl, compressImage, ensureFullSvg } from './canvasUtils';
 import { storage, BUCKET_ID, databases, DATABASE_ID, COLLECTION_ID, Query, ID, ensureAppwriteBucketExists } from './appwrite';
+import { getCache, setCache } from './indexedDb';
 
 // Use direct API endpoints instead of proxy helpers since they support CORS natively
 const getWabotApiUrl = () => 'https://wabot.nufat.id/imagelist_nufat/api';
@@ -231,6 +232,7 @@ const loadDraftImageFromIDB = async (): Promise<string | null> => {
 };
 
 export default function App() {
+  const hasRestoredAutosaveRef = useRef(false);
   // Google Authentication State
   const [user, setUser] = useState<User | null>(null);
   const [isAuthLoading, setIsAuthLoading] = useState(true);
@@ -254,23 +256,22 @@ export default function App() {
     if (!user) return;
 
     const cacheKey = `bt_my_gallery_${user.uid}`;
-    const cacheTimeKey = `bt_my_gallery_time_${user.uid}`;
-    const cachedData = localStorage.getItem(cacheKey);
-    const cachedTime = localStorage.getItem(cacheTimeKey);
+    const cachedEntry = await getCache(cacheKey);
 
-    if (cachedData && cachedTime && !forceRefresh) {
+    let hasLoadedFromCache = false;
+    if (cachedEntry) {
       try {
-        const parsedItems = JSON.parse(cachedData);
-        setSavedCreations(parsedItems);
+        setSavedCreations(cachedEntry.data);
+        hasLoadedFromCache = true;
 
-        // If cache is fresh (less than 2 minutes), skip Firestore call
-        const cacheAge = Date.now() - Number(cachedTime);
-        if (cacheAge < 120000) {
-          console.log("[Firebase Cache MyGallery] Cache is fresh. Skipping remote fetch.");
+        // If cache is fresh (less than 60 seconds) and not a forced refresh, skip background sync
+        const cacheAge = Date.now() - cachedEntry.time;
+        if (cacheAge < 60000 && !forceRefresh) {
+          console.log("[IndexedDB Cache MyGallery] Cache is fresh. Skipping background sync.");
           return;
         }
       } catch (cacheErr) {
-        console.warn("[Firebase Cache MyGallery Error] Parse failed:", cacheErr);
+        console.warn("[IndexedDB Cache MyGallery Error] Parse/Render failed:", cacheErr);
       }
     }
 
@@ -293,9 +294,8 @@ export default function App() {
         });
       });
       setSavedCreations(items);
-      // Save cache
-      localStorage.setItem(cacheKey, JSON.stringify(items));
-      localStorage.setItem(cacheTimeKey, String(Date.now()));
+      // Save cache safely
+      await setCache(cacheKey, { data: items, time: Date.now() });
     } catch (err: any) {
       console.warn("Gagal mengambil data koleksi dengan pengurutan (index belum matang), mencoba query alternatif tanpa orderBy:", err);
       try {
@@ -317,9 +317,8 @@ export default function App() {
         // Sort manually by id if timestamp index is missing (descending)
         items.sort((a, b) => b.id.localeCompare(a.id));
         setSavedCreations(items);
-        // Save cache
-        localStorage.setItem(cacheKey, JSON.stringify(items));
-        localStorage.setItem(cacheTimeKey, String(Date.now()));
+        // Save cache safely
+        await setCache(cacheKey, { data: items, time: Date.now() });
       } catch (fallbackErr: any) {
         console.error("Error fetching koleksi fallback:", fallbackErr);
       }
@@ -348,23 +347,22 @@ export default function App() {
     const currentUid = auth.currentUser?.uid || user?.uid;
 
     const cacheKey = `bt_cloud_downloads_${activeSubTab}_${currentUid || 'guest'}`;
-    const cacheTimeKey = `bt_cloud_downloads_time_${activeSubTab}_${currentUid || 'guest'}`;
-    const cachedData = localStorage.getItem(cacheKey);
-    const cachedTime = localStorage.getItem(cacheTimeKey);
+    const cachedEntry = await getCache(cacheKey);
 
-    if (cachedData && cachedTime && !forceRefresh) {
+    let hasLoadedFromCache = false;
+    if (cachedEntry) {
       try {
-        const parsedItems = JSON.parse(cachedData);
-        setCloudDownloads(parsedItems);
+        setCloudDownloads(cachedEntry.data);
+        hasLoadedFromCache = true;
 
-        // If cache is fresh (less than 2 minutes), skip Firestore call
-        const cacheAge = Date.now() - Number(cachedTime);
-        if (cacheAge < 120000) {
-          console.log("[Firebase Cache CloudDownloads] Cache is fresh. Skipping remote fetch.");
+        // If cache is fresh (less than 60 seconds) and not a forced refresh, skip background sync
+        const cacheAge = Date.now() - cachedEntry.time;
+        if (cacheAge < 60000 && !forceRefresh) {
+          console.log("[IndexedDB Cache CloudDownloads] Cache is fresh. Skipping background sync.");
           return;
         }
       } catch (cacheErr) {
-        console.warn("[Firebase Cache CloudDownloads Error] Parse failed:", cacheErr);
+        console.warn("[IndexedDB Cache CloudDownloads Error] Parse/Render failed:", cacheErr);
       }
     }
 
@@ -404,9 +402,8 @@ export default function App() {
         });
       });
       setCloudDownloads(items);
-      // Save cache
-      localStorage.setItem(cacheKey, JSON.stringify(items));
-      localStorage.setItem(cacheTimeKey, String(Date.now()));
+      // Save cache safely
+      await setCache(cacheKey, { data: items, time: Date.now() });
     } catch (err) {
       console.warn("Gagal mengambil data dengan pengurutan (index belum matang), mencoba query alternatif tanpa orderBy:", err);
       try {
@@ -440,14 +437,10 @@ export default function App() {
         });
         items.sort((a, b) => b.id.localeCompare(a.id));
         setCloudDownloads(items);
-        // Save cache
-        localStorage.setItem(cacheKey, JSON.stringify(items));
-        localStorage.setItem(cacheTimeKey, String(Date.now()));
+        // Save cache safely
+        await setCache(cacheKey, { data: items, time: Date.now() });
       } catch (fallbackErr: any) {
         console.warn("Gagal total mengambil koleksi cloud:", fallbackErr);
-        try {
-          handleFirestoreError(fallbackErr, OperationType.LIST, 'downloads');
-        } catch (fErr) {}
       }
     } finally {
       setIsLoadingCloudDownloads(false);
@@ -524,7 +517,7 @@ export default function App() {
         });
         // Sync local cache
         const cacheKey = `bt_cloud_downloads_${cloudSubTab}_${userIdString}`;
-        localStorage.setItem(cacheKey, JSON.stringify(updated));
+        setCache(cacheKey, { data: updated, time: Date.now() });
         return updated;
       });
       triggerToast('Suka berhasil ditambahkan! Terima kasih banyak atas dukungannya. ❤️');
@@ -539,7 +532,7 @@ export default function App() {
           return item;
         });
         const cacheKey = `bt_cloud_downloads_${cloudSubTab}_${userIdString}`;
-        localStorage.setItem(cacheKey, JSON.stringify(updated));
+        setCache(cacheKey, { data: updated, time: Date.now() });
         return updated;
       });
       triggerToast('Suka berhasil ditambahkan! ❤️');
@@ -605,57 +598,19 @@ export default function App() {
   }, [currentPage]);
 
   // State variables
-  const [userImage, setUserImage] = useState<string | null>(() => {
+  const [customFrames, setCustomFrames] = useState<Frame[]>([]);
+  const [appwriteFrames, setAppwriteFrames] = useState<Frame[]>([]);
+  const [frameLikes, setFrameLikes] = useState<Record<string, number>>({});
+  const [frameUsages, setFrameUsages] = useState<Record<string, number>>({});
+  const [userLikedFrames, setUserLikedFrames] = useState<Record<string, boolean>>(() => {
     try {
-      const saved = localStorage.getItem('bt_user_image');
-      if (saved) return saved;
-      return null;
-    } catch (err) {
-      console.warn("Gagal memuat bt_user_image dari localStorage:", err);
-      return null;
+      const saved = localStorage.getItem('bt_user_liked_frames');
+      return saved ? JSON.parse(saved) : {};
+    } catch (e) {
+      return {};
     }
   });
-
-  // Restore userImage from IndexedDB on initial mount if localStorage lacks it
-  useEffect(() => {
-    const checkAndRestoreFromIndexedDB = async () => {
-      try {
-        const idbImage = await loadDraftImageFromIDB();
-        if (idbImage && !userImage) {
-          setUserImage(idbImage);
-          console.log("[IndexedDB] Berhasil memulihkan foto draf berukuran besar!");
-          triggerToast("Sistem: Progres draf foto berukuran besar berhasil dipulihkan secara otomatis oleh Olive! 💖✨");
-        }
-      } catch (err) {
-        console.warn("Gagal memulihkan draf dari IndexedDB:", err);
-      }
-    };
-    if (!userImage) {
-      checkAndRestoreFromIndexedDB();
-    }
-  }, []);
-
-  // Save changes to localStorage only if they are not null (or handle nulls explicitly without clearing initial values)
-  useEffect(() => {
-    if (userImage) {
-      try {
-        localStorage.setItem('bt_user_image', userImage);
-      } catch (err) {
-        console.warn("Storage Quota Exceeded for userImage:", err);
-        // Hapus sebagian data jika kuota penuh, tetapi jangan crash agar user tetap bisa mengedit gambar saat ini
-        try {
-          localStorage.removeItem('bt_user_image');
-        } catch (e) {}
-      }
-      // Simpan juga ke IndexedDB untuk cadangan tangguh ukuran besar tanpa batasan kuota
-      saveDraftImageToIDB(userImage);
-    } else {
-      try {
-        localStorage.removeItem('bt_user_image');
-      } catch (e) {}
-      saveDraftImageToIDB(null);
-    }
-  }, [userImage]);
+  const lastTrackedFrameIdRef = useRef<string | null>(null);
 
   const [selectedFrame, setSelectedFrame] = useState<Frame | null>(() => {
     if (typeof window === 'undefined') return null;
@@ -681,8 +636,96 @@ export default function App() {
       localStorage.setItem('bt_selected_frame_id', selectedFrame.id);
     }
   }, [selectedFrame]);
-  const [customFrames, setCustomFrames] = useState<Frame[]>([]);
-  const [appwriteFrames, setAppwriteFrames] = useState<Frame[]>([]);
+
+  const [userImage, setUserImage] = useState<string | null>(() => {
+    try {
+      const saved = localStorage.getItem('bt_user_image');
+      if (saved) return saved;
+      return null;
+    } catch (err) {
+      console.warn("Gagal memuat bt_user_image dari localStorage:", err);
+      return null;
+    }
+  });
+
+  // Restore autosaved canvas state (canvas config, stickers, settings) from IndexedDB
+  useEffect(() => {
+    const checkAndRestoreFromIndexedDB = async () => {
+      if (hasRestoredAutosaveRef.current) return;
+      try {
+        const saved = await getCache('bt_canvas_autosave');
+        if (saved) {
+          hasRestoredAutosaveRef.current = true;
+          console.log("[IndexedDB Autosave] Found auto-saved canvas state:", saved);
+          
+          if (saved.userImage) {
+            setUserImage(saved.userImage);
+          }
+          if (saved.selectedFrameId) {
+            const availableFrames = appwriteFrames.length > 0 ? appwriteFrames : FRAMES;
+            const foundFrame = availableFrames.find(f => f.id === saved.selectedFrameId);
+            if (foundFrame) {
+              setSelectedFrame(foundFrame);
+            }
+          }
+          if (saved.neonColor) {
+            setNeonColor(saved.neonColor);
+          }
+          if (saved.imageSettings) {
+            setImageSettings(saved.imageSettings);
+            // Sync history/refs
+            setHistory([saved.imageSettings]);
+            setHistoryIndex(0);
+            lastCommittedRef.current = saved.imageSettings;
+            imageSettingsRef.current = saved.imageSettings;
+          }
+          if (saved.stickers) {
+            setStickers(saved.stickers);
+          }
+          if (saved.filterPresetId) {
+            setFilterPresetId(saved.filterPresetId);
+          }
+          triggerToast("Olaive: Wah, draf kreasi cinta kita terakhir berhasil Olaive pulihkan secara otomatis sayang! Aman berkilau kembali... 💖✨");
+        } else {
+          // Fallback to legacy single image draft restore
+          const idbImage = await loadDraftImageFromIDB();
+          if (idbImage && !userImage) {
+            setUserImage(idbImage);
+            console.log("[IndexedDB] Berhasil memulihkan foto draf berukuran besar!");
+            triggerToast("Sistem: Progres draf foto berukuran besar berhasil dipulihkan secara otomatis oleh Olive! 💖✨");
+          }
+        }
+      } catch (err) {
+        console.warn("Gagal memulihkan draf dari IndexedDB:", err);
+      }
+    };
+    
+    checkAndRestoreFromIndexedDB();
+  }, [appwriteFrames]);
+
+  // Save changes to localStorage only if they are not null (or handle nulls explicitly without clearing initial values)
+  useEffect(() => {
+    if (userImage) {
+      try {
+        localStorage.setItem('bt_user_image', userImage);
+      } catch (err) {
+        console.warn("Storage Quota Exceeded for userImage:", err);
+        // Hapus sebagian data jika kuota penuh, tetapi jangan crash agar user tetap bisa mengedit gambar saat ini
+        try {
+          localStorage.removeItem('bt_user_image');
+        } catch (e) {}
+      }
+      // Simpan juga ke IndexedDB untuk cadangan tangguh ukuran besar tanpa batasan kuota
+      saveDraftImageToIDB(userImage);
+    } else {
+      try {
+        localStorage.removeItem('bt_user_image');
+      } catch (e) {}
+      saveDraftImageToIDB(null);
+    }
+  }, [userImage]);
+
+
 
   // Stable randomized presentation of frame templates
   const displayFrames = useMemo(() => {
@@ -692,7 +735,14 @@ export default function App() {
       const j = Math.floor(Math.random() * (i + 1));
       [arr[i], arr[j]] = [arr[j], arr[i]];
     }
-    return arr;
+    const noFrame: Frame = {
+      id: 'none',
+      name: 'Tanpa Bingkai',
+      src: '',
+      type: 'static',
+      category: 'none',
+    };
+    return [noFrame, ...arr];
   }, [appwriteFrames]);
 
   // Restore selected frame from local storage (if a valid frame exists)
@@ -1647,6 +1697,83 @@ export default function App() {
     localStorage.setItem('bt_filter_preset_id', filterPresetId);
   }, [filterPresetId]);
 
+  // Keep values in mutable refs for interval autosave
+  const autosaveStateRef = useRef({
+    userImage,
+    selectedFrame,
+    neonColor,
+    imageSettings,
+    stickers,
+    filterPresetId
+  });
+
+  useEffect(() => {
+    autosaveStateRef.current = {
+      userImage,
+      selectedFrame,
+      neonColor,
+      imageSettings,
+      stickers,
+      filterPresetId
+    };
+  }, [userImage, selectedFrame, neonColor, imageSettings, stickers, filterPresetId]);
+
+  // 1. Debounced auto-save on state change (e.g., 3s debounce after slider edits or actions)
+  useEffect(() => {
+    const timer = setTimeout(async () => {
+      try {
+        const cur = autosaveStateRef.current;
+        // Skip if everything is empty/default to avoid unnecessary writes
+        if (!cur.userImage && cur.stickers.length === 0 && (!cur.selectedFrame || cur.selectedFrame.id === 'none')) {
+          return;
+        }
+        const payload = {
+          userImage: cur.userImage,
+          selectedFrameId: cur.selectedFrame?.id || 'none',
+          neonColor: cur.neonColor,
+          imageSettings: cur.imageSettings,
+          stickers: cur.stickers,
+          filterPresetId: cur.filterPresetId,
+          timestamp: Date.now()
+        };
+        await setCache('bt_canvas_autosave', payload);
+        console.log("[IndexedDB Autosave] Debounced auto-saved.");
+      } catch (err) {
+        console.warn("[IndexedDB Autosave Error]", err);
+      }
+    }, 3000); // 3 seconds debounce
+
+    return () => clearTimeout(timer);
+  }, [userImage, selectedFrame, neonColor, imageSettings, stickers, filterPresetId]);
+
+  // 2. Periodic strict interval auto-save (every 30 seconds)
+  useEffect(() => {
+    const intervalId = setInterval(async () => {
+      try {
+        const cur = autosaveStateRef.current;
+        // Skip if everything is empty/default to avoid unnecessary writes
+        if (!cur.userImage && cur.stickers.length === 0 && (!cur.selectedFrame || cur.selectedFrame.id === 'none')) {
+          return;
+        }
+        const payload = {
+          userImage: cur.userImage,
+          selectedFrameId: cur.selectedFrame?.id || 'none',
+          neonColor: cur.neonColor,
+          imageSettings: cur.imageSettings,
+          stickers: cur.stickers,
+          filterPresetId: cur.filterPresetId,
+          timestamp: Date.now()
+        };
+        await setCache('bt_canvas_autosave', payload);
+        console.log("[IndexedDB Autosave] Interval 30s auto-saved.");
+      } catch (err) {
+        console.warn("[IndexedDB Autosave Interval Error]", err);
+      }
+    }, 30000); // 30 seconds
+
+    return () => clearInterval(intervalId);
+  }, []);
+
   // Settings equality helper
   const areSettingsEqual = (s1: ImageSettings, s2: ImageSettings) => {
     return (
@@ -1760,9 +1887,36 @@ export default function App() {
 
   // Fetch frames through dynamic environment router to bypass CORS
   const fetchAppwriteFrames = async () => {
-    setIsLoadingAppwrite(true);
+    // 1. Load from cache immediately (both LocalStorage & IndexedDB) to prevent blank states
+    let initialCached: Frame[] = [];
     try {
-      console.log("[Dynamic Fetch] Memuat bingkai resmi...");
+      const lsCached = localStorage.getItem('bt_appwrite_frames');
+      if (lsCached) {
+        initialCached = JSON.parse(lsCached);
+      }
+    } catch (e) {
+      console.warn("[Local-First Cache Read] Error reading localStorage:", e);
+    }
+
+    try {
+      const idbCached = await getCache('bt_appwrite_frames');
+      if (idbCached && Array.isArray(idbCached)) {
+        initialCached = idbCached;
+      }
+    } catch (e) {
+      console.warn("[Local-First Cache Read] Error reading IndexedDB:", e);
+    }
+
+    if (initialCached.length > 0) {
+      console.log("[Local-First Cache] Memuat bingkai lokal instan:", initialCached.length);
+      setAppwriteFrames(initialCached);
+    } else {
+      setIsLoadingAppwrite(true);
+    }
+
+    // 2. Perform background synchronization from the API
+    try {
+      console.log("[Dynamic Fetch] Menyinkronkan bingkai resmi dari API di latar belakang...");
       const response = await axios.get(getAppwriteApiUrl(), {
         headers: {
           "Accept": "application/json"
@@ -1771,31 +1925,172 @@ export default function App() {
       const data = response.data;
       const mappedFrames = Array.isArray(data) ? data : [];
 
-      setAppwriteFrames(mappedFrames);
-      localStorage.setItem('bt_appwrite_frames', JSON.stringify(mappedFrames));
       if (mappedFrames.length > 0) {
-        triggerToast(`Sistem: Berhasil memuat ${mappedFrames.length} bingkai! 💖`);
-      } else {
-        triggerToast("Sistem: Katalog bingkai saat ini sedang kosong.");
+        const hasDifferences = JSON.stringify(mappedFrames) !== JSON.stringify(initialCached);
+        if (hasDifferences || initialCached.length === 0) {
+          setAppwriteFrames(mappedFrames);
+          console.log("[Background Sync] Bingkai baru berhasil diperbarui!");
+        }
+        
+        // Save back to local storage and IndexedDB for the next super-fast startup
+        localStorage.setItem('bt_appwrite_frames', JSON.stringify(mappedFrames));
+        await setCache('bt_appwrite_frames', mappedFrames);
       }
     } catch (error) {
-      console.error("Failed to load frames directly:", error);
-      triggerToast("Sistem: Gagal memuat bingkai dari API langsung. Menggunakan cadangan lokal.");
-      // Fallback to cached items
-      const cached = localStorage.getItem('bt_appwrite_frames');
-      if (cached) {
-        try {
-          setAppwriteFrames(JSON.parse(cached));
-        } catch (e) {}
+      console.error("Failed to sync frames from API:", error);
+      // Fallback again in case initialCached was empty but there exists something in localStorage
+      if (initialCached.length === 0) {
+        const cached = localStorage.getItem('bt_appwrite_frames');
+        if (cached) {
+          try {
+            setAppwriteFrames(JSON.parse(cached));
+          } catch (e) {}
+        }
       }
     } finally {
       setIsLoadingAppwrite(false);
     }
   };
 
+  // Fetch frame likes & usage stats
+  const fetchFrameStats = async () => {
+    // 1. Try to load stats from local cache (IndexedDB) instantly for local-first speed
+    try {
+      const cachedLikes = await getCache('bt_frame_likes');
+      if (cachedLikes) {
+        setFrameLikes(cachedLikes);
+      }
+      const cachedUsages = await getCache('bt_frame_usages');
+      if (cachedUsages) {
+        setFrameUsages(cachedUsages);
+      }
+    } catch (e) {
+      console.warn("Failed to load cached stats:", e);
+    }
+
+    // 2. Perform background synchronization from Firestore
+    try {
+      const querySnapshot = await getDocs(collection(db, 'frame_stats'));
+      const remoteLikes: Record<string, number> = {};
+      const remoteUsages: Record<string, number> = {};
+
+      querySnapshot.forEach((docSnap) => {
+        const data = docSnap.data();
+        const likesCount = data.likesCount || 0;
+        const usageCount = data.usageCount || 0;
+        const frameId = docSnap.id;
+        remoteLikes[frameId] = likesCount;
+        remoteUsages[frameId] = usageCount;
+      });
+
+      setFrameLikes(remoteLikes);
+      setFrameUsages(remoteUsages);
+
+      // Save to cache for the next ultra-fast startup
+      await setCache('bt_frame_likes', remoteLikes);
+      await setCache('bt_frame_usages', remoteUsages);
+      console.log("[Stats Sync] Statistik likes & pemakaian bingkai berhasil disinkronkan! 💕");
+    } catch (err) {
+      console.warn("Gagal sinkron statistik dari awan (Firestore):", err);
+    }
+  };
+
+  // Toggle Frame Like
+  const handleToggleLikeFrame = async (frameId: string) => {
+    const isCurrentlyLiked = !!userLikedFrames[frameId];
+    const nextLikedState = !isCurrentlyLiked;
+    const delta = nextLikedState ? 1 : -1;
+
+    // 1. Update state instantly (Local-First!)
+    setUserLikedFrames(prev => {
+      const updated = { ...prev, [frameId]: nextLikedState };
+      localStorage.setItem('bt_user_liked_frames', JSON.stringify(updated));
+      return updated;
+    });
+
+    setFrameLikes(prev => {
+      const currentVal = prev[frameId] || 0;
+      const nextVal = Math.max(0, currentVal + delta);
+      const updated = { ...prev, [frameId]: nextVal };
+      setCache('bt_frame_likes', updated);
+      return updated;
+    });
+
+    // 2. Synchronize to Firestore (Atomic increment)
+    try {
+      const docRef = doc(db, 'frame_stats', frameId);
+      await updateDoc(docRef, {
+        likesCount: increment(delta)
+      });
+      console.log(`[Firestore Sync] Like bingkai berhasil dirubah ke: ${nextLikedState ? '+1' : '-1'}`);
+    } catch (err) {
+      console.warn("[Firestore Like Sync Error]", err);
+    }
+
+    // 3. Synchronize to Appwrite Databases 'koleksi' as fallback
+    try {
+      await databases.createDocument('koleksi', 'frame_likes_logs', ID.unique(), {
+        frameId,
+        action: nextLikedState ? 'like' : 'unlike',
+        userId: auth.currentUser?.uid || 'guest',
+        timestamp: new Date().toISOString()
+      });
+      console.log("[Appwrite Likes Sync] Log like berhasil terdaftar.");
+    } catch (err) {
+      console.warn("[Appwrite Likes Sync Handled Gracefully]", err);
+    }
+  };
+
+  // Track Frame Usage
+  const handleTrackFrameUsage = async (frameId: string) => {
+    // 1. Update state instantly (Local-First!)
+    setFrameUsages(prev => {
+      const currentVal = prev[frameId] || 0;
+      const nextVal = currentVal + 1;
+      const updated = { ...prev, [frameId]: nextVal };
+      setCache('bt_frame_usages', updated);
+      return updated;
+    });
+
+    // 2. Synchronize to Firestore (Atomic increment)
+    try {
+      const docRef = doc(db, 'frame_stats', frameId);
+      await updateDoc(docRef, {
+        usageCount: increment(1)
+      });
+      console.log(`[Firestore Sync] Pemakaian bingkai berhasil ditambahkan! (+1)`);
+    } catch (err) {
+      console.warn("[Firestore Usage Sync Error]", err);
+    }
+
+    // 3. Synchronize to Appwrite Databases 'koleksi' as fallback
+    try {
+      await databases.createDocument('koleksi', 'frame_usages_logs', ID.unique(), {
+        frameId,
+        userId: auth.currentUser?.uid || 'guest',
+        timestamp: new Date().toISOString()
+      });
+      console.log("[Appwrite Usages Sync] Log pemakaian berhasil terdaftar.");
+    } catch (err) {
+      console.warn("[Appwrite Usages Sync Handled Gracefully]", err);
+    }
+  };
+
   useEffect(() => {
     fetchAppwriteFrames();
+    fetchFrameStats();
   }, []);
+
+  // Synchronously track when user switches frame
+  useEffect(() => {
+    if (selectedFrame && selectedFrame.id && selectedFrame.id !== 'none') {
+      const frameId = selectedFrame.id;
+      if (lastTrackedFrameIdRef.current !== frameId) {
+        lastTrackedFrameIdRef.current = frameId;
+        handleTrackFrameUsage(frameId);
+      }
+    }
+  }, [selectedFrame]);
 
   // Load custom frames & my gallery from localstorage on mount
   useEffect(() => {
@@ -3453,6 +3748,115 @@ export default function App() {
       setHdExportProgress(null);
       setStatusMessage('GAGAL EKSPOR');
       alert('Gagal mendownload karena masalah keamanan CORS server internal. Silahkan ganti ke frame model "FUTURISTIK" kami yang beresolusi super tajam tanpa CORS!');
+    }
+  };
+
+  // Share high-resolution Combined canvas to social media using Web Share API
+  const handleShareSocial = async () => {
+    const canvas = canvasRef.current;
+    if (!canvas) return;
+
+    setIsLoading(true);
+    setStatusMessage('MENYIAPKAN BAGI...');
+    setHdExportProgress(0);
+    setHdExportStatus('Merender kompilasi avatar untuk dibagikan...');
+    triggerToast('Menyiapkan gambar untuk dibagikan...', 2000);
+
+    const sleep = (ms: number) => new Promise(resolve => setTimeout(resolve, ms));
+
+    try {
+      await sleep(200);
+      setHdExportProgress(20);
+      setHdExportStatus('Memetakan komponen stiker...');
+
+      const pathsMap: Record<string, string> = {};
+      PRESET_STICKERS.forEach((st) => {
+        pathsMap[st.id] = st.svgPath || '';
+      });
+
+      await sleep(200);
+      setHdExportProgress(50);
+      setHdExportStatus('Merender canvas utama...');
+
+      // Force render high-res with stickers
+      await renderToCanvas(canvas, {
+        userImageSrc: userImage,
+        frame: selectedFrame,
+        neonColor,
+        settings: imageSettingsRef.current,
+        stickers,
+        presetStickerSvgPaths: pathsMap,
+        size: downloadSize, // Use current selected size
+        isDownloading: true
+      });
+
+      await sleep(200);
+      setHdExportProgress(75);
+      setHdExportStatus('Mengonversi hasil render...');
+
+      const ext = downloadFormat;
+      const mimeType = ext === 'png' ? 'image/png' : ext === 'webp' ? 'image/webp' : 'image/jpeg';
+      const dataUrl = canvas.toDataURL(mimeType, mimeType === 'image/png' ? undefined : 0.95);
+
+      // Restore normal preview (hide duplicate stickers on canvas preview)
+      await renderToCanvas(canvas, {
+        userImageSrc: userImage,
+        frame: selectedFrame,
+        neonColor,
+        settings: imageSettingsRef.current,
+        stickers,
+        presetStickerSvgPaths: pathsMap,
+        size: downloadSize,
+        isDownloading: false
+      });
+
+      setIsLoading(false);
+      setHdExportProgress(null);
+
+      // Perform sharing
+      try {
+        const responseBlob = await fetch(dataUrl);
+        const blob = await responseBlob.blob();
+        const fileName = `Avatar-Bingkai-Futuristik-${Date.now()}.${ext}`;
+        const file = new File([blob], fileName, { type: mimeType });
+
+        if (navigator.share) {
+          const shareData: ShareData = {
+            title: 'Avatar Bingkai Futuristik QCC',
+            text: 'Deklarasikan identitas siber kanda dengan Bingkai Kartu Akses QCC resmi. Buat bingkai foto futuristik kanda sekarang juga di: https://qcc-online.web.app/',
+          };
+
+          // Check if file sharing is supported
+          if (navigator.canShare && navigator.canShare({ files: [file] })) {
+            shareData.files = [file];
+          } else {
+            // If files can't be shared directly via API (e.g. some browsers restrict to URL/Text)
+            shareData.url = 'https://qcc-online.web.app/';
+          }
+
+          await navigator.share(shareData);
+          triggerToast('SISTEM: Berhasil membuka panel berbagi! 🚀💖');
+        } else {
+          // Fallback if navigator.share is completely missing (e.g. HTTP, older desktop browsers)
+          await navigator.clipboard.writeText('https://qcc-online.web.app/');
+          triggerToast('SISTEM: Browser tidak mendukung fitur berbagi langsung. Tautan resmi QCC telah disalin ke papan klip kanda! 📋💕');
+        }
+      } catch (shareErr: any) {
+        console.warn('Gagal menggunakan Web Share API:', shareErr);
+        // User aborted or permission denied, falls back to copying link
+        if (shareErr.name !== 'AbortError') {
+          await navigator.clipboard.writeText('https://qcc-online.web.app/');
+          triggerToast('SISTEM: Tautan resmi QCC berhasil disalin ke papan klip untuk memudahkan kanda berbagi! 📋💖');
+        } else {
+          triggerToast('Berbagi dibatalkan sayang. 🌸');
+        }
+      }
+    } catch (err: any) {
+      console.error(err);
+      setIsLoading(false);
+      setHdExportProgress(null);
+      setStatusMessage('GAGAL BERBAGI');
+      triggerToast('Gagal memproses gambar untuk dibagikan. Silahkan coba lagi sayang! 💕');
     }
   };
 
@@ -5472,13 +5876,23 @@ export default function App() {
                   </div>
                   
                   {user ? (
-                    <button
-                      onClick={handleDownloadHD}
-                      className="w-full mt-4 uppercase font-mono font-black text-xs tracking-widest py-3.5 px-5 rounded-xl bg-neon-cyan text-black hover:bg-[#00d2ff] hover:scale-[1.02] transition-all flex items-center justify-center gap-2 shadow-[0_0_20px_rgba(0,240,255,0.45)] border border-white/10 active:scale-[0.98]"
-                    >
-                      <Download className="w-4 h-4 text-black animate-bounce" />
-                      UNDUH AVATAR ({downloadFormat.toUpperCase()} - {downloadSize}x{downloadSize})
-                    </button>
+                    <div className="space-y-2 mt-4">
+                      <button
+                        onClick={handleDownloadHD}
+                        className="w-full uppercase font-mono font-black text-xs tracking-widest py-3.5 px-5 rounded-xl bg-neon-cyan text-black hover:bg-[#00d2ff] hover:scale-[1.02] transition-all flex items-center justify-center gap-2 shadow-[0_0_20px_rgba(0,240,255,0.45)] border border-white/10 active:scale-[0.98]"
+                      >
+                        <Download className="w-4 h-4 text-black animate-bounce" />
+                        UNDUH AVATAR ({downloadFormat.toUpperCase()} - {downloadSize}x{downloadSize})
+                      </button>
+
+                      <button
+                        onClick={handleShareSocial}
+                        className="w-full uppercase font-mono font-black text-xs tracking-widest py-3.5 px-5 rounded-xl bg-gradient-to-r from-rose-500 to-pink-600 text-white hover:from-rose-400 hover:to-pink-500 hover:scale-[1.02] transition-all flex items-center justify-center gap-2 shadow-[0_0_15px_rgba(244,63,94,0.35)] border border-white/10 active:scale-[0.98] cursor-pointer"
+                      >
+                        <Share2 className="w-4 h-4 text-white animate-pulse" />
+                        BAGIKAN KE SOSIAL MEDIA 🚀💖
+                      </button>
+                    </div>
                   ) : (
                     <button
                       type="button"
@@ -6815,6 +7229,35 @@ export default function App() {
 
                   {/* Mini Viewport Preview */}
                   <div className="relative aspect-square w-full rounded bg-black/60 overflow-hidden flex items-center justify-center p-4 border border-white/5">
+                    {/* Stats Badge Overlay (Likes & Usages) */}
+                    <div className="absolute top-2 right-2 flex items-center gap-1.2 z-20">
+                      {/* Likes Tracker Button */}
+                      <button
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          handleToggleLikeFrame(frame.id);
+                        }}
+                        className={`px-1.5 py-0.5 rounded-full font-mono text-[9px] font-bold flex items-center gap-1 transition-all border cursor-pointer ${
+                          userLikedFrames[frame.id]
+                            ? 'bg-rose-500/20 text-rose-400 border-rose-500/30 hover:bg-rose-500/30'
+                            : 'bg-zinc-950/80 text-zinc-400 border-zinc-800 hover:text-white hover:border-zinc-700'
+                        }`}
+                        title={userLikedFrames[frame.id] ? 'Batal Suka' : 'Suka Bingkai'}
+                      >
+                        <Heart className={`w-2.5 h-2.5 ${userLikedFrames[frame.id] ? 'fill-rose-400 text-rose-400' : ''}`} />
+                        <span>{frameLikes[frame.id] || 0}</span>
+                      </button>
+
+                      {/* Times Used Badge */}
+                      <div 
+                        className="px-1.5 py-0.5 rounded-full bg-zinc-950/80 text-zinc-400 border border-zinc-800/70 font-mono text-[9px] flex items-center gap-1 cursor-default select-none"
+                        title={`Bingkai ini telah digunakan ${frameUsages[frame.id] || 0} kali`}
+                      >
+                        <Sliders className="w-2.5 h-2.5 text-neon-cyan" />
+                        <span>{frameUsages[frame.id] || 0}</span>
+                      </div>
+                    </div>
+
                     {frame.renderSvg ? (
                       <div
                         className="w-full h-full scale-95 pointer-events-none"
@@ -6891,7 +7334,7 @@ export default function App() {
           </button>
         </div>
 
-            {isLoadingCloudDownloads ? (
+            {isLoadingCloudDownloads && cloudDownloads.length === 0 ? (
               <div className="py-24 text-center space-y-4">
                 <div className="w-10 h-10 border-2 border-neon-cyan border-t-transparent rounded-full animate-spin mx-auto"></div>
                 <h3 className="font-mono text-xs font-bold text-zinc-300 uppercase tracking-widest animate-pulse">SINKRONISASI DATABASE CLOUD...</h3>
@@ -7115,7 +7558,7 @@ export default function App() {
           </button>
         </div>
 
-        {isLoadingGallery ? (
+        {isLoadingGallery && savedCreations.length === 0 ? (
           <div className="py-20 text-center">
             <RefreshCw className="w-8 h-8 text-neon-cyan animate-spin mx-auto mb-4" />
             <p className="font-mono text-xs text-zinc-500 uppercase tracking-widest">Sinkronisasi Cloud...</p>
