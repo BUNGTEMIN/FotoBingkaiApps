@@ -32,40 +32,11 @@ import { FRAMES, FILTER_PRESETS, PRESET_STICKERS } from './presets';
 import { renderToCanvas, resolveApiUrl, compressImage, ensureFullSvg } from './canvasUtils';
 import { storage, BUCKET_ID, databases, DATABASE_ID, COLLECTION_ID, Query, ID, ensureAppwriteBucketExists } from './appwrite';
 
-// Helper functions to resolve API endpoints dynamically.
-// In dev environments/AI Studio container, they route through Vite's built-in dev proxy.
-// In standalone production environments (like Firebase static hosting), they make direct requests.
-const getWabotApiUrl = () => {
-  const host = window.location.hostname;
-  if (host.includes('localhost') || host.includes('127.0.0.1') || host.includes('.run.app')) {
-    return '/api/external-images';
-  }
-  return 'https://wabot.nufat.id/imagelist_nufat/api';
-};
-
-const getAppwriteApiUrl = () => {
-  const host = window.location.hostname;
-  if (host.includes('localhost') || host.includes('127.0.0.1') || host.includes('.run.app')) {
-    return '/api/appwrite-frames';
-  }
-  return 'https://nudb.bungtemin.net/bingkai/api';
-};
-
-const getAiEffectUploadBase64Url = () => {
-  const host = window.location.hostname;
-  if (host.includes('localhost') || host.includes('127.0.0.1') || host.includes('.run.app')) {
-    return '/api/proxy/upload_img_base64';
-  }
-  return 'https://webspy.nufat.id/api/upload_img_base64';
-};
-
-const getAiEffectUploadBinaryUrl = () => {
-  const host = window.location.hostname;
-  if (host.includes('localhost') || host.includes('127.0.0.1') || host.includes('.run.app')) {
-    return '/api/proxy/upload_img';
-  }
-  return 'https://webspy.nufat.id/api/upload_img';
-};
+// Use direct API endpoints instead of proxy helpers since they support CORS natively
+const getWabotApiUrl = () => 'https://wabot.nufat.id/imagelist_nufat/api';
+const getAppwriteApiUrl = () => 'https://nudb.bungtemin.net/bingkai/api';
+const getAiEffectUploadBase64Url = () => 'https://webspy.nufat.id/api/upload_img_base64';
+const getAiEffectUploadBinaryUrl = () => 'https://webspy.nufat.id/api/upload_img';
 
 const DEFAULT_IMAGE = 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?auto=format&fit=crop&w=600&q=80';
 
@@ -1646,9 +1617,24 @@ export default function App() {
 
   useEffect(() => {
     try {
-      localStorage.setItem('bt_stickers', JSON.stringify(stickers));
+      // Filter out stickers with very large data URLs to prevent QuotaExceededError
+      const stickersToSave = stickers.map(s => {
+        if (s.imageUrl && s.imageUrl.startsWith('data:') && s.imageUrl.length > 500000) { // > 500kb
+          return undefined; // Or replace imageUrl with a placeholder, but they won't render
+        }
+        return s;
+      }).filter(Boolean);
+      
+      const serialized = JSON.stringify(stickersToSave);
+      
+      // Additional safety check, local storage is usually ~5MB
+      if (serialized.length < 4000000) {
+        localStorage.setItem('bt_stickers', serialized);
+      } else {
+        console.warn("Stickers data too large to save to localStorage.");
+      }
     } catch (e) {
-      console.error("Local storage error:", e);
+      console.warn("Local storage error (quota might be exceeded):", e);
     }
   }, [stickers]);
 
@@ -2062,7 +2048,7 @@ export default function App() {
       }
 
       // 3. Hit the base64 endpoint directly for easiest base64 integration
-      const response = await fetch('/api/proxy/ocr/remove_bg_base64', {
+      const response = await fetch('https://ocr.nufat.id/remove_bg_base64', {
         method: 'POST',
         body: formData,
       });
@@ -4460,6 +4446,7 @@ export default function App() {
                     onSelectSticker={setSelectedStickerId}
                     theme={theme}
                     modeOnly="sticker_vector"
+                    onClose={() => setActiveTab(null)}
                   />
                 </motion.div>
               )}
@@ -4480,6 +4467,7 @@ export default function App() {
                     onSelectSticker={setSelectedStickerId}
                     theme={theme}
                     modeOnly="png_sticker"
+                    onClose={() => setActiveTab(null)}
                   />
                 </motion.div>
               )}
@@ -4500,6 +4488,7 @@ export default function App() {
                     onSelectSticker={setSelectedStickerId}
                     theme={theme}
                     modeOnly="text_custom"
+                    onClose={() => setActiveTab(null)}
                   />
                 </motion.div>
               )}
@@ -4520,6 +4509,7 @@ export default function App() {
                     onSelectSticker={setSelectedStickerId}
                     theme={theme}
                     modeOnly="text_preset"
+                    onClose={() => setActiveTab(null)}
                   />
                 </motion.div>
               )}
@@ -5675,6 +5665,20 @@ export default function App() {
 
               {user?.email === 'bungtemin@gmail.com' && (
                 <button
+                  onClick={() => setActiveTab(activeTab === 'remove_bg' ? null : 'remove_bg')}
+                  className={`snap-center flex-shrink-0 px-3.5 py-1.5 rounded-xl font-mono text-xs font-bold tracking-widest transition-all duration-150 flex flex-col items-center justify-center space-y-1 min-w-[76px] ${
+                    activeTab === 'remove_bg'
+                      ? 'bg-rose-500/25 text-rose-500 border-t-2 border-rose-500 shadow-[0_0_15px_rgba(244,63,94,0.3)]'
+                      : 'text-zinc-450 hover:text-zinc-200 hover:bg-white/5'
+                  }`}
+                >
+                  <Scissors className="w-4 h-4 text-rose-500 animate-pulse" />
+                  <span className="text-[8px] uppercase tracking-wider font-extrabold text-rose-500">HAPUS BG</span>
+                </button>
+              )}
+
+              {user?.email === 'bungtemin@gmail.com' && (
+                <button
                   onClick={() => {
                     if (!userImage) {
                       triggerToast("Sayang, silakan unggah foto terlebih dahulu di tombol UNGGAH sebelum mencoba AI Effect! 💖");
@@ -5813,18 +5817,6 @@ export default function App() {
               >
                 <Activity className="w-4 h-4 text-emerald-400" />
                 <span className="text-[8px] uppercase tracking-wider font-extrabold text-emerald-400">RIWAYAT</span>
-              </button>
-
-              <button
-                onClick={() => setActiveTab(activeTab === 'remove_bg' ? null : 'remove_bg')}
-                className={`snap-center flex-shrink-0 px-3.5 py-1.5 rounded-xl font-mono text-xs font-bold tracking-widest transition-all duration-150 flex flex-col items-center justify-center space-y-1 min-w-[76px] ${
-                  activeTab === 'remove_bg'
-                    ? 'bg-rose-500/25 text-rose-500 border-t-2 border-rose-500 shadow-[0_0_15px_rgba(244,63,94,0.3)]'
-                    : 'text-zinc-450 hover:text-zinc-200 hover:bg-white/5'
-                }`}
-              >
-                <Scissors className="w-4 h-4 text-rose-500 animate-pulse" />
-                <span className="text-[8px] uppercase tracking-wider font-extrabold text-rose-500">HAPUS BG</span>
               </button>
 
               <button

@@ -15,6 +15,7 @@ interface StickerSelectorProps {
   onSelectSticker: (id: string | null) => void;
   theme?: 'dark' | 'light';
   modeOnly?: 'sticker' | 'text' | 'text_preset' | 'text_custom' | 'sticker_vector' | 'png_sticker';
+  onClose?: () => void;
 }
 
 export const STICKER_COLORS = [
@@ -72,7 +73,8 @@ export default function StickerSelector({
   selectedStickerId,
   onSelectSticker,
   theme = 'dark',
-  modeOnly
+  modeOnly,
+  onClose
 }: StickerSelectorProps) {
   const [inputText, setInputText] = useState('');
   const [textColor, setTextColor] = useState('#00f2fe');
@@ -83,11 +85,13 @@ export default function StickerSelector({
 
   const [extPngUrl, setExtPngUrl] = useState('');
   const [isUploadingPng, setIsUploadingPng] = useState(false);
+  const [uploadStatusMsg, setUploadStatusMsg] = useState('');
+  const [isFetchingApi, setIsFetchingApi] = useState(true);
   const [pngSelectorTab, setPngSelectorTab] = useState<'presets' | 'upload' | 'url'>('presets');
   const [presetPngStickers, setPresetPngStickers] = useState<any[]>([]);
 
-  useEffect(() => {
-    // Try fetching directly from the user's API first
+  const fetchDriveList = () => {
+    setIsFetchingApi(true);
     axios.get('https://dev.bungtemin.net/api/drive/list')
       .then(res => {
         const data = res.data;
@@ -99,14 +103,10 @@ export default function StickerSelector({
             url: item.src || item.url || item.link,
             desc: item.description || item.desc || "External PNG sticker"
           })));
-          console.log("Successfully fetched PNG stickers directly from API!");
-        } else {
-          throw new Error("Empty list or invalid format");
         }
+        setIsFetchingApi(false);
       })
       .catch(err => {
-        console.warn("Direct CORS/fetch failed, trying backup direct API format...", err.message);
-        // Backup direct url
         axios.get('https://apps.bungtemin.net/api/drive/list')
           .then(res => {
             const data = res.data;
@@ -119,9 +119,16 @@ export default function StickerSelector({
                 desc: item.description || item.desc || "External PNG sticker"
               })));
             }
+            setIsFetchingApi(false);
           })
-          .catch(backupErr => console.error("Both primary and backup PNG sticker endpoints failed:", backupErr));
+          .catch(backupErr => {
+            setIsFetchingApi(false);
+          });
       });
+  };
+
+  useEffect(() => {
+    fetchDriveList();
   }, []);
 
   const handleAddPngSticker = (url: string) => {
@@ -140,22 +147,70 @@ export default function StickerSelector({
     onSelectSticker(newSticker.id);
   };
 
-  const handleLocalPngUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+  const handleLocalPngUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
 
-    setIsUploadingPng(true);
+    // LANGSUNG BACA FILE UNTUK DITAMPILKAN DI KANVAS SEGERA
+    const stickerId = `placed-png-${Date.now()}-${Math.random().toString(36).substring(2, 6)}`;
     const reader = new FileReader();
+
     reader.onload = (event) => {
       const base64Data = event.target?.result as string;
-      handleAddPngSticker(base64Data);
-      setIsUploadingPng(false);
+      const newSticker: PlacedSticker = {
+        id: stickerId,
+        type: 'sticker',
+        imageUrl: base64Data,
+        x: 50,
+        y: 50,
+        scale: 1,
+        rotation: 0,
+        blendMode: selectedBlendMode
+      };
+      onAddSticker(newSticker);
+      onSelectSticker(newSticker.id);
+      
+      if (onClose) {
+        onClose();
+      } else {
+        setPngSelectorTab('presets'); // Auto pindah tab jika onClose tidak ada
+      }
     };
     reader.onerror = () => {
-      setIsUploadingPng(false);
-      alert('Gagal membaca file gambar Anda. Silakan coba file lain.');
+      console.error('Gagal membaca file lokal');
     };
     reader.readAsDataURL(file);
+
+    // BACKGROUND UPLOAD KE SERVER UNTUK PENYIMPANAN CLOUD & MENGGANTI URL (MENGHEMAT LOCALSTORAGE)
+    try {
+      const formData = new FormData();
+      formData.append('file', file);
+      
+      let uploadUrl = '';
+
+      try {
+        const res = await axios.post('https://dev.bungtemin.net/api/drive/upload', formData, {
+          headers: { 'Content-Type': 'multipart/form-data' }
+        });
+        uploadUrl = res.data?.url || res.data?.src || res.data?.fileUrl;
+      } catch (err) {
+        console.warn('Gagal upload ke dev server, mencoba server apps...', err);
+        const res2 = await axios.post('https://apps.bungtemin.net/api/drive/upload', formData, {
+          headers: { 'Content-Type': 'multipart/form-data' }
+        });
+        uploadUrl = res2.data?.url || res2.data?.src || res2.data?.fileUrl;
+      }
+
+      if (uploadUrl) {
+         // Silently refresh drive list di background
+         fetchDriveList();
+         // Mengganti Base64 dari kanvas menjadi URL agar local storage tidak error QuotaExceeded
+         onUpdateSticker(stickerId, { imageUrl: uploadUrl });
+      }
+
+    } catch (err) {
+      console.warn("Upload background ke Drive gagal, memakai Base64 lokal.", err);
+    }
   };
 
   const handleAddPresetSticker = (sticker: PresetSticker) => {
@@ -419,30 +474,46 @@ export default function StickerSelector({
 
             {/* Tab content 1: Presets transparent PNG stickers */}
             {pngSelectorTab === 'presets' && (
-              <div className="grid grid-cols-4 gap-1.5">
-                {presetPngStickers.map((p) => (
-                  <button
-                    key={p.id}
-                    type="button"
-                    onClick={() => handleAddPngSticker(p.url)}
-                    className={`p-1.5 border rounded-lg flex flex-col items-center justify-center transition-all group relative aspect-square select-none ${
-                      theme === 'dark'
-                        ? 'bg-zinc-950 border-white/5 hover:border-cyan-500/40 hover:bg-zinc-900 shadow-sm'
-                        : 'bg-white border-black/5 hover:border-cyan-500/40 hover:bg-zinc-50 shadow-sm'
-                    }`}
-                    title={p.desc}
-                  >
-                    <img
-                      src={p.url}
-                      alt={p.name}
-                      referrerPolicy="no-referrer"
-                      className="w-10 h-10 object-contain drop-shadow-[0_0_4px_rgba(0,240,255,0.3)] group-hover:scale-110 transition-transform pointer-events-none"
-                    />
-                    <div className="text-[6.5px] font-mono tracking-tighter truncate w-full text-center mt-1 text-zinc-400 group-hover:text-cyan-300">
-                      {p.name}
+              <div className="grid grid-cols-4 gap-1.5 min-h-[80px]">
+                {isFetchingApi ? (
+                  Array.from({ length: 8 }).map((_, i) => (
+                    <div key={`skeleton-${i}`} className={`p-1.5 border rounded-lg flex flex-col items-center justify-center aspect-square ${
+                      theme === 'dark' ? 'bg-zinc-950/50 border-white/5 animate-pulse' : 'bg-black/5 border-black/5 animate-pulse'
+                    }`}>
+                      <div className={`w-6 h-6 rounded-md mb-1.5 ${theme === 'dark' ? 'bg-zinc-800' : 'bg-zinc-200'}`} />
+                      <div className={`w-8 h-1.5 rounded-full ${theme === 'dark' ? 'bg-zinc-800' : 'bg-zinc-200'}`} />
                     </div>
-                  </button>
-                ))}
+                  ))
+                ) : presetPngStickers.length > 0 ? (
+                  presetPngStickers.map((p) => (
+                    <button
+                      key={p.id}
+                      type="button"
+                      onClick={() => handleAddPngSticker(p.url)}
+                      className={`p-1.5 border rounded-lg flex flex-col items-center justify-center transition-all group relative aspect-square select-none ${
+                        theme === 'dark'
+                          ? 'bg-zinc-950 border-white/5 hover:border-cyan-500/40 hover:bg-zinc-900 shadow-sm'
+                          : 'bg-white border-black/5 hover:border-cyan-500/40 hover:bg-zinc-50 shadow-sm'
+                      }`}
+                      title={p.desc}
+                    >
+                      <img
+                        src={p.url}
+                        alt={p.name}
+                        referrerPolicy="no-referrer"
+                        className="w-10 h-10 object-contain drop-shadow-[0_0_4px_rgba(0,240,255,0.3)] group-hover:scale-110 transition-transform pointer-events-none"
+                      />
+                      <div className="text-[6.5px] font-mono tracking-tighter truncate w-full text-center mt-1 text-zinc-400 group-hover:text-cyan-300">
+                        {p.name}
+                      </div>
+                    </button>
+                  ))
+                ) : (
+                  <div className="col-span-4 py-6 text-center flex flex-col items-center justify-center text-zinc-500">
+                    <Sparkles className="w-5 h-5 mb-1.5 opacity-50" />
+                    <span className="text-[8px] font-mono uppercase tracking-widest">Tidak dapat mengakses koleksi</span>
+                  </div>
+                )}
               </div>
             )}
 
@@ -469,7 +540,7 @@ export default function StickerSelector({
                 >
                   <Upload className={`w-4 h-4 mb-1 text-cyan-400 ${isUploadingPng ? 'animate-bounce' : ''}`} />
                   <span className="text-[9.5px] font-mono leading-none tracking-wide text-center">
-                    {isUploadingPng ? 'MENGKOMPRESI STIKER...' : 'PILIH BERKAS PNG TRASPARAN'}
+                    {isUploadingPng ? (uploadStatusMsg || 'MENGUNGGAH...') : 'PILIH BERKAS PNG TRASPARAN'}
                   </span>
                   <span className="text-[7.5px] text-zinc-500 mt-1 font-sans">
                     Format PNG transparan dianjurkan
