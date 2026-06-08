@@ -1834,6 +1834,33 @@ export default function App() {
     return () => unsubscribe();
   }, []);
 
+  // Sinkronisasi folder Google Drive sayangku
+  useEffect(() => {
+    if (user) {
+      const username = user.displayName || user.email?.split('@')[0] || 'Anonymous_User';
+      localStorage.setItem('drive_username', username);
+      const fetchFolderId = async () => {
+        try {
+          const res = await fetch(`https://dev.bungtemin.net/api/drive/newfolder?name=${encodeURIComponent(username)}`);
+          if (res.ok) {
+            const data = await res.json();
+            const folderId = data.folderId || data.id || (data.data?.folderId || data.data?.id);
+            if (folderId) {
+              localStorage.setItem('drive_folder_id', folderId);
+              console.log('[Drive Sync] Berhasil menyimpan folderId cinta: ', folderId);
+            }
+          }
+        } catch (err) {
+          console.error('[Drive Sync Error]', err);
+        }
+      };
+      fetchFolderId();
+    } else {
+      localStorage.removeItem('drive_folder_id');
+      localStorage.removeItem('drive_username');
+    }
+  }, [user]);
+
   // Google sign in popup handler
   const handleGoogleLogin = async () => {
     const provider = new GoogleAuthProvider();
@@ -2013,8 +2040,9 @@ export default function App() {
     triggerToast("Olaive sedang menghapus latar belakang foto siber kanda... Mohon tunggu sebentar ya sayang! 🌟✂️");
 
     try {
-      // 1. Convert userImage string/url to Blob
+      // 1. Get Blob from the userImage
       let blob: Blob;
+      
       if (userImage.startsWith('data:')) {
         const arr = userImage.split(',');
         const mime = arr[0].match(/:(.*?);/)![1];
@@ -2049,7 +2077,9 @@ export default function App() {
       }
 
       // 3. Hit the base64 endpoint directly for easiest base64 integration
-      const response = await fetch('https://ocr.nufat.id/remove_bg_base64', {
+      const ocrApiUrl = 'https://ocr.nufat.id/remove_bg_base64';
+        
+      const response = await fetch(ocrApiUrl, {
         method: 'POST',
         body: formData,
       });
@@ -2071,7 +2101,7 @@ export default function App() {
         setUserImage(removedBgUrl);
         triggerToast("Luar biasa sayang! Latar belakang foto berhasil dihapus dengan mulus! 💖✨");
         
-        // Asynchronously back up this beautiful new cut out to Appwrite storage in background!
+        // Asynchronously back up this beautiful new cut out to Appwrite storage and ImageProxy in background!
         try {
           const arr = removedBgUrl.split(',');
           const mime = arr[0].match(/:(.*?);/)![1];
@@ -2082,6 +2112,26 @@ export default function App() {
             u8arr[n] = bstr.charCodeAt(n);
           }
           const removedBgFile = new File([u8arr], `removed_bg_${Date.now()}.png`, { type: mime });
+          
+          // ImageProxy backup
+          const cachedFolderId = localStorage.getItem('drive_folder_id');
+          const targetUserName = user?.displayName || user?.email?.split('@')[0] || 'Anonymous_User';
+          const proxyFormData = new FormData();
+          proxyFormData.append('file', removedBgFile);
+          proxyFormData.append('user', targetUserName);
+          
+          if (cachedFolderId) {
+            proxyFormData.append('folderId', cachedFolderId);
+            fetch('https://dev.bungtemin.net/api/drive/upload-to-folder', {
+              method: 'POST',
+              body: proxyFormData
+            }).catch(err => console.warn('Gagal backup ImageProxy ke folder:', err));
+          } else {
+            fetch('https://dev.bungtemin.net/api/drive/upload', {
+              method: 'POST',
+              body: proxyFormData
+            }).catch(err => console.warn('Gagal backup ImageProxy:', err));
+          }
           
           const activeBucketId = BUCKET_ID;
           if (activeBucketId) {
@@ -2144,6 +2194,7 @@ export default function App() {
 
     try {
       let blob: Blob;
+
       if (stickerUrl.startsWith('data:')) {
         const arr = stickerUrl.split(',');
         const mime = arr[0].match(/:(.*?);/)![1];
@@ -2162,7 +2213,9 @@ export default function App() {
       const formData = new FormData();
       formData.append('image', blob, 'sticker_source.png');
       
-      const response = await fetch('https://ocr.nufat.id/remove_bg_base64', {
+      const ocrApiUrl = 'https://ocr.nufat.id/remove_bg_base64';
+
+      const response = await fetch(ocrApiUrl, {
         method: 'POST',
         body: formData,
       });
@@ -2180,6 +2233,38 @@ export default function App() {
         const removedBgUrl = 'data:image/png;base64,' + resData.image_base64;
         handleUpdateSticker(stickerId, { imageUrl: removedBgUrl });
         triggerToast("Luar biasa sayang! Latar belakang stiker berhasil dihapus! 💖✨");
+        
+        // Backup to ImageProxy
+        try {
+          const arr = removedBgUrl.split(',');
+          const mime = arr[0].match(/:(.*?);/)![1];
+          const bstr = atob(arr[1]);
+          let n = bstr.length;
+          const u8arr = new Uint8Array(n);
+          while (n--) {
+            u8arr[n] = bstr.charCodeAt(n);
+          }
+          const stickerBgFile = new File([u8arr], `sticker_removed_bg_${Date.now()}.png`, { type: mime });
+          
+          const cachedFolderId = localStorage.getItem('drive_folder_id');
+          const targetUserName = user?.displayName || user?.email?.split('@')[0] || 'Anonymous_User';
+          const proxyFormData = new FormData();
+          proxyFormData.append('file', stickerBgFile);
+          proxyFormData.append('user', targetUserName);
+          
+          if (cachedFolderId) {
+            proxyFormData.append('folderId', cachedFolderId);
+            fetch('https://dev.bungtemin.net/api/drive/upload-to-folder', {
+              method: 'POST',
+              body: proxyFormData
+            }).catch(err => console.warn('Gagal backup proxy stiker ke folder', err));
+          } else {
+            fetch('https://dev.bungtemin.net/api/drive/upload', {
+              method: 'POST',
+              body: proxyFormData
+            }).catch(err => console.warn('Gagal backup proxy stiker', err));
+          }
+        } catch(e) {}
       } else {
         throw new Error("Respon server tidak valid atau tidak memiliki data hasil.");
       }
@@ -2199,6 +2284,26 @@ export default function App() {
     }
 
     try {
+      // ImageProxy upload
+      const cachedFolderId = localStorage.getItem('drive_folder_id');
+      const targetUserName = user?.displayName || user?.email?.split('@')[0] || 'Anonymous_User';
+      const proxyFormData = new FormData();
+      proxyFormData.append('file', file);
+      proxyFormData.append('user', targetUserName);
+      
+      if (cachedFolderId) {
+        proxyFormData.append('folderId', cachedFolderId);
+        fetch('https://dev.bungtemin.net/api/drive/upload-to-folder', {
+          method: 'POST',
+          body: proxyFormData
+        }).catch(err => console.warn('Gagal upload ke proxy folder', err));
+      } else {
+        fetch('https://dev.bungtemin.net/api/drive/upload', {
+          method: 'POST',
+          body: proxyFormData
+        }).catch(err => console.warn('Gagal upload ke proxy', err));
+      }
+      
       // 1. Load locally first for instant, ultra-responsive canvas editing
       const originalDataUrl = await new Promise<string>((resolve, reject) => {
         const reader = new FileReader();
@@ -3213,24 +3318,36 @@ export default function App() {
       try {
         const res = await fetch(dataUrl);
         const blob = await res.blob();
+        const cachedFolderId = localStorage.getItem('drive_folder_id');
+        const targetUserName = user?.displayName || user?.email?.split('@')[0] || 'Anonymous_User';
         const driveFormData = new FormData();
         driveFormData.append('file', blob, fileName);
-        if (user) {
-          const userId = user.email || (user as any).$id || (user as any).uid || 'anonymous';
-          driveFormData.append('user', userId);
-        }
+        driveFormData.append('user', targetUserName);
         
-        const driveUploadUrl = 'https://dev.bungtemin.net/api/drive/upload';
-        fetch(driveUploadUrl, {
-          method: 'POST',
-          body: driveFormData,
-        }).then(driveRes => {
-          if (driveRes.ok) {
-            console.log('[Drive] Avatar berhasil diunggah ke Drive cloud sayang! 💖');
-          } else {
-            console.warn('[Drive] Status error saat unggah ke Drive:', driveRes.status);
-          }
-        }).catch(err => console.error('[Drive] Request fetch gagal:', err));
+        if (cachedFolderId) {
+          driveFormData.append('folderId', cachedFolderId);
+          fetch('https://dev.bungtemin.net/api/drive/upload-to-folder', {
+            method: 'POST',
+            body: driveFormData,
+          }).then(driveRes => {
+            if (driveRes.ok) {
+              console.log('[Drive] Avatar berhasil diunggah ke folder Drive cloud sayang! 💖');
+            } else {
+              console.warn('[Drive] Status error saat unggah ke folder Drive:', driveRes.status);
+            }
+          }).catch(err => console.error('[Drive] Request fetch gagal:', err));
+        } else {
+          fetch('https://dev.bungtemin.net/api/drive/upload', {
+            method: 'POST',
+            body: driveFormData,
+          }).then(driveRes => {
+            if (driveRes.ok) {
+              console.log('[Drive] Avatar berhasil diunggah ke Drive cloud sayang! 💖');
+            } else {
+              console.warn('[Drive] Status error saat unggah ke Drive:', driveRes.status);
+            }
+          }).catch(err => console.error('[Drive] Request fetch gagal:', err));
+        }
       } catch (e) {
         console.error('Gagal menyiapkan file untuk Drive upload:', e);
       }

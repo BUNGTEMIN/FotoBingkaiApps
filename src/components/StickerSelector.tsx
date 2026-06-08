@@ -83,52 +83,79 @@ export default function StickerSelector({
   const [selectedBlendMode, setSelectedBlendMode] = useState<'normal' | 'multiply' | 'screen' | 'overlay' | 'darken' | 'lighten' | 'color-dodge' | 'color-burn' | 'hard-light' | 'soft-light' | 'difference' | 'exclusion' | 'hue' | 'saturation' | 'color' | 'luminosity'>('normal');
   const [letterSpacing, setLetterSpacing] = useState(0);
 
-  const [extPngUrl, setExtPngUrl] = useState('');
   const [isUploadingPng, setIsUploadingPng] = useState(false);
   const [uploadStatusMsg, setUploadStatusMsg] = useState('');
   const [isFetchingApi, setIsFetchingApi] = useState(true);
-  const [pngSelectorTab, setPngSelectorTab] = useState<'presets' | 'upload' | 'url'>('presets');
-  const [presetPngStickers, setPresetPngStickers] = useState<any[]>([]);
+  const [isFetchingCloud, setIsFetchingCloud] = useState(false);
+  const [pngSelectorTab, setPngSelectorTab] = useState<'presets' | 'upload' | 'cloud'>('presets');
+  const [generalStickers, setGeneralStickers] = useState<any[]>([]);
+  const [userCloudStickers, setUserCloudStickers] = useState<any[]>([]);
 
-  const fetchDriveList = () => {
+  const fetchGeneralStickers = () => {
     setIsFetchingApi(true);
     axios.get('https://dev.bungtemin.net/api/drive/list')
       .then(res => {
         const data = res.data;
         const list = Array.isArray(data) ? data : (data && Array.isArray(data.data) ? data.data : []);
-        if (list.length > 0) {
-          setPresetPngStickers(list.map((item: any, idx: number) => ({
-            id: item.id || `remote-${idx}`,
-            name: item.name || `Sticker ${idx}`,
-            url: item.src || item.url || item.link,
-            desc: item.description || item.desc || "External PNG sticker"
-          })));
-        }
+        setGeneralStickers(list.map((item: any, idx: number) => {
+          const rawId = item.id || item.fileId || `remote-${idx}`;
+          const proxyUrl = item.src || item.url || item.link || (rawId ? `https://dev.bungtemin.net/api/drive/${rawId}` : '');
+          return {
+            id: rawId,
+            name: item.name || item.fileName || `Sticker ${idx}`,
+            url: proxyUrl,
+            desc: item.description || item.desc || "General PNG sticker"
+          };
+        }));
         setIsFetchingApi(false);
       })
       .catch(err => {
-        axios.get('https://apps.bungtemin.net/api/drive/list')
-          .then(res => {
-            const data = res.data;
-            const list = Array.isArray(data) ? data : (data && Array.isArray(data.data) ? data.data : []);
-            if (list.length > 0) {
-              setPresetPngStickers(list.map((item: any, idx: number) => ({
-                id: item.id || `remote-${idx}`,
-                name: item.name || `Sticker ${idx}`,
-                url: item.src || item.url || item.link,
-                desc: item.description || item.desc || "External PNG sticker"
-              })));
-            }
-            setIsFetchingApi(false);
-          })
-          .catch(backupErr => {
-            setIsFetchingApi(false);
-          });
+        console.warn('Gagal memuat stiker umum:', err);
+        setIsFetchingApi(false);
+      });
+  };
+
+  const fetchUserCloudStickers = () => {
+    const cachedFolderId = localStorage.getItem('drive_folder_id');
+    const cachedUsername = localStorage.getItem('drive_username');
+    if (!cachedFolderId && !cachedUsername) {
+      setUserCloudStickers([]);
+      return;
+    }
+
+    setIsFetchingCloud(true);
+    let targetUrl = '';
+    if (cachedFolderId) {
+      targetUrl = `https://dev.bungtemin.net/api/drive/view-folder?folderId=${encodeURIComponent(cachedFolderId)}`;
+    } else if (cachedUsername) {
+      targetUrl = `https://dev.bungtemin.net/api/drive/view-folder?name=${encodeURIComponent(cachedUsername)}`;
+    }
+
+    axios.get(targetUrl)
+      .then(res => {
+        const data = res.data;
+        const list = Array.isArray(data) ? data : (data && Array.isArray(data.data) ? data.data : []);
+        setUserCloudStickers(list.map((item: any, idx: number) => {
+          const rawId = item.id || item.fileId || `remote-${idx}`;
+          const proxyUrl = item.src || item.url || item.link || (rawId ? `https://dev.bungtemin.net/api/drive/${rawId}` : '');
+          return {
+            id: rawId,
+            name: item.name || item.fileName || `Sticker ${idx}`,
+            url: proxyUrl,
+            desc: item.description || item.desc || "Google Drive PNG sticker"
+          };
+        }));
+        setIsFetchingCloud(false);
+      })
+      .catch(err => {
+        console.warn('Gagal memuat koleksi cloud kanda:', err);
+        setIsFetchingCloud(false);
       });
   };
 
   useEffect(() => {
-    fetchDriveList();
+    fetchGeneralStickers();
+    fetchUserCloudStickers();
   }, []);
 
   const handleAddPngSticker = (url: string) => {
@@ -183,27 +210,47 @@ export default function StickerSelector({
 
     // BACKGROUND UPLOAD KE SERVER UNTUK PENYIMPANAN CLOUD & MENGGANTI URL (MENGHEMAT LOCALSTORAGE)
     try {
+      const cachedFolderId = localStorage.getItem('drive_folder_id');
+      const cachedUsername = localStorage.getItem('drive_username') || 'Anonymous_User';
+      
       const formData = new FormData();
       formData.append('file', file);
+      formData.append('user', cachedUsername);
       
       let uploadUrl = '';
-
-      try {
-        const res = await axios.post('https://dev.bungtemin.net/api/drive/upload', formData, {
-          headers: { 'Content-Type': 'multipart/form-data' }
-        });
-        uploadUrl = res.data?.url || res.data?.src || res.data?.fileUrl;
-      } catch (err) {
-        console.warn('Gagal upload ke dev server, mencoba server apps...', err);
-        const res2 = await axios.post('https://apps.bungtemin.net/api/drive/upload', formData, {
-          headers: { 'Content-Type': 'multipart/form-data' }
-        });
-        uploadUrl = res2.data?.url || res2.data?.src || res2.data?.fileUrl;
+      
+      if (cachedFolderId) {
+        formData.append('folderId', cachedFolderId);
+        try {
+          const res = await axios.post('https://dev.bungtemin.net/api/drive/upload-to-folder', formData, {
+            headers: { 'Content-Type': 'multipart/form-data' }
+          });
+          uploadUrl = res.data?.url || res.data?.src || res.data?.fileUrl || (res.data?.id ? `https://dev.bungtemin.net/api/drive/${res.data.id}` : '');
+        } catch (err) {
+          console.warn('Gagal upload ke folder spesifik, mencoba fallback upload...', err);
+          const res2 = await axios.post('https://dev.bungtemin.net/api/drive/upload', formData, {
+            headers: { 'Content-Type': 'multipart/form-data' }
+          });
+          uploadUrl = res2.data?.url || res2.data?.src || res2.data?.fileUrl || (res2.data?.id ? `https://dev.bungtemin.net/api/drive/${res2.data.id}` : '');
+        }
+      } else {
+        try {
+          const res = await axios.post('https://dev.bungtemin.net/api/drive/upload', formData, {
+            headers: { 'Content-Type': 'multipart/form-data' }
+          });
+          uploadUrl = res.data?.url || res.data?.src || res.data?.fileUrl || (res.data?.id ? `https://dev.bungtemin.net/api/drive/${res.data.id}` : '');
+        } catch (err) {
+          console.warn('Gagal upload ke dev server, mencoba server apps...', err);
+          const res2 = await axios.post('https://apps.bungtemin.net/api/drive/upload', formData, {
+            headers: { 'Content-Type': 'multipart/form-data' }
+          });
+          uploadUrl = res2.data?.url || res2.data?.src || res2.data?.fileUrl || (res2.data?.id ? `https://dev.bungtemin.net/api/drive/${res2.data.id}` : '');
+        }
       }
 
       if (uploadUrl) {
          // Silently refresh drive list di background
-         fetchDriveList();
+         fetchUserCloudStickers();
          // Mengganti Base64 dari kanvas menjadi URL agar local storage tidak error QuotaExceeded
          onUpdateSticker(stickerId, { imageUrl: uploadUrl });
       }
@@ -440,7 +487,7 @@ export default function StickerSelector({
                 <ImageIcon className="w-3 h-3 text-[#00f2fe]" /> PNG STICKER GRABBER
               </span>
               <span className="text-[7.5px] font-mono text-zinc-500 bg-zinc-950 px-1.5 border border-zinc-800 rounded uppercase">
-                INTERN & EXTERN
+                INTERN & CLOUD
               </span>
             </div>
 
@@ -449,7 +496,7 @@ export default function StickerSelector({
               {[
                 { id: 'presets', label: 'PRESET PNG', icon: Sparkles },
                 { id: 'upload', label: 'UNGGAH LOKAL', icon: Upload },
-                { id: 'url', label: 'ALAMAT URL', icon: Link }
+                { id: 'cloud', label: 'KOLEKSI SAYA', icon: ImageIcon }
               ].map((tab) => {
                 const Icon = tab.icon;
                 return (
@@ -484,8 +531,8 @@ export default function StickerSelector({
                       <div className={`w-8 h-1.5 rounded-full ${theme === 'dark' ? 'bg-zinc-800' : 'bg-zinc-200'}`} />
                     </div>
                   ))
-                ) : presetPngStickers.length > 0 ? (
-                  presetPngStickers.map((p) => (
+                ) : generalStickers.length > 0 ? (
+                  generalStickers.map((p) => (
                     <button
                       key={p.id}
                       type="button"
@@ -511,7 +558,7 @@ export default function StickerSelector({
                 ) : (
                   <div className="col-span-4 py-6 text-center flex flex-col items-center justify-center text-zinc-500">
                     <Sparkles className="w-5 h-5 mb-1.5 opacity-50" />
-                    <span className="text-[8px] font-mono uppercase tracking-widest">Tidak dapat mengakses koleksi</span>
+                    <span className="text-[8px] font-mono uppercase tracking-widest">Tidak ada preset stiker</span>
                   </div>
                 )}
               </div>
@@ -549,35 +596,64 @@ export default function StickerSelector({
               </div>
             )}
 
-            {/* Tab content 3: Direct URL grabber */}
-            {pngSelectorTab === 'url' && (
-              <div className="space-y-1.5">
-                <span className="text-[8px] text-zinc-500 font-mono block uppercase">Masukkan Tautan Gambar Kreatif Anda (PNG):</span>
-                <div className="flex gap-1.5">
-                  <input
-                    type="url"
-                    placeholder="Contoh: https://example.com/stiker-saya.png"
-                    value={extPngUrl}
-                    onChange={(e) => setExtPngUrl(e.target.value)}
-                    className={`flex-1 py-1 px-2.5 rounded text-[10px] font-mono focus:outline-none focus:border-[#00F0FF] ${
-                      theme === 'dark'
-                        ? 'bg-black border border-white/5 text-zinc-250 placeholder-zinc-700'
-                        : 'bg-white border border-black/10 text-zinc-900 placeholder-zinc-400 font-medium'
-                    }`}
-                  />
-                  <button
+            {/* Tab content 3: Cloud Folder personal stickers */}
+            {pngSelectorTab === 'cloud' && (
+              <div className="space-y-2">
+                <div className="flex items-center justify-between px-1">
+                  <span className="text-[8px] text-zinc-500 font-mono block uppercase">
+                    Koleksi di Folder Google Drive-mu:
+                  </span>
+                  <button 
                     type="button"
-                    onClick={() => {
-                      if (extPngUrl.trim()) {
-                        handleAddPngSticker(extPngUrl);
-                        setExtPngUrl('');
-                      }
-                    }}
-                    disabled={!extPngUrl.trim()}
-                    className="bg-cyan-500 text-black font-mono font-bold text-[9px] py-1 px-2.5 rounded hover:bg-white hover:text-black transition-all disabled:opacity-30 shrink-0"
+                    onClick={fetchUserCloudStickers}
+                    className="text-[8px] text-cyan-400 font-mono underline hover:text-cyan-300 transition-colors"
                   >
-                    PASANG
+                    Refresh
                   </button>
+                </div>
+                
+                <div className="grid grid-cols-4 gap-1.5 min-h-[85px] max-h-[185px] overflow-y-auto pr-1 scrollbar-thin">
+                  {isFetchingCloud ? (
+                    Array.from({ length: 4 }).map((_, i) => (
+                      <div key={`cloud-skeleton-${i}`} className={`p-1.5 border rounded-lg flex flex-col items-center justify-center aspect-square ${
+                        theme === 'dark' ? 'bg-zinc-950/50 border-white/5 animate-pulse' : 'bg-black/5 border-black/5 animate-pulse'
+                      }`}>
+                        <div className={`w-6 h-6 rounded-md mb-1.5 ${theme === 'dark' ? 'bg-zinc-800' : 'bg-zinc-200'}`} />
+                        <div className={`w-8 h-1.5 rounded-full ${theme === 'dark' ? 'bg-zinc-800' : 'bg-zinc-200'}`} />
+                      </div>
+                    ))
+                  ) : userCloudStickers.length > 0 ? (
+                    userCloudStickers.map((p) => (
+                      <button
+                        key={p.id}
+                        type="button"
+                        onClick={() => handleAddPngSticker(p.url)}
+                        className={`p-1.5 border rounded-lg flex flex-col items-center justify-center transition-all group relative aspect-square select-none ${
+                          theme === 'dark'
+                            ? 'bg-zinc-950 border-white/5 hover:border-cyan-500/40 hover:bg-zinc-900 shadow-sm'
+                            : 'bg-white border-black/5 hover:border-cyan-500/40 hover:bg-zinc-50 shadow-sm'
+                        }`}
+                        title={p.desc}
+                      >
+                        <img
+                          src={p.url}
+                          alt={p.name}
+                          referrerPolicy="no-referrer"
+                          className="w-10 h-10 object-contain drop-shadow-[0_0_4px_rgba(0,240,255,0.3)] group-hover:scale-110 transition-transform pointer-events-none"
+                        />
+                        <div className="text-[6.5px] font-mono tracking-tighter truncate w-full text-center mt-1 text-zinc-400 group-hover:text-cyan-300">
+                          {p.name}
+                        </div>
+                      </button>
+                    ))
+                  ) : (
+                    <div className="col-span-4 py-6 text-center flex flex-col items-center justify-center text-zinc-500">
+                      <ImageIcon className="w-5 h-5 mb-1.5 opacity-50 text-cyan-400 animate-pulse" />
+                      <span className="text-[8px] font-mono uppercase tracking-widest leading-relaxed text-center block">
+                        Folder cloud kosong sayangku.<br/>Ayo unggah foto di tab sebelah! 😘
+                      </span>
+                    </div>
+                  )}
                 </div>
               </div>
             )}
