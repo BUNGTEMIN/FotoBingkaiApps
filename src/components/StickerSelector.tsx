@@ -16,6 +16,8 @@ interface StickerSelectorProps {
   theme?: 'dark' | 'light';
   modeOnly?: 'sticker' | 'text' | 'text_preset' | 'text_custom' | 'sticker_vector' | 'png_sticker';
   onClose?: () => void;
+  driveFolderId?: string;
+  driveUsername?: string;
 }
 
 export const STICKER_COLORS = [
@@ -64,6 +66,69 @@ export const TEXT_PRESETS = [
 
 // Removed INITIAL_PRESET_PNG_STICKERS
 
+export const FALLBACK_PNG_STICKERS = [
+  {
+    id: 'fb-sparkle-1',
+    name: 'Sparkle Neon',
+    url: 'https://img.icons8.com/color/144/sparkling-star.png',
+    desc: 'Bintang berkilau cyan neon'
+  },
+  {
+    id: 'fb-sparkle-2',
+    name: 'Gold Star Glow',
+    url: 'https://img.icons8.com/fluency/144/star.png',
+    desc: 'Bintang emas bersinar'
+  },
+  {
+    id: 'fb-neon-heart',
+    name: 'Love Heart',
+    url: 'https://img.icons8.com/color/144/hearts.png',
+    desc: 'Hati romantis'
+  },
+  {
+    id: 'fb-crown',
+    name: 'Crown Gold',
+    url: 'https://img.icons8.com/color/144/king-crown.png',
+    desc: 'Mahkota emas megah'
+  },
+  {
+    id: 'fb-glasses',
+    name: 'Cyber Glass',
+    url: 'https://img.icons8.com/color/144/cool.png',
+    desc: 'Kacamata siber keren'
+  },
+  {
+    id: 'fb-badge',
+    name: 'Verified',
+    url: 'https://img.icons8.com/color/144/verified-badge.png',
+    desc: 'Badge centang biru terverifikasi'
+  },
+  {
+    id: 'fb-wings',
+    name: 'Angel Wings',
+    url: 'https://img.icons8.com/color/144/angel-wings.png',
+    desc: 'Sayap malaikat siber'
+  },
+  {
+    id: 'fb-fire',
+    name: 'Neon Fire',
+    url: 'https://img.icons8.com/color/144/fire--v1.png',
+    desc: 'Api membara semangat'
+  },
+  {
+    id: 'fb-cyber-skull',
+    name: 'Cyber Skull',
+    url: 'https://img.icons8.com/color/144/pirate-skull.png',
+    desc: 'Tengkorak holografis'
+  },
+  {
+    id: 'fb-cat',
+    name: 'Cute Neko',
+    url: 'https://img.icons8.com/color/144/cat.png',
+    desc: 'Kucing lucu siber'
+  }
+];
+
 export default function StickerSelector({
   stickers,
   onAddSticker,
@@ -74,7 +139,9 @@ export default function StickerSelector({
   onSelectSticker,
   theme = 'dark',
   modeOnly,
-  onClose
+  onClose,
+  driveFolderId,
+  driveUsername
 }: StickerSelectorProps) {
   const [inputText, setInputText] = useState('');
   const [textColor, setTextColor] = useState('#00f2fe');
@@ -91,33 +158,86 @@ export default function StickerSelector({
   const [generalStickers, setGeneralStickers] = useState<any[]>([]);
   const [userCloudStickers, setUserCloudStickers] = useState<any[]>([]);
 
+  const [manualUsernameInput, setManualUsernameInput] = useState(driveUsername || localStorage.getItem('drive_username') || '');
+  const [manualFolderIdInput, setManualFolderIdInput] = useState(driveFolderId || localStorage.getItem('drive_folder_id') || '');
+
+  // Keep state updated in case parent props change
+  useEffect(() => {
+    if (driveUsername) {
+      setManualUsernameInput(driveUsername);
+    }
+  }, [driveUsername]);
+
+  useEffect(() => {
+    if (driveFolderId) {
+      setManualFolderIdInput(driveFolderId);
+    }
+  }, [driveFolderId]);
+
+  const handleManualSave = () => {
+    if (manualUsernameInput.trim()) {
+      const username = manualUsernameInput.trim();
+      localStorage.setItem('drive_username', username);
+      
+      axios.get(`https://dev.bungtemin.net/api/drive/newfolder?name=${encodeURIComponent(username)}`)
+        .then(res => {
+          const folderId = res.data?.folderId || res.data?.id || (res.data?.data?.folderId || res.data?.data?.id);
+          if (folderId) {
+            localStorage.setItem('drive_folder_id', folderId);
+            setManualFolderIdInput(folderId);
+          }
+          fetchUserCloudStickers();
+        })
+        .catch(err => {
+          console.warn("Gagal auto-fetch folderId, mencoba langsung memuat cloud:", err);
+          fetchUserCloudStickers();
+        });
+    } else {
+      localStorage.removeItem('drive_username');
+      localStorage.removeItem('drive_folder_id');
+      setManualUsernameInput('');
+      setManualFolderIdInput('');
+      setUserCloudStickers([]);
+    }
+  };
+
   const fetchGeneralStickers = () => {
     setIsFetchingApi(true);
     axios.get('https://dev.bungtemin.net/api/drive/list')
       .then(res => {
         const data = res.data;
-        const list = Array.isArray(data) ? data : (data && Array.isArray(data.data) ? data.data : []);
-        setGeneralStickers(list.map((item: any, idx: number) => {
+        const list = Array.isArray(data) 
+          ? data 
+          : (data && Array.isArray(data.files) 
+              ? data.files 
+              : (data && Array.isArray(data.data) 
+                  ? data.data 
+                  : []));
+        const loaded = list.map((item: any, idx: number) => {
           const rawId = item.id || item.fileId || `remote-${idx}`;
-          const proxyUrl = item.src || item.url || item.link || (rawId ? `https://dev.bungtemin.net/api/drive/${rawId}` : '');
+          // Always use proxy URL format explicitly to bypass CORS completely
+          const proxyUrl = `https://dev.bungtemin.net/api/drive/${rawId}`;
           return {
             id: rawId,
             name: item.name || item.fileName || `Sticker ${idx}`,
             url: proxyUrl,
             desc: item.description || item.desc || "General PNG sticker"
           };
-        }));
+        });
+        const merged = [...loaded, ...FALLBACK_PNG_STICKERS].filter((v, i, a) => a.findIndex(t => t.id === v.id) === i);
+        setGeneralStickers(merged);
         setIsFetchingApi(false);
       })
       .catch(err => {
-        console.warn('Gagal memuat stiker umum:', err);
+        console.warn('Gagal memuat stiker umum, menggunakan fallback:', err);
+        setGeneralStickers(FALLBACK_PNG_STICKERS);
         setIsFetchingApi(false);
       });
   };
 
   const fetchUserCloudStickers = () => {
-    const cachedFolderId = localStorage.getItem('drive_folder_id');
-    const cachedUsername = localStorage.getItem('drive_username');
+    const cachedFolderId = driveFolderId || localStorage.getItem('drive_folder_id');
+    const cachedUsername = driveUsername || localStorage.getItem('drive_username');
     if (!cachedFolderId && !cachedUsername) {
       setUserCloudStickers([]);
       return;
@@ -134,10 +254,17 @@ export default function StickerSelector({
     axios.get(targetUrl)
       .then(res => {
         const data = res.data;
-        const list = Array.isArray(data) ? data : (data && Array.isArray(data.data) ? data.data : []);
+        const list = Array.isArray(data) 
+          ? data 
+          : (data && Array.isArray(data.files) 
+              ? data.files 
+              : (data && Array.isArray(data.data) 
+                  ? data.data 
+                  : []));
         setUserCloudStickers(list.map((item: any, idx: number) => {
           const rawId = item.id || item.fileId || `remote-${idx}`;
-          const proxyUrl = item.src || item.url || item.link || (rawId ? `https://dev.bungtemin.net/api/drive/${rawId}` : '');
+          // Use direct proxy URL format from documentation to bypass CORS natively
+          const proxyUrl = `https://dev.bungtemin.net/api/drive/${rawId}`;
           return {
             id: rawId,
             name: item.name || item.fileName || `Sticker ${idx}`,
@@ -157,6 +284,22 @@ export default function StickerSelector({
     fetchGeneralStickers();
     fetchUserCloudStickers();
   }, []);
+
+  // Fetch when folder ID or username props change
+  useEffect(() => {
+    fetchUserCloudStickers();
+  }, [driveFolderId, driveUsername]);
+
+  // Sync state whenever switching to cloud tab
+  useEffect(() => {
+    if (pngSelectorTab === 'cloud') {
+      const liveUser = driveUsername || localStorage.getItem('drive_username') || '';
+      const liveFolder = driveFolderId || localStorage.getItem('drive_folder_id') || '';
+      setManualUsernameInput(liveUser);
+      setManualFolderIdInput(liveFolder);
+      fetchUserCloudStickers();
+    }
+  }, [pngSelectorTab]);
 
   const handleAddPngSticker = (url: string) => {
     if (!url.trim()) return;
@@ -647,11 +790,44 @@ export default function StickerSelector({
                       </button>
                     ))
                   ) : (
-                    <div className="col-span-4 py-6 text-center flex flex-col items-center justify-center text-zinc-500">
-                      <ImageIcon className="w-5 h-5 mb-1.5 opacity-50 text-cyan-400 animate-pulse" />
-                      <span className="text-[8px] font-mono uppercase tracking-widest leading-relaxed text-center block">
-                        Folder cloud kosong sayangku.<br/>Ayo unggah foto di tab sebelah! 😘
-                      </span>
+                    <div className="col-span-4 p-3 border border-dashed border-cyan-500/20 rounded-lg bg-zinc-950/60 text-center space-y-3.5">
+                      <div className="space-y-1">
+                        <ImageIcon className="w-5 h-5 mx-auto opacity-50 text-cyan-400 animate-pulse" />
+                        <span className="text-[9px] font-mono uppercase tracking-widest text-zinc-300 block font-bold">
+                          Koleksi Cloud Masih Kosong
+                        </span>
+                        <span className="text-[7.5px] text-zinc-500 font-sans leading-relaxed block">
+                          Ingin mengambil stiker khusus dari Google Drive kanda? Silakan masukkan username di bawah ini! 😘
+                        </span>
+                      </div>
+                      
+                      {/* Manual Credentials Setup Form */}
+                      <div className="space-y-2 text-left p-2.5 rounded-lg bg-black/50 border border-white/5 shadow-inner">
+                        <span className="text-[8px] font-mono text-zinc-400 block uppercase font-black tracking-wider">
+                          🔗 Sambungkan Google Drive
+                        </span>
+                        <div className="flex gap-1">
+                          <input 
+                            type="text" 
+                            placeholder="Username kanda (misal: bungtemin)..."
+                            value={manualUsernameInput}
+                            onChange={(e) => setManualUsernameInput(e.target.value)}
+                            className="bg-zinc-900 border border-white/10 rounded px-2 py-1 text-[9px] font-mono text-white flex-1 focus:outline-none focus:border-cyan-400 placeholder-zinc-600"
+                          />
+                          <button 
+                            type="button"
+                            onClick={handleManualSave}
+                            className="bg-[#00f2fe]/20 border border-[#00f2fe]/30 text-[#00f2fe] hover:bg-[#00f2fe] hover:text-black font-mono text-[8px] px-2.5 py-1 rounded font-black uppercase transition-all duration-300"
+                          >
+                            Setel
+                          </button>
+                        </div>
+                        {manualFolderIdInput && (
+                          <div className="text-[7px] font-mono text-zinc-500 leading-none truncate bg-black/30 p-1 rounded border border-white/3">
+                            ID Folder: {manualFolderIdInput}
+                          </div>
+                        )}
+                      </div>
                     </div>
                   )}
                 </div>

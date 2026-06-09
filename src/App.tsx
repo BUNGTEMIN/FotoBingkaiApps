@@ -239,6 +239,10 @@ export default function App() {
   const [authErrorDetail, setAuthErrorDetail] = useState<string | null>(null);
   const [showAuthWarning, setShowAuthWarning] = useState(false);
 
+  // Google Drive Cloud synchronization status states
+  const [driveFolderId, setDriveFolderId] = useState<string>(localStorage.getItem('drive_folder_id') || '');
+  const [driveUsername, setDriveUsername] = useState<string>(localStorage.getItem('drive_username') || '');
+
   // Page state: 'beranda' / 'bingkai' / 'misi' / 'galeri' / 'album'
   const [currentPage, setCurrentPage] = useState<'beranda' | 'bingkai' | 'misi' | 'galeri' | 'album'>('beranda');
   // Removed local savedCreations storage
@@ -2147,6 +2151,7 @@ export default function App() {
     if (user) {
       const username = user.displayName || user.email?.split('@')[0] || 'Anonymous_User';
       localStorage.setItem('drive_username', username);
+      setDriveUsername(username);
       const fetchFolderId = async () => {
         try {
           const res = await fetch(`https://dev.bungtemin.net/api/drive/newfolder?name=${encodeURIComponent(username)}`);
@@ -2155,6 +2160,7 @@ export default function App() {
             const folderId = data.folderId || data.id || (data.data?.folderId || data.data?.id);
             if (folderId) {
               localStorage.setItem('drive_folder_id', folderId);
+              setDriveFolderId(folderId);
               console.log('[Drive Sync] Berhasil menyimpan folderId cinta: ', folderId);
             }
           }
@@ -2166,6 +2172,8 @@ export default function App() {
     } else {
       localStorage.removeItem('drive_folder_id');
       localStorage.removeItem('drive_username');
+      setDriveFolderId('');
+      setDriveUsername('');
     }
   }, [user]);
 
@@ -5405,6 +5413,8 @@ Berikan respons dalam format JSON yang valid dengan kunci wajib:
                     theme={theme}
                     modeOnly="sticker_vector"
                     onClose={() => setActiveTab(null)}
+                    driveFolderId={driveFolderId}
+                    driveUsername={driveUsername}
                   />
                 </motion.div>
               )}
@@ -5426,6 +5436,8 @@ Berikan respons dalam format JSON yang valid dengan kunci wajib:
                     theme={theme}
                     modeOnly="png_sticker"
                     onClose={() => setActiveTab(null)}
+                    driveFolderId={driveFolderId}
+                    driveUsername={driveUsername}
                   />
                 </motion.div>
               )}
@@ -5447,6 +5459,8 @@ Berikan respons dalam format JSON yang valid dengan kunci wajib:
                     theme={theme}
                     modeOnly="text_custom"
                     onClose={() => setActiveTab(null)}
+                    driveFolderId={driveFolderId}
+                    driveUsername={driveUsername}
                   />
                 </motion.div>
               )}
@@ -5468,6 +5482,8 @@ Berikan respons dalam format JSON yang valid dengan kunci wajib:
                     theme={theme}
                     modeOnly="text_preset"
                     onClose={() => setActiveTab(null)}
+                    driveFolderId={driveFolderId}
+                    driveUsername={driveUsername}
                   />
                 </motion.div>
               )}
