@@ -441,6 +441,7 @@ export const getCssFilterString = (settings: ImageSettings): string => {
 
 interface RenderParams {
   userImageSrc: string | null;
+  backgroundImageSrc?: string | null;
   frame: Frame | null;
   neonColor: string;
   settings: ImageSettings;
@@ -461,6 +462,7 @@ export const renderToCanvas = async (
   
   // PRELOAD ASSETS TO AVOID FLICKERING/BLACK SCREEN DURING DRAG
   let userImgElement: HTMLImageElement | null = null;
+  let bgImgElement: HTMLImageElement | null = null;
   let frameImgElement: HTMLImageElement | null = null;
   let frameTempUrl: string | null = null;
   const stickerImages: Record<string, HTMLImageElement> = {};
@@ -474,6 +476,15 @@ export const renderToCanvas = async (
         loadImage(params.userImageSrc, false)
           .then(img => { userImgElement = img; })
           .catch(err => console.error("Error loading user image:", err))
+      );
+    }
+
+    // Preload background image if provided
+    if (params.backgroundImageSrc) {
+      promises.push(
+        loadImage(params.backgroundImageSrc, true)
+          .then(img => { bgImgElement = img; })
+          .catch(err => console.error("Error loading custom background image:", err))
       );
     }
 
@@ -551,8 +562,12 @@ export const renderToCanvas = async (
   ctx.clearRect(0, 0, size, size);
   
   // 1. Draw solid dark background in case user image is transparent or not uploaded
-  ctx.fillStyle = '#0a0a0f';
-  ctx.fillRect(0, 0, size, size);
+  if (bgImgElement) {
+    ctx.drawImage(bgImgElement, 0, 0, size, size);
+  } else {
+    ctx.fillStyle = '#0a0a0f';
+    ctx.fillRect(0, 0, size, size);
+  }
 
   // 2. Draw user image if available
   if (userImgElement) {

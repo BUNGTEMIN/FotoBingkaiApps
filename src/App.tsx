@@ -785,7 +785,30 @@ export default function App() {
   const [stickers, setStickers] = useState<PlacedSticker[]>(getSavedStickers);
   const [selectedStickerId, setSelectedStickerId] = useState<string | null>(null);
   const [isHudOpen, setIsHudOpen] = useState(false);
-  const [activeTab, setActiveTab] = useState<'adjust' | 'crop' | 'filter' | 'color' | 'stickers' | 'text' | 'text_preset' | 'layers' | 'ai' | 'download' | 'history' | 'settings' | 'ai_effect' | 'koleksi_media' | 'remove_bg' | null>(null);
+  const [activeTab, setActiveTab] = useState<'adjust' | 'crop' | 'filter' | 'color' | 'stickers' | 'text' | 'text_preset' | 'layers' | 'ai' | 'download' | 'history' | 'settings' | 'ai_effect' | 'koleksi_media' | 'remove_bg' | 'change_bg' | null>(null);
+  
+  const [backgroundImage, setBackgroundImage] = useState<string | null>(() => {
+    return localStorage.getItem('bt_background_image') || null;
+  });
+
+  const [isBgRemovedForCurrentUserImage, setIsBgRemovedForCurrentUserImage] = useState<boolean>(() => {
+    return localStorage.getItem('bt_is_bg_removed') === 'true';
+  });
+
+  const [bgSearchKeyword, setBgSearchKeyword] = useState('neon cyberpunk');
+
+  // Persist background image and bg removed flag
+  useEffect(() => {
+    if (backgroundImage) {
+      localStorage.setItem('bt_background_image', backgroundImage);
+    } else {
+      localStorage.removeItem('bt_background_image');
+    }
+  }, [backgroundImage]);
+
+  useEffect(() => {
+    localStorage.setItem('bt_is_bg_removed', String(isBgRemovedForCurrentUserImage));
+  }, [isBgRemovedForCurrentUserImage]);
   const [isRemovingBg, setIsRemovingBg] = useState(false);
   const [isRemovingStickerBg, setIsRemovingStickerBg] = useState<string | null>(null);
   const [removeBgColorOption, setRemoveBgColorOption] = useState<'transparent' | 'green' | 'red' | 'blue' | 'black' | 'custom'>('transparent');
@@ -1283,6 +1306,7 @@ export default function App() {
         
         await renderToCanvas(tempCanvas, {
           userImageSrc: finalUserImage,
+          backgroundImageSrc: backgroundImage,
           frame: selectedFrame,
           neonColor,
           settings: imageSettings,
@@ -2327,6 +2351,7 @@ export default function App() {
       try {
         await renderToCanvas(canvas, {
           userImageSrc: userImage,
+          backgroundImageSrc: backgroundImage,
           frame: selectedFrame,
           neonColor,
           settings: imageSettings,
@@ -2343,7 +2368,7 @@ export default function App() {
     return () => {
       isActive = false;
     };
-  }, [userImage, selectedFrame, neonColor, imageSettings, stickers, downloadSize, currentPage]);
+  }, [userImage, backgroundImage, selectedFrame, neonColor, imageSettings, stickers, downloadSize, currentPage]);
 
   // Remove Background using the OCR Nufat API (https://ocr.nufat.id)
   const handleRemoveBackground = async () => {
@@ -2415,6 +2440,8 @@ export default function App() {
         
         const removedBgUrl = 'data:image/png;base64,' + resData.image_base64;
         setUserImage(removedBgUrl);
+        setIsBgRemovedForCurrentUserImage(true);
+        setActiveTab('change_bg');
         triggerToast("Latar belakang foto berhasil dihapus dengan sukses.");
         
         // Asynchronously back up this beautiful new cut out to Appwrite storage and ImageProxy in background!
@@ -2498,10 +2525,25 @@ export default function App() {
   const handleRestoreOriginalImage = () => {
     if (previousUserImageBeforeBg) {
       setUserImage(previousUserImageBeforeBg);
+      setIsBgRemovedForCurrentUserImage(false);
+      setBackgroundImage(null);
+      setActiveTab('remove_bg');
       triggerToast("Foto asli berhasil dikembalikan ke kanvas utama.");
     } else {
       triggerToast("Belum ada riwayat foto asli sebelum penghapusan latar belakang.");
     }
+  };
+
+  const handleSearchUnsplashBg = () => {
+    if (!bgSearchKeyword.trim()) {
+      triggerToast('Sayang, isi kata kunci pencarian terlebih dahulu ya. 💕');
+      return;
+    }
+    const signature = Math.floor(Math.random() * 10000);
+    const searchUrl = `https://images.unsplash.com/featured/800x800/?${encodeURIComponent(bgSearchKeyword.trim())}&sig=${signature}`;
+    setBackgroundImage(searchUrl);
+    setActiveTab(null);
+    triggerToast(`Siber mencari "${bgSearchKeyword.trim()}" di Unsplash... Menyetel background baru! 🚀`);
   };
 
   const handleRemoveStickerBackground = async (stickerId: string, stickerUrl: string) => {
@@ -2628,6 +2670,8 @@ export default function App() {
         reader.readAsDataURL(file);
       });
       setUserImage(originalDataUrl);
+      setIsBgRemovedForCurrentUserImage(false);
+      setBackgroundImage(null);
       const startSettings = {
         ...DEFAULT_SETTINGS,
         scale: 1.0,
@@ -3825,6 +3869,7 @@ Berikan respons dalam format JSON yang valid dengan kunci wajib:
       // 1. Force render specifically for download with exact properties and stickers included
       await renderToCanvas(canvas, {
         userImageSrc: userImage,
+        backgroundImageSrc: backgroundImage,
         frame: selectedFrame,
         neonColor,
         settings: imageSettingsRef.current,
@@ -3918,6 +3963,7 @@ Berikan respons dalam format JSON yang valid dengan kunci wajib:
       // 2. Restore preview render (hide duplicate stickers on canvas to avoid HTML overlap)
       await renderToCanvas(canvas, {
         userImageSrc: userImage,
+        backgroundImageSrc: backgroundImage,
         frame: selectedFrame,
         neonColor,
         settings: imageSettingsRef.current,
@@ -4022,6 +4068,7 @@ Berikan respons dalam format JSON yang valid dengan kunci wajib:
       // Force render high-res with stickers
       await renderToCanvas(canvas, {
         userImageSrc: userImage,
+        backgroundImageSrc: backgroundImage,
         frame: selectedFrame,
         neonColor,
         settings: imageSettingsRef.current,
@@ -4042,6 +4089,7 @@ Berikan respons dalam format JSON yang valid dengan kunci wajib:
       // Restore normal preview (hide duplicate stickers on canvas preview)
       await renderToCanvas(canvas, {
         userImageSrc: userImage,
+        backgroundImageSrc: backgroundImage,
         frame: selectedFrame,
         neonColor,
         settings: imageSettingsRef.current,
@@ -5168,6 +5216,7 @@ Berikan respons dalam format JSON yang valid dengan kunci wajib:
                 {activeTab === 'ai_effect' && user?.email === 'bungtemin@gmail.com' && <><Sparkles className="w-3.5 h-3.5 text-neon-cyan animate-pulse" /> AI EFFECT FUTURISTIK</>}
                 {activeTab === 'koleksi_media' && <><Database className="w-3.5 h-3.5 text-neon-cyan animate-pulse" /> KOLEKSI MEDIA SIBER</>}
                 {activeTab === 'remove_bg' && <><Eraser className="w-3.5 h-3.5 text-neon-cyan animate-pulse" /> HAPUS LATAR BELAKANG AI</>}
+                {activeTab === 'change_bg' && <><ImageIcon className="w-3.5 h-3.5 text-purple-400 animate-pulse" /> GANTI BACKGROUND UNSPLASH</>}
               </span>
               <button 
                 onClick={() => setActiveTab(null)}
@@ -5721,6 +5770,47 @@ Berikan respons dalam format JSON yang valid dengan kunci wajib:
                       </div>
                     </div>
 
+                    {/* Fixed Background Image Layer */}
+                    {backgroundImage && (
+                      <div className={`p-3 rounded-xl border flex items-center justify-between gap-3 opacity-90 ${
+                        theme === 'dark'
+                          ? 'border-white/5 bg-zinc-950/60'
+                          : 'border-zinc-200 bg-zinc-150'
+                      }`}>
+                        <div className="flex items-center gap-2.5 min-w-0 flex-1">
+                          <div className={`p-2 rounded-lg border flex items-center justify-center shrink-0 ${
+                            theme === 'dark' ? 'bg-zinc-900 border-white/5 text-purple-500/80' : 'bg-white border-black/10 text-purple-600/80'
+                          }`}>
+                            <ImageIcon className="w-3.5 h-3.5 animate-pulse" />
+                          </div>
+                          <div className="min-w-0">
+                            <div className="flex items-center gap-1.5 leading-none mb-1">
+                              <span className="text-[7px] tracking-widest font-extrabold uppercase text-purple-500/80">LATAR BELAKANG</span>
+                              <span className="text-[7.5px] text-zinc-500 font-bold">#BACKGROUND</span>
+                            </div>
+                            <p className="text-[11px] font-sans font-semibold uppercase truncate text-zinc-400">
+                              Latar belakang digital (Terkunci)
+                            </p>
+                          </div>
+                        </div>
+
+                        <div className="flex items-center gap-0.5 shrink-0 pointer-events-auto">
+                          <button
+                            type="button"
+                            onClick={() => {
+                              setActiveTab('change_bg');
+                            }}
+                            className={`px-2 py-1 rounded text-[7.5px] font-mono border tracking-widest transition-all ${
+                              theme === 'dark' ? 'hover:bg-white/5 border-white/5 text-purple-400' : 'hover:bg-black/5 border-black/5 text-purple-650'
+                            }`}
+                            title="Ganti Background"
+                          >
+                            GANTI BG
+                          </button>
+                        </div>
+                      </div>
+                    )}
+
                   </div>
                 </div>
               )}
@@ -6045,6 +6135,126 @@ Berikan respons dalam format JSON yang valid dengan kunci wajib:
                     <p className="text-[8.5px] font-sans text-zinc-500 leading-relaxed text-center italic mt-2">
                       Didukung oleh teknologi Siber <span className="font-semibold text-rose-400">OCR Nufat API</span>.
                     </p>
+                  </div>
+                </div>
+              )}
+
+              {activeTab === 'change_bg' && (
+                <div className="space-y-4 text-left">
+                  <div className={`p-4 rounded-xl border flex flex-col space-y-3.5 ${
+                    theme === 'dark' ? 'border-purple-500/20 bg-purple-950/5' : 'bg-purple-50/50 border-purple-100'
+                  }`}>
+                    {/* Unsplash Search Box */}
+                    <div className="space-y-1.5">
+                      <label className="text-[9px] font-mono tracking-widest uppercase text-zinc-500 flex justify-between">
+                        <span>Cari Latar Belakang Kustom</span>
+                        <span className="text-purple-400">Tanpa Batas</span>
+                      </label>
+                      <div className="flex gap-1.5">
+                        <input
+                          type="text"
+                          value={bgSearchKeyword}
+                          onChange={(e) => setBgSearchKeyword(e.target.value)}
+                          placeholder="Contoh: studio backdrop, cyberpunk..."
+                          className={`flex-1 px-3 py-2 rounded-lg text-xs font-mono outline-none border transition-all ${
+                            theme === 'dark'
+                              ? 'bg-black/40 border-white/10 text-white focus:border-purple-500/50'
+                              : 'bg-white border-black/10 text-black focus:border-purple-500/50'
+                          }`}
+                          onKeyDown={(e) => {
+                            if (e.key === 'Enter') {
+                              handleSearchUnsplashBg();
+                            }
+                          }}
+                        />
+                        <button
+                          type="button"
+                          onClick={handleSearchUnsplashBg}
+                          className="px-3 py-2 rounded-lg bg-purple-500 hover:bg-purple-600 text-white font-mono text-[10px] font-bold tracking-wider uppercase transition-all"
+                        >
+                          CARI
+                        </button>
+                      </div>
+                    </div>
+
+                    {/* Curated Grid Selection */}
+                    <div className="space-y-2 pt-2 border-t border-white/5">
+                      <label className="text-[9px] font-mono tracking-widest uppercase text-zinc-500">Pilihan Latar Estetik Terpilih</label>
+                      <div className="grid grid-cols-4 gap-1.5 max-h-[160px] overflow-y-auto scrollbar-thin pr-0.5">
+                        {[
+                          { name: 'Cyber City', url: 'https://images.unsplash.com/photo-1542838132-92c53300491e?auto=format&fit=crop&w=600&q=80' },
+                          { name: 'Neon Lights', url: 'https://images.unsplash.com/photo-1508739773434-c26b3d09e071?auto=format&fit=crop&w=600&q=80' },
+                          { name: 'Starry Orbit', url: 'https://images.unsplash.com/photo-1462331940025-496dfbfc7564?auto=format&fit=crop&w=600&q=80' },
+                          { name: 'Glow Liquid', url: 'https://images.unsplash.com/photo-1618005182384-a83a8bd57fbe?auto=format&fit=crop&w=600&q=80' },
+                          { name: 'Synthwave Sun', url: 'https://images.unsplash.com/photo-1515263487990-61b07816b324?auto=format&fit=crop&w=600&q=80' },
+                          { name: 'Luxury Velvet', url: 'https://images.unsplash.com/photo-1513542789411-b6a5d4f31634?auto=format&fit=crop&w=600&q=80' },
+                          { name: 'Modern Office', url: 'https://images.unsplash.com/photo-1497366216548-37526070297c?auto=format&fit=crop&w=600&q=80' },
+                          { name: 'Bright Studio', url: 'https://images.unsplash.com/photo-1579783902614-a3fb3927b6a5?auto=format&fit=crop&w=600&q=80' },
+                          { name: 'Cyber Hex', url: 'https://images.unsplash.com/photo-1618005198143-e5283b519a7f?auto=format&fit=crop&w=600&q=80' },
+                          { name: 'Vibrant Waves', url: 'https://images.unsplash.com/photo-1604871000636-074fa5117945?auto=format&fit=crop&w=600&q=80' },
+                          { name: 'Warm Bokeh', url: 'https://images.unsplash.com/photo-1465146344425-f00d5f5c8f07?auto=format&fit=crop&w=600&q=80' },
+                          { name: 'Concrete Wall', url: 'https://images.unsplash.com/photo-1600585154340-be6161a56a0c?auto=format&fit=crop&w=600&q=80' }
+                        ].map((bg, index) => {
+                          const isSelected = backgroundImage === bg.url;
+                          return (
+                            <button
+                              key={index}
+                              onClick={() => {
+                                setBackgroundImage(bg.url);
+                                setActiveTab(null);
+                                triggerToast(`Latar belakang menyala: ${bg.name}! 🌟`);
+                              }}
+                              className={`group relative aspect-square rounded-lg overflow-hidden border transition-all ${
+                                isSelected
+                                  ? 'border-purple-400 ring-2 ring-purple-500/40 shadow-[0_0_12px_rgba(168,85,247,0.3)] scale-[0.98]'
+                                  : 'border-white/10 hover:border-white/20'
+                              }`}
+                            >
+                              <img
+                                src={bg.url}
+                                alt={bg.name}
+                                className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300"
+                                referrerPolicy="no-referrer"
+                              />
+                              <div className="absolute inset-0 bg-black/40 group-hover:bg-black/20 transition-colors" />
+                              <span className="absolute bottom-1 inset-x-1 font-mono text-[7px] text-zinc-300 group-hover:text-white truncate font-bold text-center bg-black/60 py-0.5 rounded">
+                                {bg.name.toUpperCase()}
+                              </span>
+                            </button>
+                          );
+                        })}
+                      </div>
+                    </div>
+
+                    {/* Action Controls */}
+                    <div className="pt-2 border-t border-white/5 flex gap-2">
+                      <button
+                        onClick={() => {
+                          setBackgroundImage(null);
+                          triggerToast('Latar belakang dibersihkan, foto transparan dipulihkan! 🍃');
+                        }}
+                        disabled={!backgroundImage}
+                        className={`flex-1 py-2.5 rounded-xl flex items-center justify-center gap-1.5 font-mono text-[10px] tracking-wider transition-all duration-300 ${
+                          !backgroundImage
+                            ? 'bg-zinc-800 text-zinc-500 cursor-not-allowed'
+                            : 'bg-zinc-800 hover:bg-zinc-700 text-zinc-300 hover:text-white border border-white/15'
+                        }`}
+                      >
+                        <Trash2 className="w-3.5 h-3.5" />
+                        HAPUS BG UNSPLASH
+                      </button>
+
+                      {previousUserImageBeforeBg && (
+                        <button
+                          onClick={handleRestoreOriginalImage}
+                          className="px-4 py-2.5 rounded-xl bg-rose-500 hover:bg-rose-600 text-white font-mono text-[10px] font-bold tracking-wider uppercase transition-all flex items-center gap-1.5"
+                          title="Putar Balik ke Foto Asli dan Menu Hapus BG"
+                        >
+                          <Undo className="w-3.5 h-3.5" />
+                          PUTAR BALIK FOTO ASLI
+                        </button>
+                      )}
+                    </div>
                   </div>
                 </div>
               )}
@@ -6396,6 +6606,8 @@ Berikan respons dalam format JSON yang valid dengan kunci wajib:
                                       type="button"
                                       onClick={() => {
                                         setUserImage(item.url);
+                                        setIsBgRemovedForCurrentUserImage(false);
+                                        setBackgroundImage(null);
                                         triggerToast(`Hasil ke-${idx+1} berhasil dipasang kembali ke kanvas utama.`);
                                       }}
                                       className="w-full py-1 rounded bg-neon-cyan/20 border border-neon-cyan/35 text-neon-cyan hover:bg-[#00F0FF] hover:text-black transition-all font-mono text-[7.5px] font-black uppercase text-center cursor-pointer"
@@ -6491,6 +6703,8 @@ Berikan respons dalam format JSON yang valid dengan kunci wajib:
                                   <button
                                     onClick={() => {
                                       setUserImage(file.url);
+                                      setIsBgRemovedForCurrentUserImage(false);
+                                      setBackgroundImage(null);
                                       triggerToast(`Foto Utama berhasil diganti dengan berkas "${file.name}".`);
                                       setActiveTab(null);
                                     }}
@@ -6579,9 +6793,15 @@ Berikan respons dalam format JSON yang valid dengan kunci wajib:
                 <span className="text-[8px] uppercase tracking-wider font-extrabold">KOLEKSI</span>
               </button>
 
-              {user?.email === 'bungtemin@gmail.com' && (
+              {!isBgRemovedForCurrentUserImage ? (
                 <button
-                  onClick={() => setActiveTab(activeTab === 'remove_bg' ? null : 'remove_bg')}
+                  onClick={() => {
+                    if (!userImage) {
+                      triggerToast("Sayang, silakan unggah foto terlebih dahulu sebelum menghapus latar belakang! 💖");
+                      return;
+                    }
+                    setActiveTab(activeTab === 'remove_bg' ? null : 'remove_bg');
+                  }}
                   className={`snap-center flex-shrink-0 px-3.5 py-1.5 rounded-xl font-mono text-xs font-bold tracking-widest transition-all duration-150 flex flex-col items-center justify-center space-y-1 min-w-[76px] ${
                     activeTab === 'remove_bg'
                       ? 'bg-rose-500/25 text-rose-500 border-t-2 border-rose-500 shadow-[0_0_15px_rgba(244,63,94,0.3)]'
@@ -6590,6 +6810,24 @@ Berikan respons dalam format JSON yang valid dengan kunci wajib:
                 >
                   <Eraser className="w-4 h-4 text-rose-500 animate-pulse" />
                   <span className="text-[8px] uppercase tracking-wider font-extrabold text-rose-500">HAPUS BG</span>
+                </button>
+              ) : (
+                <button
+                  onClick={() => {
+                    if (!userImage) {
+                      triggerToast("Sayang, silakan unggah foto terlebih dahulu! 💖");
+                      return;
+                    }
+                    setActiveTab(activeTab === 'change_bg' ? null : 'change_bg');
+                  }}
+                  className={`snap-center flex-shrink-0 px-3.5 py-1.5 rounded-xl font-mono text-xs font-bold tracking-widest transition-all duration-150 flex flex-col items-center justify-center space-y-1 min-w-[76px] ${
+                    activeTab === 'change_bg'
+                      ? 'bg-purple-500/25 text-purple-400 border-t-2 border-purple-500 shadow-[0_0_15px_rgba(168,85,247,0.3)]'
+                      : 'text-zinc-450 hover:text-purple-300 hover:bg-purple-950/10'
+                  }`}
+                >
+                  <ImageIcon className="w-4 h-4 text-purple-400 animate-pulse" />
+                  <span className="text-[8px] uppercase tracking-wider font-extrabold text-purple-400">GANTI BG</span>
                 </button>
               )}
 
