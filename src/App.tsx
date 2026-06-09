@@ -36,14 +36,8 @@ import { getCache, setCache } from './indexedDb';
 // Use direct API endpoints instead of proxy helpers since they support CORS natively
 const getWabotApiUrl = () => 'https://wabot.nufat.id/imagelist_nufat/api';
 const getAppwriteApiUrl = () => 'https://nudb.bungtemin.net/bingkai/api';
-const getAiEffectUploadBase64Url = () => {
-  const isDev = window.location.hostname.includes('localhost') || window.location.hostname.includes('run.app') || window.location.hostname.includes('127.0.0.1');
-  return isDev ? '/api/proxy/upload_img_base64' : 'https://webspy.nufat.id/api/upload_img_base64';
-};
-const getAiEffectUploadBinaryUrl = () => {
-  const isDev = window.location.hostname.includes('localhost') || window.location.hostname.includes('run.app') || window.location.hostname.includes('127.0.0.1');
-  return isDev ? '/api/proxy/upload_img' : 'https://webspy.nufat.id/api/upload_img';
-};
+const getAiEffectUploadBase64Url = () => 'https://webspy.nufat.id/api/upload_img_base64';
+const getAiEffectUploadBinaryUrl = () => 'https://webspy.nufat.id/api/upload_img';
 
 const DEFAULT_IMAGE = 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?auto=format&fit=crop&w=600&q=80';
 
