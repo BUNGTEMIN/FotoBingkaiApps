@@ -155,6 +155,279 @@ export const svgToDataUrl = (svgContent: string): string => {
   }
 };
 
+// ==========================================
+// WEB WORKER FOR HIGH-PERFORMANCE FILTERS
+// ==========================================
+const workerCode = `
+self.onmessage = function(e) {
+  const { taskId, imageData, settings } = e.data;
+  const { brightness = 100, contrast = 100, saturate = 100, hueRotate = 0, blur = 0 } = settings;
+  const data = imageData.data;
+  const len = data.length;
+
+  const bFactor = brightness / 100;
+  const cFactor = contrast / 100;
+  const sFactor = saturate / 100;
+
+  // 1. Hue Rotation Matrix Calculations
+  const angle = (hueRotate || 0) * Math.PI / 180;
+  const cosA = Math.cos(angle);
+  const sinA = Math.sin(angle);
+
+  const rX = 0.213 + cosA * 0.787 - sinA * 0.213;
+  const rY = 0.715 - cosA * 0.715 - sinA * 0.715;
+  const rZ = 0.072 - cosA * 0.072 + sinA * 0.928;
+
+  const gX = 0.213 - cosA * 0.213 + sinA * 0.143;
+  const gY = 0.715 + cosA * 0.285 + sinA * 0.140;
+  const gZ = 0.072 - cosA * 0.072 - sinA * 0.283;
+
+  const bX = 0.213 - cosA * 0.213 - sinA * 0.787;
+  const bY = 0.715 - cosA * 0.715 + sinA * 0.715;
+  const bZ = 0.072 + cosA * 0.928 + sinA * 0.072;
+
+  // Apply Hue, Brightness, Contrast, Saturation inline
+  for (let i = 0; i < len; i += 4) {
+    let r = data[i];
+    let g = data[i+1];
+    let b = data[i+2];
+
+    // Hue Rotate
+    if (hueRotate !== 0) {
+      const rx = r * rX + g * rY + b * rZ;
+      const gx = r * gX + g * gY + b * gZ;
+      const bx = r * bX + g * bY + b * bZ;
+      r = rx;
+      g = gx;
+      b = bx;
+    }
+
+    // Brightness
+    if (brightness !== 100) {
+      r *= bFactor;
+      g *= bFactor;
+      b *= bFactor;
+    }
+
+    // Contrast
+    if (contrast !== 100) {
+      r = (r - 128) * cFactor + 128;
+      g = (g - 128) * cFactor + 128;
+      b = (b - 128) * cFactor + 128;
+    }
+
+    // Saturation (luma adjustment)
+    if (saturate !== 100) {
+      const luma = 0.299 * r + 0.587 * g + 0.114 * b;
+      r = luma + (r - luma) * sFactor;
+      g = luma + (g - luma) * sFactor;
+      b = luma + (b - luma) * sFactor;
+    }
+
+    // Clamp
+    data[i] = r < 0 ? 0 : r > 255 ? 255 : r;
+    data[i+1] = g < 0 ? 0 : g > 255 ? 255 : g;
+    data[i+2] = b < 0 ? 0 : b > 255 ? 255 : b;
+  }
+
+  // 2. Blur Filter Processing (2-pass 1D Box Blur Approximation)
+  if (blur > 0) {
+    const width = imageData.width;
+    const height = imageData.height;
+    const radius = Math.min(10, Math.max(1, Math.round(blur)));
+    
+    const buffer = new Uint8ClampedArray(data);
+    const tempPixels = new Uint8ClampedArray(data); // for vertical pass
+    
+    // Horizontal blur pass
+    for (let y = 0; y < height; y++) {
+      for (let x = 0; x < width; x++) {
+        let rSum = 0, gSum = 0, bSum = 0, aSum = 0, count = 0;
+        for (let dx = -radius; dx <= radius; dx++) {
+          const nx = x + dx;
+          if (nx >= 0 && nx < width) {
+            const idx = (y * width + nx) * 4;
+            rSum += buffer[idx];
+            gSum += buffer[idx+1];
+            bSum += buffer[idx+2];
+            aSum += buffer[idx+3];
+            count++;
+          }
+        }
+        const destIdx = (y * width + x) * 4;
+        tempPixels[destIdx] = rSum / count;
+        tempPixels[destIdx+1] = gSum / count;
+        tempPixels[destIdx+2] = bSum / count;
+        tempPixels[destIdx+3] = aSum / count;
+      }
+    }
+
+    // Vertical blur pass
+    for (let x = 0; x < width; x++) {
+      for (let y = 0; y < height; y++) {
+        let rSum = 0, gSum = 0, bSum = 0, aSum = 0, count = 0;
+        for (let dy = -radius; dy <= radius; dy++) {
+          const ny = y + dy;
+          if (ny >= 0 && ny < height) {
+            const idx = (ny * width + x) * 4;
+            rSum += tempPixels[idx];
+            gSum += tempPixels[idx+1];
+            bSum += tempPixels[idx+2];
+            aSum += tempPixels[idx+3];
+            count++;
+          }
+        }
+        const destIdx = (y * width + x) * 4;
+        data[destIdx] = rSum / count;
+        data[destIdx+1] = gSum / count;
+        data[destIdx+2] = bSum / count;
+        data[destIdx+3] = aSum / count;
+      }
+    }
+  }
+
+  self.postMessage({ taskId, imageData }, [imageData.data.buffer]);
+};
+`;
+
+let filterWorker: Worker | null = null;
+let currentTaskId = 0;
+const processedImageCache = new Map<string, HTMLCanvasElement>();
+const pendingPromises = new Map<string, Promise<HTMLCanvasElement>>();
+const activeCallbacks = new Map<number, (result: HTMLCanvasElement) => void>();
+const activeRejections = new Map<number, (reason: any) => void>();
+
+const initFilterWorker = (): Worker | null => {
+  if (filterWorker) return filterWorker;
+  try {
+    const blob = new Blob([workerCode], { type: 'application/javascript' });
+    const workerUrl = URL.createObjectURL(blob);
+    filterWorker = new Worker(workerUrl);
+    
+    filterWorker.onmessage = (e) => {
+      const { taskId, imageData } = e.data;
+      const resolve = activeCallbacks.get(taskId);
+      if (resolve) {
+        const canvas = document.createElement('canvas');
+        canvas.width = imageData.width;
+        canvas.height = imageData.height;
+        const ctx = canvas.getContext('2d');
+        if (ctx) {
+          ctx.putImageData(imageData, 0, 0);
+        }
+        resolve(canvas);
+        
+        activeCallbacks.delete(taskId);
+        activeRejections.delete(taskId);
+      }
+    };
+
+    filterWorker.onerror = (err) => {
+      console.error("Web Worker error:", err);
+      activeRejections.forEach((reject) => reject(err));
+      activeCallbacks.clear();
+      activeRejections.clear();
+      filterWorker = null;
+    };
+
+    return filterWorker;
+  } catch (err) {
+    console.error("Failed to initialize Filter Web Worker:", err);
+    return null;
+  }
+};
+
+export const getFilteredImageWithWorker = (
+  imageSrc: string,
+  imgElement: HTMLImageElement,
+  settings: ImageSettings
+): Promise<HTMLCanvasElement> => {
+  const cacheKey = `${imageSrc}_b-${settings.brightness}_c-${settings.contrast}_s-${settings.saturate}_hr-${settings.hueRotate}_bl-${settings.blur}`;
+  
+  if (processedImageCache.has(cacheKey)) {
+    return Promise.resolve(processedImageCache.get(cacheKey)!);
+  }
+
+  if (pendingPromises.has(cacheKey)) {
+    return pendingPromises.get(cacheKey)!;
+  }
+
+  const worker = initFilterWorker();
+  if (!worker) {
+    return Promise.reject(new Error("Worker not supported or failed to initialize"));
+  }
+
+  const promise = new Promise<HTMLCanvasElement>((resolve, reject) => {
+    // Limit the image dimension sent to worker for maximum responsiveness
+    const maxDimension = 1200;
+    let w = imgElement.naturalWidth || imgElement.width || 800;
+    let h = imgElement.naturalHeight || imgElement.height || 800;
+
+    if (w > maxDimension || h > maxDimension) {
+      if (w > h) {
+        h = Math.round((h * maxDimension) / w);
+        w = maxDimension;
+      } else {
+        w = Math.round((w * maxDimension) / h);
+        h = maxDimension;
+      }
+    }
+
+    const tempCanvas = document.createElement('canvas');
+    tempCanvas.width = w;
+    tempCanvas.height = h;
+    const tempCtx = tempCanvas.getContext('2d');
+    if (!tempCtx) {
+      reject(new Error("Failed to get 2d context for offline image"));
+      return;
+    }
+
+    tempCtx.drawImage(imgElement, 0, 0, w, h);
+    
+    let imgData: ImageData;
+    try {
+      imgData = tempCtx.getImageData(0, 0, w, h);
+    } catch (e) {
+      reject(e);
+      return;
+    }
+
+    currentTaskId++;
+    const taskId = currentTaskId;
+
+    activeCallbacks.set(taskId, (processedCanvas) => {
+      pendingPromises.delete(cacheKey);
+      processedImageCache.set(cacheKey, processedCanvas);
+      if (processedImageCache.size > 50) {
+        const firstKey = processedImageCache.keys().next().value;
+        if (firstKey) processedImageCache.delete(firstKey);
+      }
+      resolve(processedCanvas);
+    });
+
+    activeRejections.set(taskId, (err) => {
+      pendingPromises.delete(cacheKey);
+      reject(err);
+    });
+
+    // Send using transferable ArrayBuffer for zero-copy performance!
+    worker.postMessage({
+      taskId,
+      imageData: imgData,
+      settings: {
+        brightness: settings.brightness,
+        contrast: settings.contrast,
+        saturate: settings.saturate,
+        hueRotate: settings.hueRotate,
+        blur: settings.blur
+      }
+    }, [imgData.data.buffer]);
+  });
+
+  pendingPromises.set(cacheKey, promise);
+  return promise;
+};
+
 // Formulate CSS filter string for canvas context or styling
 export const getCssFilterString = (settings: ImageSettings): string => {
   return [
@@ -346,11 +619,34 @@ export const renderToCanvas = async (
         drawH = drawW / imgRatio;
       }
 
-      // Draw user image with active filter properties
-      ctx.filter = getCssFilterString(params.settings);
-      
+      // Use Web Worker with pixel-level processing if custom settings are changed
+      let drawImg: CanvasImageSource = img;
+      const hasFilters = 
+        params.settings.brightness !== 100 ||
+        params.settings.contrast !== 100 ||
+        params.settings.saturate !== 100 ||
+        (params.settings.hueRotate !== 0 && params.settings.hueRotate !== undefined) ||
+        (params.settings.blur !== 0 && params.settings.blur !== undefined);
+
+      if (hasFilters && params.userImageSrc) {
+        try {
+          const filteredCanvas = await getFilteredImageWithWorker(
+            params.userImageSrc,
+            img,
+            params.settings
+          );
+          drawImg = filteredCanvas;
+          ctx.filter = 'none'; // Disable slow native filter repaint
+        } catch (workerErr) {
+          console.warn("Web worker filtering failed, falling back to basic CSS canvas filters:", workerErr);
+          ctx.filter = getCssFilterString(params.settings);
+        }
+      } else {
+        ctx.filter = 'none';
+      }
+
       // Draw image centered at the translated coordinate
-      ctx.drawImage(img, -drawW / 2, -drawH / 2, drawW, drawH);
+      ctx.drawImage(drawImg, -drawW / 2, -drawH / 2, drawW, drawH);
       ctx.restore();
     } catch (err) {
       console.error("Error drawing user image on canvas:", err);

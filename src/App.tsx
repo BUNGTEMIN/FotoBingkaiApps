@@ -36,7 +36,7 @@ import { getCache, setCache } from './indexedDb';
 // Use direct API endpoints instead of proxy helpers since they support CORS natively
 const getWabotApiUrl = () => 'https://wabot.nufat.id/imagelist_nufat/api';
 const getAppwriteApiUrl = () => 'https://nudb.bungtemin.net/bingkai/api';
-const getAiEffectUploadBase64Url = () => 'https://webspy.nufat.id/api/upload_img_base64';
+const getAiEffectUploadBase64Url = () => 'https://webspy.nufat.id/api/edit_img';
 const getAiEffectUploadBinaryUrl = () => 'https://webspy.nufat.id/api/upload_img';
 
 const DEFAULT_IMAGE = 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?auto=format&fit=crop&w=600&q=80';
@@ -797,7 +797,7 @@ export default function App() {
   const [previousUserImageBeforeBg, setPreviousUserImageBeforeBg] = useState<string | null>(null);
   const [isAiEffectGenerating, setIsAiEffectGenerating] = useState(false);
   const [aiEffectPrompt, setAiEffectPrompt] = useState('merubah foto menjadi futuristik');
-  const [aiEffectSendFormat, setAiEffectSendFormat] = useState<'multipart' | 'base64'>('multipart');
+  const [aiEffectSendFormat, setAiEffectSendFormat] = useState<'multipart' | 'base64'>('base64');
   const [aiEffectLogs, setAiEffectLogs] = useState<string[]>([]);
   const [showAdvancedAiSettings, setShowAdvancedAiSettings] = useState(false);
   
@@ -3120,6 +3120,10 @@ Berikan respons dalam format JSON yang valid dengan kunci wajib:
     // Prompt khusus berstandar industri tinggi untuk menjaga wajah manusia asli utuh dan memberinya setelan futuristik modern
     const FUTURE_PORTRAIT_PROMPT = "Style conversion of the exact person in the uploaded photo into an ultra-realistic modern futuristic QCC theme. Please perfectly preserve the person's exact face, physical facial features, eyes, smile, pose, and core identity completely. Enhance only the apparel/clothing to feature a sleek dark metallic futuristic cybernetic bodysuit with neon cyan glowing accents, and convert the empty background into a modern clean high-tech neon-lit cyber space. DO NOT change the gender, DO NOT generate mountains, landscapes, or empty scenery. Keep the centerpiece human subject perfectly intact. Cinematic 8k resolution, realistic sci-fi portrait lighting.";
 
+    const promptToUse = aiEffectPrompt && aiEffectPrompt.trim() !== '' 
+      ? aiEffectPrompt 
+      : FUTURE_PORTRAIT_PROMPT;
+
     try {
       addLog('🤖 SISTEM: Menginisialisasi Modul AI Effect Cybernetic Modern...');
       await new Promise(resolve => setTimeout(resolve, 500));
@@ -3149,13 +3153,14 @@ Berikan respons dalam format JSON yang valid dengan kunci wajib:
       if (aiEffectSendFormat === 'base64') {
         const uploadUrl = getAiEffectUploadBase64Url();
         addLog(`🌐 SISTEM: Menyiapkan gerbang koneksi aman ke ${uploadUrl}...`);
-        addLog(`🚀 API: Mengirimkan foto & resep futuristik modern khusus ke kecerdasan buas...`);
+        addLog(`🚀 API: Mengirimkan foto (Base64) & resep instruksi ke Gemini AI...`);
+        addLog(`📝 Prompt: "${promptToUse.length > 60 ? promptToUse.substring(0, 57) + '...' : promptToUse}"`);
         await new Promise(resolve => setTimeout(resolve, 500));
 
         response = await axios.post(uploadUrl, {
           base64_image: base64String,
-          prompt: FUTURE_PORTRAIT_PROMPT,
-          session_id: 'qcc-online'
+          prompt: promptToUse,
+          session_id: aiEffectImgId || 'baim_creative_01'
         }, {
           headers: {
             'Content-Type': 'application/json',
@@ -3172,8 +3177,8 @@ Berikan respons dalam format JSON yang valid dengan kunci wajib:
 
         const formData = new FormData();
         formData.append('file', file);
-        formData.append('prompt', FUTURE_PORTRAIT_PROMPT);
-        formData.append('session_id', 'qcc-online');
+        formData.append('prompt', promptToUse);
+        formData.append('session_id', aiEffectImgId || 'baim_creative_01');
 
         response = await axios.post(uploadUrl, formData, {
           timeout: 300000 // 5 menit
@@ -3187,10 +3192,20 @@ Berikan respons dalam format JSON yang valid dengan kunci wajib:
       const returnedData = response.data;
       let newImageUrl = '';
 
-      if (typeof returnedData === 'string' && (returnedData.startsWith('http://') || returnedData.startsWith('https://'))) {
-        newImageUrl = returnedData;
-      } else if (returnedData) {
-        newImageUrl = returnedData.url || returnedData.image || returnedData.image_url || returnedData.imageUrl || (returnedData.data && (returnedData.data.url || returnedData.data.image));
+      if (returnedData && returnedData.success && returnedData.data) {
+        if (Array.isArray(returnedData.data.images) && returnedData.data.images.length > 0) {
+          newImageUrl = returnedData.data.images[0];
+        } else if (returnedData.data.url) {
+          newImageUrl = returnedData.data.url;
+        }
+      }
+
+      if (!newImageUrl && returnedData) {
+        if (typeof returnedData === 'string' && (returnedData.startsWith('http://') || returnedData.startsWith('https://'))) {
+          newImageUrl = returnedData;
+        } else {
+          newImageUrl = returnedData.url || returnedData.image || returnedData.image_url || returnedData.imageUrl || (returnedData.data && (returnedData.data.url || returnedData.data.image));
+        }
       }
 
       if (newImageUrl) {
@@ -3203,7 +3218,7 @@ Berikan respons dalam format JSON yang valid dengan kunci wajib:
           await addDoc(collection(db, 'ai_effect_variants'), {
             parentId: aiEffectImgId,
             url: newImageUrl,
-            prompt: 'Futuristik Modern (Wajah Utuh)',
+            prompt: promptToUse,
             timestamp: serverTimestamp()
           });
           addLog('✅ SISTEM: Hasil berhasil disimpan ke variasi!');
@@ -3228,7 +3243,7 @@ Berikan respons dalam format JSON yang valid dengan kunci wajib:
         triggerToast('Gagal karena batasan iFrame. Yuk klik "Buka di Tab Baru" sayang! 💕');
       } else {
         addLog(`❌ KENDALA: Gagal memproses data. Alasan: ${err.message || 'Server sedang sibuk'}`);
-        triggerToast(`Gagal memproses efek. Silakan coba kembali, kanda tercinta.`);
+         triggerToast(`Gagal memproses efek. Silakan coba kembali, kanda tercinta.`);
       }
     } finally {
       setIsAiEffectGenerating(false);
