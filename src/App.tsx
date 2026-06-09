@@ -4165,7 +4165,7 @@ Berikan respons dalam format JSON yang valid dengan kunci wajib:
                               dangerouslySetInnerHTML={{ __html: ensureFullSvg(frame.renderSvg(neonColor)) }}
                             />
                           ) : frame.src ? (
-                            <img 
+                            <LazyImage 
                               src={resolveApiUrl(frame.src)} 
                               alt={frame.name}
                               className="w-full h-full object-contain pointer-events-none"
@@ -4366,11 +4366,20 @@ Berikan respons dalam format JSON yang valid dengan kunci wajib:
                       minHeight: 'max-content',
                       maxWidth: 'none',
                       maxHeight: 'none',
+                      mixBlendMode: (item.type === 'sticker' && item.imageUrl) ? (item.blendMode || 'normal') : 'normal',
                     }}
                     className={`absolute z-30 select-none pointer-events-auto p-2 rounded transition-all duration-150 ${
                       isSelected 
-                        ? 'border border-dashed border-neon-cyan bg-black/60 shadow-[0_0_12px_rgba(0,240,255,0.25)]' 
-                        : 'border border-transparent hover:border-white/10 hover:bg-black/30'
+                        ? `border border-dashed border-neon-cyan shadow-[0_0_12px_rgba(0,240,255,0.25)] ${
+                            (item.type === 'sticker' && item.imageUrl && item.blendMode && item.blendMode !== 'normal') 
+                              ? 'bg-transparent' 
+                              : 'bg-black/60'
+                          }` 
+                        : `border border-transparent hover:border-white/10 ${
+                            (item.type === 'sticker' && item.imageUrl && item.blendMode && item.blendMode !== 'normal') 
+                              ? 'hover:bg-transparent' 
+                              : 'hover:bg-black/30'
+                          }`
                     }`}
                   >
                     {item.type === 'text' ? (
@@ -4384,7 +4393,6 @@ Berikan respons dalam format JSON yang valid dengan kunci wajib:
                               fontWeight: fWeight,
                               fontSize: `${baseSizePercentage}cqw`,
                               letterSpacing: item.letterSpacing ? `${item.letterSpacing}px` : 'normal',
-                              mixBlendMode: item.blendMode || 'normal',
                               ...(item.textStyle === 'neon' 
                                   ? {
                                       color: '#fff',
@@ -4466,7 +4474,6 @@ Berikan respons dalam format JSON yang valid dengan kunci wajib:
                         style={{ 
                           width: `${baseSizePercentage * 1.5}cqw`, 
                           height: `${baseSizePercentage * 1.5}cqw`,
-                          mixBlendMode: item.blendMode || 'normal'
                         }}
                         viewBox="0 0 100 100" 
                         fill="none" 
@@ -6350,10 +6357,10 @@ Berikan respons dalam format JSON yang valid dengan kunci wajib:
                                   className="group relative rounded-lg overflow-hidden border border-white/10 bg-black/60 shadow-lg flex flex-col justify-between"
                                 >
                                   <div className="relative aspect-video w-full bg-zinc-950 overflow-hidden">
-                                    <img 
+                                    <LazyImage 
                                       src={item.url} 
                                       alt="AI Variant" 
-                                      className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300 pointer-events-none animate-fade-in"
+                                      className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300 pointer-events-none"
                                     />
                                     <span className="absolute bottom-1 right-1 px-1 py-0.5 rounded bg-black/75 text-[7px] font-mono text-zinc-400 font-bold">
                                       #{idx + 1}
@@ -6424,10 +6431,9 @@ Berikan respons dalam format JSON yang valid dengan kunci wajib:
                             >
                               {/* Preview Image with referrerPolicy */}
                               <div className="aspect-square w-full bg-zinc-950 overflow-hidden relative">
-                                <img
+                                <LazyImage
                                   src={file.url}
                                   alt={file.name}
-                                  referrerPolicy="no-referrer"
                                   className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300"
                                 />
                                 {/* Source badge */}

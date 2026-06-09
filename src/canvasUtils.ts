@@ -421,6 +421,14 @@ export const renderToCanvas = async (
   if (params.isDownloading) {
     for (const item of params.stickers) {
       ctx.save();
+      
+      // Set composite operation for blending if a custom blend mode is specified (restricted to custom PNG image stickers)
+      if (item.type === 'sticker' && item.imageUrl && item.blendMode && item.blendMode !== 'normal') {
+        ctx.globalCompositeOperation = item.blendMode as GlobalCompositeOperation;
+      } else {
+        ctx.globalCompositeOperation = 'source-over';
+      }
+
       const xPos = (item.x / 100) * size;
       const yPos = (item.y / 100) * size;
       ctx.translate(xPos, yPos);

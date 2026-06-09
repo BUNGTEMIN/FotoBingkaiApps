@@ -4,6 +4,7 @@ import { PlacedSticker, PresetSticker } from '../types';
 import { PRESET_STICKERS } from '../presets';
 import { Plus, Trash, Type, Sliders, Settings, Upload, Link, Image as ImageIcon, Globe, Sparkles } from 'lucide-react';
 import { resolveApiUrl } from '../canvasUtils';
+import { LazyImage } from './LazyImage';
 
 interface StickerSelectorProps {
   stickers: PlacedSticker[];
@@ -70,62 +71,62 @@ export const FALLBACK_PNG_STICKERS = [
   {
     id: 'fb-sparkle-1',
     name: 'Sparkle Neon',
-    url: 'https://img.icons8.com/color/144/sparkling-star.png',
-    desc: 'Bintang berkilau cyan neon'
+    url: 'https://cdn.jsdelivr.net/gh/microsoft/fluentui-emoji@main/assets/Sparkles/3D/sparkles_3d.png',
+    desc: 'Bintang berkilau siber neon premium'
   },
   {
     id: 'fb-sparkle-2',
     name: 'Gold Star Glow',
-    url: 'https://img.icons8.com/fluency/144/star.png',
-    desc: 'Bintang emas bersinar'
+    url: 'https://cdn.jsdelivr.net/gh/microsoft/fluentui-emoji@main/assets/Star/3D/star_3d.png',
+    desc: 'Bintang emas bersinar 3D'
   },
   {
     id: 'fb-neon-heart',
     name: 'Love Heart',
-    url: 'https://img.icons8.com/color/144/hearts.png',
-    desc: 'Hati romantis'
+    url: 'https://cdn.jsdelivr.net/gh/microsoft/fluentui-emoji@main/assets/Red%20heart/3D/red_heart_3d.png',
+    desc: 'Hati romantis 3D glossy'
   },
   {
     id: 'fb-crown',
     name: 'Crown Gold',
-    url: 'https://img.icons8.com/color/144/king-crown.png',
-    desc: 'Mahkota emas megah'
+    url: 'https://cdn.jsdelivr.net/gh/microsoft/fluentui-emoji@main/assets/Crown/3D/crown_3d.png',
+    desc: 'Mahkota emas megah 3D'
   },
   {
     id: 'fb-glasses',
     name: 'Cyber Glass',
-    url: 'https://img.icons8.com/color/144/cool.png',
-    desc: 'Kacamata siber keren'
+    url: 'https://cdn.jsdelivr.net/gh/microsoft/fluentui-emoji@main/assets/Sunglasses/3D/sunglasses_3d.png',
+    desc: 'Kacamata siber keren siber'
   },
   {
     id: 'fb-badge',
     name: 'Verified',
-    url: 'https://img.icons8.com/color/144/verified-badge.png',
-    desc: 'Badge centang biru terverifikasi'
+    url: 'https://cdn.jsdelivr.net/gh/microsoft/fluentui-emoji@main/assets/Check%20mark%20button/3D/check_mark_button_3d.png',
+    desc: 'Badge centang biru terverifikasi 3D'
   },
   {
     id: 'fb-wings',
     name: 'Angel Wings',
-    url: 'https://img.icons8.com/color/144/angel-wings.png',
-    desc: 'Sayap malaikat siber'
+    url: 'https://cdn.jsdelivr.net/gh/microsoft/fluentui-emoji@main/assets/Wing/3D/wing_3d.png',
+    desc: 'Sayap malaikat siber 3D mewah'
   },
   {
     id: 'fb-fire',
     name: 'Neon Fire',
-    url: 'https://img.icons8.com/color/144/fire--v1.png',
-    desc: 'Api membara semangat'
+    url: 'https://cdn.jsdelivr.net/gh/microsoft/fluentui-emoji@main/assets/Fire/3D/fire_3d.png',
+    desc: 'Api membara semangat 3D'
   },
   {
     id: 'fb-cyber-skull',
     name: 'Cyber Skull',
-    url: 'https://img.icons8.com/color/144/pirate-skull.png',
-    desc: 'Tengkorak holografis'
+    url: 'https://cdn.jsdelivr.net/gh/microsoft/fluentui-emoji@main/assets/Skull/3D/skull_3d.png',
+    desc: 'Tengkorak siber siber 3D'
   },
   {
     id: 'fb-cat',
     name: 'Cute Neko',
-    url: 'https://img.icons8.com/color/144/cat.png',
-    desc: 'Kucing lucu siber'
+    url: 'https://cdn.jsdelivr.net/gh/microsoft/fluentui-emoji@main/assets/Cat%20face/3D/cat_face_3d.png',
+    desc: 'Kucing lucu siber 3D'
   }
 ];
 
@@ -315,6 +316,9 @@ export default function StickerSelector({
     };
     onAddSticker(newSticker);
     onSelectSticker(newSticker.id);
+    if (onClose) {
+      onClose();
+    }
   };
 
   const handleLocalPngUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -687,10 +691,9 @@ export default function StickerSelector({
                       }`}
                       title={p.desc}
                     >
-                      <img
+                      <LazyImage
                         src={p.url}
                         alt={p.name}
-                        referrerPolicy="no-referrer"
                         className="w-10 h-10 object-contain drop-shadow-[0_0_4px_rgba(0,240,255,0.3)] group-hover:scale-110 transition-transform pointer-events-none"
                       />
                       <div className="text-[6.5px] font-mono tracking-tighter truncate w-full text-center mt-1 text-zinc-400 group-hover:text-cyan-300">
@@ -778,10 +781,9 @@ export default function StickerSelector({
                         }`}
                         title={p.desc}
                       >
-                        <img
+                        <LazyImage
                           src={p.url}
                           alt={p.name}
-                          referrerPolicy="no-referrer"
                           className="w-10 h-10 object-contain drop-shadow-[0_0_4px_rgba(0,240,255,0.3)] group-hover:scale-110 transition-transform pointer-events-none"
                         />
                         <div className="text-[6.5px] font-mono tracking-tighter truncate w-full text-center mt-1 text-zinc-400 group-hover:text-cyan-300">
