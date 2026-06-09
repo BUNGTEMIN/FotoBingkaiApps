@@ -276,7 +276,7 @@ export default function StickerSelector({
         setIsFetchingCloud(false);
       })
       .catch(err => {
-        console.warn('Gagal memuat koleksi cloud kanda:', err);
+        console.warn('Gagal memuat koleksi cloud:', err);
         setIsFetchingCloud(false);
       });
   };
@@ -799,7 +799,7 @@ export default function StickerSelector({
                           Koleksi Cloud Masih Kosong
                         </span>
                         <span className="text-[7.5px] text-zinc-500 font-sans leading-relaxed block">
-                          Ingin mengambil stiker khusus dari Google Drive kanda? Silakan masukkan username di bawah ini! 😘
+                          Ingin mengambil stiker khusus dari Google Drive Anda? Silakan masukkan username di bawah ini.
                         </span>
                       </div>
                       
@@ -811,7 +811,7 @@ export default function StickerSelector({
                         <div className="flex gap-1">
                           <input 
                             type="text" 
-                            placeholder="Username kanda (misal: bungtemin)..."
+                            placeholder="Username Anda (misal: bungtemin)..."
                             value={manualUsernameInput}
                             onChange={(e) => setManualUsernameInput(e.target.value)}
                             className="bg-zinc-900 border border-white/10 rounded px-2 py-1 text-[9px] font-mono text-white flex-1 focus:outline-none focus:border-cyan-400 placeholder-zinc-600"

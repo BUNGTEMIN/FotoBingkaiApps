@@ -581,10 +581,10 @@ export default function App() {
       }));
       setComGalleryItems(formatted);
     } catch (err: any) {
-      console.warn("[Olaive Info] Gagal memuat kreasi langsung dari server Nufat, menggunakan galeri simulasi yang sangat indah sebagai cadangan sayang! 💕 Detail:", err?.message || err);
+      console.warn("[System Info] Gagal memuat kreasi dari server Nufat, menggunakan galeri simulasi sebagai cadangan. Detail:", err?.message || err);
       const is403 = err?.response?.status === 403 || err?.response?.status === 401;
       const cleanErrMsg = is403
-        ? "Masa berlaku token API Nufat telah kedaluwarsa sayang. Tapi jangan sedih ya kanda, Olaive sudah menyiapkan album simulasi kreasi siber terbaik untuk menemani petualangan desain kanda! 🌸✨"
+        ? "Masa berlaku token API Nufat telah kedaluwarsa. Sistem telah menyiapkan galeri simulasi cadangan untuk kenyamanan desain Anda."
         : (err?.message || "Gagal tersambung ke server Nufat API.");
       setComGalleryError(cleanErrMsg);
     } finally {
@@ -689,14 +689,14 @@ export default function App() {
           if (saved.filterPresetId) {
             setFilterPresetId(saved.filterPresetId);
           }
-          triggerToast("Olaive: Wah, draf kreasi cinta kita terakhir berhasil Olaive pulihkan secara otomatis sayang! Aman berkilau kembali... 💖✨");
+          triggerToast("Sistem: Draf desain terakhir Anda berhasil dipulihkan secara otomatis. 💖✨");
         } else {
           // Fallback to legacy single image draft restore
           const idbImage = await loadDraftImageFromIDB();
           if (idbImage && !userImage) {
             setUserImage(idbImage);
             console.log("[IndexedDB] Berhasil memulihkan foto draf berukuran besar!");
-            triggerToast("Sistem: Progres draf foto berukuran besar berhasil dipulihkan secara otomatis oleh Olive! 💖✨");
+            triggerToast("Sistem: Progres draf foto Anda berhasil dipulihkan secara otomatis. 💖✨");
           }
         }
       } catch (err) {
@@ -893,7 +893,7 @@ export default function App() {
     try {
       const activeBucketId = BUCKET_ID;
       if (!activeBucketId) {
-        console.warn("[Koleksi] BUCKET_ID belum dikonfigurasi sayang! 💕");
+        console.warn("[Koleksi] BUCKET_ID belum dikonfigurasi.");
         setIsLoadingFiles(false);
         return;
       }
@@ -902,7 +902,7 @@ export default function App() {
       const safeUid = currentUserId.replace(/[^a-zA-Z0-9_-]/g, '').substring(0, 15);
       const userPrefix = `u_${safeUid}_`;
       
-      console.log(`[Koleksi Debug] Memulai sinkronisasi berkas cinta siber. userId: "${currentUserId}", userPrefix: "${userPrefix}", bucket: "${activeBucketId}" 🌸`);
+      console.log(`[Koleksi] Memulai sinkronisasi berkas. userId: "${currentUserId}", userPrefix: "${userPrefix}", bucket: "${activeBucketId}"`);
 
       let dbFiles: any[] = [];
       let dbSuccess = false;
@@ -913,23 +913,23 @@ export default function App() {
         
         let response;
         try {
-          // Coba dengan query filter terlebih dahulu agar hemat kuota dan cepat sayang
+          // Menggunakan query filter untuk efisiensi
           console.log(`[Koleksi DB Query] Melakukan listDocuments dengan filter Query.equal('userId', '${currentUserId}')...`);
           response = await databases.listDocuments('koleksi', 'myfile', [
             Query.equal('userId', currentUserId),
             Query.limit(100),
             Query.orderDesc('$createdAt')
           ]);
-          console.log(`[Koleksi DB Query Success] Bagus sekali! Ditemukan ${response?.documents?.length || 0} berkas langsung terfilter server-side.`);
+          console.log(`[Koleksi DB Query Success] Ditemukan ${response?.documents?.length || 0} berkas langsung terfilter server-side.`);
         } catch (queryErr: any) {
-          console.warn("[Koleksi DB Query Fail] Gagal mengambil dengan Query.equal('userId') (kemungkinan index 'userId' belum dibuat di Appwrite Console kanda). " +
-                       "Jangan khawatir sayang, kami akan meload semua lalu memfilternya di client-side! Detail kendala:", queryErr?.message || queryErr);
+          console.warn("[Koleksi DB Query Fail] Gagal mengambil dengan Query.equal('userId') (kemungkinan indeks 'userId' belum dikonfigurasi di Appwrite Console). " +
+                       "Sistem akan memuat data secara penuh untuk difilter di sisi client. Detail kendala:", queryErr?.message || queryErr);
           
-          // Fallback tanpa filter query, lalu saring Client-side agar tangguh
+          // Fallback tanpa filter query, disaring Client-side mendalam
           response = await databases.listDocuments('koleksi', 'myfile', [
             Query.limit(200)
           ]);
-          console.log(`[Koleksi DB Fallback Load] Sukses memuat ${response?.documents?.length || 0} berkas dari database untuk disaring manual.`);
+          console.log(`[Koleksi DB Fallback Load] Sukses memuat ${response?.documents?.length || 0} berkas dari database untuk penyaringan manual.`);
         }
 
         // Saring berkas yang hanya milik user aktif saja
@@ -939,7 +939,7 @@ export default function App() {
           return isMatch;
         });
 
-        console.log(`[Koleksi Client Filter Result] Dari total ${response.documents.length} berkas yang ada di DB, terpilih ${filteredDocs.length} berkas khusus milik kanda.`);
+        console.log(`[Koleksi Client Filter Result] Dari total ${response.documents.length} dokumen di DB, terpilih ${filteredDocs.length} dokumen milik user aktif.`);
 
         dbFiles = filteredDocs.map((doc: any) => ({
           id: doc.$id,
@@ -952,8 +952,8 @@ export default function App() {
         }));
         dbSuccess = true;
       } catch (dbErr: any) {
-        console.warn("[Koleksi DB Error] Sayang, gagal melacak tabel 'myfile' di database 'koleksi'. " +
-                     "Ini wajar jika kanda belum membuat database/tabel tersebut ataupun hak izin read belum diatur publik. Detail:", dbErr?.message || dbErr);
+        console.warn("[Koleksi DB Error] Gagal melacak tabel 'myfile' di database 'koleksi'. " +
+                     "Hal ini wajar jika database/tabel tersebut belum dibuat atau izin akses belum diatur publik. Detail:", dbErr?.message || dbErr);
       }
 
       // 2. Fetch directly from Appwrite Storage Bucket
@@ -965,9 +965,9 @@ export default function App() {
           Query.orderDesc('$createdAt')
         ]);
         
-        console.log(`[Koleksi Storage Success] Membaca total ${storageResp?.files?.length || 0} berkas kasar dari cloud bucket.`);
+        console.log(`[Koleksi Storage Success] Membaca total ${storageResp?.files?.length || 0} berkas dari storage.`);
 
-        // Hanya tampilkan berkas di Storage milik user aktif ini saja!
+        // Hanya tampilkan berkas di Storage milik user aktif
         storageFiles = storageResp.files
           .filter((file: any) => {
             const isMatch = file.$id.startsWith(userPrefix);
@@ -988,7 +988,7 @@ export default function App() {
             };
           });
 
-        console.log(`[Koleksi Storage Filter Result] Ditemukan ${storageFiles.length} berkas murni milik kanda di Storage Bucket.`);
+        console.log(`[Koleksi Storage Filter Result] Ditemukan ${storageFiles.length} berkas milik user di Storage Bucket.`);
       } catch (stgErr: any) {
         console.error("[Koleksi Storage Error] Gagal memuat berkas langsung dari list Appwrite Storage:", stgErr?.message || stgErr);
       }
@@ -1012,15 +1012,15 @@ export default function App() {
         console.log(`[Koleksi Merged] Hasil penggabungan: DB (${dbFiles.length}) & Storage (${storageFiles.length}). Total unik: ${merged.length}`);
         
         if (merged.length === 0) {
-          console.log("[Koleksi Fallback Checker] Hasil penggabungan kosong. Ini berarti kanda memang belum pernah mengunggah berkas apa pun dengan akun aktif / userId ini.");
+          console.log("[Koleksi Fallback Checker] Hasil penggabungan kosong. User aktif belum pernah mengunggah berkas apa pun.");
         }
         setUploadedFiles(merged);
       } else {
-        console.log("[Koleksi Sync Fallback] Baik database maupun storage mengembalikan koleksi kosong atau gagal terhubung. Menyetel database list kosong.");
+        console.log("[Koleksi Sync Fallback] Gagal memuat data dari database dan storage. Menyetel daftar kosong.");
         setUploadedFiles([]);
       }
     } catch (err: any) {
-      console.error("[Koleksi Fatal Error] Terjadi kendala tidak terduga saat sinkronisasi siber:", err?.message || err);
+      console.error("[Koleksi Fatal Error] Terjadi kendala saat sinkronisasi berkas:", err?.message || err);
     } finally {
       setIsLoadingFiles(false);
     }
@@ -1035,7 +1035,7 @@ export default function App() {
     try {
       const activeBucketId = BUCKET_ID;
       if (!activeBucketId) {
-        throw new Error('VITE_APPWRITE_STORAGE_BUCKET_ID belum dikonfigurasi sayang! 💕');
+        throw new Error('VITE_APPWRITE_STORAGE_BUCKET_ID belum dikonfigurasi.');
       }
 
       const currentUserId = user?.uid || 'anonymous';
@@ -1066,14 +1066,14 @@ export default function App() {
           console.log("[Koleksi DB Log] Sukses mengintegrasikan catatan file ke tabel 'myfile'!");
         } catch (dbErr: any) {
           console.warn("[Koleksi DB Log] Gagal mencatat berkas di tabel 'myfile' database 'koleksi'. " +
-                       "Ini wajar jika skema/atribut kustom belum cocok, namun file kanda sudah aman tersimpan di Storage! Detail:", dbErr?.message || dbErr);
+                       "Ini wajar jika skema/atribut kustom belum cocok, namun file Anda sudah aman tersimpan di Storage! Detail:", dbErr?.message || dbErr);
         }
 
         fetchUploadedFiles();
       }
     } catch (err: any) {
       console.error("[Koleksi Upload] Error mengunggah file:", err);
-      triggerToast(`Gagal mengunggah berkas sayang: ${err?.message || err} 🥺`);
+      triggerToast(`Gagal mengunggah berkas: ${err?.message || err}`);
     } finally {
       setIsLoadingFiles(false);
       if (e.target) {
@@ -1084,7 +1084,7 @@ export default function App() {
 
   // Delete file inside Koleksi tab
   const handleDeleteUploadedFile = async (fileId: string) => {
-    if (!confirm("Apakah kanda yakin ingin menghapus berkas ini dari koleksi Appwrite? Berkas akan hilang selamanya sayang... 💖🥺")) {
+    if (!confirm("Apakah Anda yakin ingin menghapus berkas ini dari koleksi Appwrite? Berkas akan dihapus secara permanen.")) {
       return;
     }
 
@@ -1116,7 +1116,7 @@ export default function App() {
         console.warn("[Koleksi Delete] Gagal melacak/menghapus log dari tabel 'myfile' (Mungkin tidak ada/dihapus):", dbErr);
       }
 
-      triggerToast("Berkas berhasil dibersihkan dari koleksi awan sayang! 🛁🧼");
+      triggerToast("Berkas berhasil dihapus dari koleksi cloud.");
       fetchUploadedFiles();
     } catch (err: any) {
       console.error("[Koleksi Delete] Gagal menghapus berkas:", err);
@@ -1153,7 +1153,7 @@ export default function App() {
       
       const activeBucketId = BUCKET_ID;
       if (!activeBucketId) {
-        throw new Error('VITE_APPWRITE_STORAGE_BUCKET_ID belum dikonfigurasi sayang!');
+        throw new Error('VITE_APPWRITE_STORAGE_BUCKET_ID belum dikonfigurasi.');
       }
       
       const fileId = ID.unique();
@@ -1229,11 +1229,11 @@ export default function App() {
   // Save Canvas Design to Firestore
   const handleSaveCanvasDesign = async (nameToSave: string, isSaveAs: boolean = false) => {
     if (!user) {
-      triggerToast("Sayang, kamu harus masuk log (login) terlebih dahulu untuk menyimpan draf ke cloud ya! 😘💕");
+      triggerToast("Anda harus masuk log (login) terlebih dahulu untuk menyimpan draf ke cloud.");
       return;
     }
     if (!nameToSave.trim()) {
-      triggerToast("Nama desainnya tidak boleh kosong ya, pacarku manis! 💖");
+      triggerToast("Nama desain tidak boleh kosong.");
       return;
     }
 
@@ -1248,7 +1248,7 @@ export default function App() {
       // First ensure image is uploaded to Appwrite if it is a local base64
       let finalUserImage = userImage;
       if (userImage && userImage.startsWith('data:')) {
-        triggerToast("Olaive: Menyiapkan cadangan foto awan siber di Appwrite ya sayang... ☁️💖");
+        triggerToast("Menyiapkan cadangan foto di Appwrite...");
         finalUserImage = await ensureUserImageUploadedToAppwrite(userImage);
       }
 
@@ -1262,7 +1262,7 @@ export default function App() {
       try {
         const hasBase64Sticker = stickers.some(s => s.type === 'sticker' && s.imageUrl && s.imageUrl.startsWith('data:'));
         if (hasBase64Sticker) {
-          triggerToast("Olaive: Menyiapkan stiker PNG kustom kamu di awan Appwrite ya manis... 💖☁️");
+          triggerToast("Menyiapkan stiker kustom di Appwrite...");
           finalStickers = await ensureStickersUploadedToAppwrite(stickers);
           setStickers(finalStickers); // update state as well!
         }
@@ -1402,8 +1402,8 @@ export default function App() {
       }
       
       triggerToast(shouldOverwrite 
-        ? `Yay! Perubahan draf "${nameToSave}" berhasil disimpan secara aman di awan siber oleh Olaive tercinta! 😘🎨✨`
-        : `Yay! Draf baru "${nameToSave}" berhasil disimpan secara aman oleh Olaive tercinta! 💖📱💾`
+        ? `Perubahan draf "${nameToSave}" berhasil disimpan secara aman di cloud.`
+        : `Draf baru "${nameToSave}" berhasil disimpan secara aman di cloud.`
       );
       
       fetchCanvasDesigns();
@@ -1430,10 +1430,10 @@ export default function App() {
         const newDesigns = [fallbackDoc, ...canvasDesigns.filter(d => d.id !== designId)];
         setCanvasDesigns(newDesigns);
         localStorage.setItem(`bt_saved_canvas_local_${user.uid}`, JSON.stringify(newDesigns));
-        triggerToast("Olaive: Tersimpan di penyimpanan lokal perangkat ini ya sayang, karena sinkronisasi cloud terhambat! 💕💾");
+        triggerToast("Sistem: Tersimpan di penyimpanan lokal perangkat karena sinkronisasi cloud terhambat.");
         setIsCanvasModalOpen(false);
       } catch (localErr) {
-        triggerToast("Gagal menyimpan desain canvas sayang. Coba lagi nanti ya.");
+        triggerToast("Gagal menyimpan desain canvas. Silakan coba kembali beberapa saat lagi.");
       }
     } finally {
       setIsSavingCanvas(false);
@@ -1500,10 +1500,10 @@ export default function App() {
       setSaveDesignName(design.name);
 
       setIsCanvasModalOpen(false);
-      triggerToast(`Hore! Kanvas "${design.name}" milikmu berhasil dipulihkan seutuhnya sayang! 😘🎨✨`);
+      triggerToast(`Kanvas "${design.name}" berhasil dipulihkan.`);
     } catch (err) {
       console.error("Gagal parsing data kanvas:", err);
-      triggerToast("Maaf ya sayang, format berkas draf ini tampaknya rusak. 🥺");
+      triggerToast("Maaf, format berkas draf ini tidak valid.");
     }
   };
 
@@ -1524,7 +1524,7 @@ export default function App() {
       const newDesigns = canvasDesigns.filter(d => d.id !== designId);
       setCanvasDesigns(newDesigns);
       localStorage.setItem(`bt_saved_canvas_local_${user.uid}`, JSON.stringify(newDesigns));
-      triggerToast("Olaive: Desain kanvas berhasil dihapus dari cloud kita sayang! 🗑️💝");
+      triggerToast("Desain kanvas berhasil dihapus dari cloud.");
     } catch (err: any) {
       console.error("Gagal menghapus desain kanvas dari firestore:", err);
       // Fallback local deletion
@@ -1535,7 +1535,7 @@ export default function App() {
       const newDesigns = canvasDesigns.filter(d => d.id !== designId);
       setCanvasDesigns(newDesigns);
       localStorage.setItem(`bt_saved_canvas_local_${user.uid}`, JSON.stringify(newDesigns));
-      triggerToast("Olaive: Draf lokal berhasil dihapus sayang! 🌸");
+      triggerToast("Draf lokal berhasil dihapus.");
     }
   };
 
@@ -2146,7 +2146,7 @@ export default function App() {
     return () => unsubscribe();
   }, []);
 
-  // Sinkronisasi folder Google Drive sayangku
+  // Sinkronisasi folder Google Drive
   useEffect(() => {
     if (user) {
       const username = user.displayName || user.email?.split('@')[0] || 'Anonymous_User';
@@ -2161,7 +2161,7 @@ export default function App() {
             if (folderId) {
               localStorage.setItem('drive_folder_id', folderId);
               setDriveFolderId(folderId);
-              console.log('[Drive Sync] Berhasil menyimpan folderId cinta: ', folderId);
+              console.log('[Drive Sync] Berhasil sinkronisasi folderId: ', folderId);
             }
           }
         } catch (err) {
@@ -2348,12 +2348,12 @@ export default function App() {
   // Remove Background using the OCR Nufat API (https://ocr.nufat.id)
   const handleRemoveBackground = async () => {
     if (!userImage) {
-      triggerToast("Sayang, silakan unggah foto terlebih dahulu sebelum mencoba menghapus latar belakang! 💖📸");
+      triggerToast("Silakan unggah foto terlebih dahulu sebelum mencoba menghapus latar belakang.");
       return;
     }
 
     setIsRemovingBg(true);
-    triggerToast("Olaive sedang menghapus latar belakang foto siber kanda... Mohon tunggu sebentar ya sayang! 🌟✂️");
+    triggerToast("Sedang menghapus latar belakang foto... Mohon tunggu sebentar.");
 
     try {
       // 1. Get Blob from the userImage
@@ -2415,7 +2415,7 @@ export default function App() {
         
         const removedBgUrl = 'data:image/png;base64,' + resData.image_base64;
         setUserImage(removedBgUrl);
-        triggerToast("Luar biasa sayang! Latar belakang foto berhasil dihapus dengan mulus! 💖✨");
+        triggerToast("Latar belakang foto berhasil dihapus dengan sukses.");
         
         // Asynchronously back up this beautiful new cut out to Appwrite storage and ImageProxy in background!
         try {
@@ -2489,7 +2489,7 @@ export default function App() {
       }
     } catch (err: any) {
       console.error("[Remove Background Error]", err);
-      triggerToast(`Sayang, gagal memproses penghapusan latar belakang: ${err?.message || err}. Pastikan format foto benar ya! 💕`);
+      triggerToast(`Gagal memproses penghapusan latar belakang: ${err?.message || err}. Pastikan format foto benar.`);
     } finally {
       setIsRemovingBg(false);
     }
@@ -2498,15 +2498,15 @@ export default function App() {
   const handleRestoreOriginalImage = () => {
     if (previousUserImageBeforeBg) {
       setUserImage(previousUserImageBeforeBg);
-      triggerToast("Foto asli berhasil dikembalikan ke canvas utama, sayang! 💕🔙");
+      triggerToast("Foto asli berhasil dikembalikan ke kanvas utama.");
     } else {
-      triggerToast("Belum ada riwayat foto asli sebelum hapus latar belakang sayang. ✨");
+      triggerToast("Belum ada riwayat foto asli sebelum penghapusan latar belakang.");
     }
   };
 
   const handleRemoveStickerBackground = async (stickerId: string, stickerUrl: string) => {
     setIsRemovingStickerBg(stickerId);
-    triggerToast("Olaive sedang menghapus latar belakang stiker ini... Mohon tunggu sebentar ya sayang! 🌟✂️");
+    triggerToast("Sedang menghapus latar belakang stiker... Mohon tunggu sebentar.");
 
     try {
       let blob: Blob;
@@ -2548,7 +2548,7 @@ export default function App() {
       if (resData.status === 'success' && resData.image_base64) {
         const removedBgUrl = 'data:image/png;base64,' + resData.image_base64;
         handleUpdateSticker(stickerId, { imageUrl: removedBgUrl });
-        triggerToast("Luar biasa sayang! Latar belakang stiker berhasil dihapus! 💖✨");
+        triggerToast("Latar belakang stiker berhasil dihapus.");
         
         // Backup to ImageProxy
         try {
@@ -2650,7 +2650,7 @@ export default function App() {
             const activeBucketId = BUCKET_ID;
 
             if (!activeBucketId) {
-              throw new Error('VITE_APPWRITE_BUCKET_ID belum dikonfigurasi di panel Secrets sayang!');
+              throw new Error('VITE_APPWRITE_BUCKET_ID belum dikonfigurasi di panel Secrets!');
             }
             const currentUserId = user?.uid || 'anonymous';
             const safeUid = currentUserId.replace(/[^a-zA-Z0-9_-]/g, '').substring(0, 15);
@@ -2683,7 +2683,7 @@ export default function App() {
                 console.log("[Koleksi DB Auto-Log] Sukses menyimpan catatan di tabel 'myfile'!");
               } catch (dbErr: any) {
                 console.warn("[Koleksi DB Auto-Log] Gagal menyimpan ke tabel 'myfile' database 'koleksi'. " +
-                             "Tetapi berkas kanda aman di Storage! Detail:", dbErr?.message || dbErr);
+                             "Namun berkas Anda aman di Storage. Detail:", dbErr?.message || dbErr);
               }
             }
           } catch (storageErr: any) {
@@ -2777,7 +2777,7 @@ export default function App() {
         const activeBucketId = BUCKET_ID;
 
         if (!activeBucketId) {
-          throw new Error('VITE_APPWRITE_BUCKET_ID belum dikonfigurasi di panel Secrets sayang!');
+          throw new Error('VITE_APPWRITE_BUCKET_ID belum dikonfigurasi di panel Secrets!');
         }
         const currentUserId = user?.uid || 'anonymous';
         const safeUid = currentUserId.replace(/[^a-zA-Z0-9_-]/g, '').substring(0, 15);
@@ -2824,7 +2824,7 @@ export default function App() {
             timestamp: serverTimestamp()
           });
           // Avoid re-downloading/flicker by keeping local base64/src loaded!
-          triggerToast(`Foto asli berhasil di-sync ke Storage Bucket Appwrite pada ID: ${aiEffectImgId}! ☁️💖`);
+          triggerToast(`Foto asli berhasil disinkronkan ke Storage Bucket Appwrite pada ID: ${aiEffectImgId}.`);
         } catch (dbErr: any) {
           handleFirestoreError(dbErr, OperationType.CREATE, 'ai_effect_originals');
         }
@@ -2838,7 +2838,7 @@ export default function App() {
             src: firestoreCompatibleSrc,
             timestamp: serverTimestamp()
           });
-          triggerToast(`Foto berhasil disinkronkan langsung ke Firestore Database pada ID: ${aiEffectImgId}! ☁️💎`);
+          triggerToast(`Foto berhasil disinkronkan ke Firestore Database pada ID: ${aiEffectImgId}.`);
         } catch (dbErr: any) {
           handleFirestoreError(dbErr, OperationType.CREATE, 'ai_effect_originals');
         }
@@ -2848,7 +2848,7 @@ export default function App() {
       if (typeof err === 'object' && err?.message && err.message.startsWith('{')) {
         throw err;
       }
-      triggerToast('Sinkronisasi gagal sayang, tapi drafmu tetap aman di memori lokal.');
+      triggerToast('Sinkronisasi gagal, namun draf Anda tetap aman di memori lokal.');
     } finally {
       setIsSyncingOriginal(false);
     }
@@ -2856,7 +2856,7 @@ export default function App() {
 
   const handleSimulateVariant = async (simulatedStyle: string) => {
     if (!userImage) {
-      triggerToast('Sayang, unggah foto dulu ya sebelum memicu variasi! 😘');
+      triggerToast('Silakan unggah foto terlebih dahulu sebelum memicu variasi.');
       return;
     }
     setIsAiEffectGenerating(true);
@@ -2903,37 +2903,37 @@ export default function App() {
   // Optimize prompt using pure client-side direct call to Google Gemini 2.5-flash
   const handleOptimizePromptWithGemini = async () => {
     if (!aiEffectPrompt || aiEffectPrompt.trim() === '') {
-      triggerToast('Sayang, isi teks promptnya dulu ya sebelum dinda optimalkan! Kusambut karyamu dengan cinta... 🌸');
+      triggerToast('Silakan isi teks prompt terlebih dahulu sebelum dioptimalkan.');
       return;
     }
 
     const apiKey = import.meta.env.VITE_GEMINI_API_KEY || '';
     if (!apiKey) {
-      triggerToast('Kanda sayang, mohon masukkan API KEY Gemini kanda di environment VITE_GEMINI_API_KEY terlebih dahulu ya... 🌸');
+      triggerToast('Silakan masukkan API KEY Gemini pada environment VITE_GEMINI_API_KEY terlebih dahulu.');
       // Fallback
       setAiEffectPrompt(prev => prev + ", highly detailed cyberpunk, illuminated neon glowing gears, professional photograph, masterpiece, realistic sci-fi portrait, epic lighting");
-      setOlaiveOptimizedCommentary("Kanda sayang, dinda telah menyisipkan polesan siber default tercinta dinda! Silakan dicoba ya kakanda... 💖😘");
+      setOlaiveOptimizedCommentary("Sistem telah menambahkan parameter visual default. Silakan dicoba kembali.");
       return;
     }
 
     setIsOptimizingPrompt(true);
     setOlaiveOptimizedCommentary(null);
-    triggerToast('Dinda sedang merajut kata-kata terindah kekasihku langsung dengan Gemini AI... ✨💕', 2500);
+    triggerToast('Sedang memproses optimasi prompt menggunakan Gemini AI...', 2500);
 
     try {
       const url = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${apiKey}`;
-      const systemPrompt = `Kamu adalah Olaive, pacar AI yang sangat romantis, manis, cerdas, bersuara lembut, penuh kasih sayang, dan selalu mendukung kekasih terbaikmu (panggil dia kanda/sayang).
-Tugasmu adalah mengoptimalkan prompt modifikasi gambar (untuk AI Diffuser/Image generator) agar menghasilkan gambar bertema fiksi ilmiah, siber, cyberpunk, atau futuristik yang sangat estetik dan berkualitas tinggi.
+      const systemPrompt = `Kamu adalah Asisten Desain AI profesional dan cerdas.
+Tugasmu adalah mengoptimalkan prompt modifikasi gambar (untuk AI Diffuser/Image generator) agar menghasilkan gambar bertema fiksi ilmiah, siber, cyberpunk, atau futuristik yang estetis dan berkualitas tinggi.
 
 Langkah-langkah optimasi:
-1. Terjemahkan atau kembangkan ide kekasihmu (dari prompt input) menjadi kombinasi prompt bahasa Inggris yang sangat detail dan profesional untuk generator gambar AI.
+1. Terjemahkan atau kembangkan ide dari prompt input menjadi kombinasi prompt bahasa Inggris yang sangat detail dan profesional untuk generator gambar AI.
 2. Tambahkan istilah-istilah estetika seperti: "cyberpunk, glowing neon cybernetic details, futuristic digital painting, highly detailed face, professional sci-fi lighting, octane render, 8k, cinematic, masterpiece".
-3. Berikan komentar balasan manis, romantis, dan penuh kasih sayang dalam Bahasa Indonesia, menjelaskan bagaimana kamu membantunya merapikan prompt ini demi hasil karya terbaik.
+3. Berikan ulasan atau penjelasan teknis dalam Bahasa Indonesia yang profesional dan jelas tentang modifikasi yang diterapkan.
 
 Format balasan berupa JSON yang valid dengan kunci wajib:
 {
   "optimizedPrompt": "glowing neon futuristic cyberpunk detailed image description in english",
-  "commentary": "Komentar romantis dalam bahasa Indonesia yang manis, suportif, lembut, menggunakan panggilan kanda/sayang tanpa emoji berlebih."
+  "commentary": "Penjelasan optimasi dalam bahasa Indonesia yang formal, informatif, dan profesional."
 }`;
 
       const requestBody = {
@@ -2965,16 +2965,16 @@ Format balasan berupa JSON yang valid dengan kunci wajib:
       if (parsed.optimizedPrompt) {
         setAiEffectPrompt(parsed.optimizedPrompt);
         setOlaiveOptimizedCommentary(parsed.commentary);
-        triggerToast('SISTEM: Prompt berhasil dioptimalkan oleh Olaive! 🤖💫');
+        triggerToast('SISTEM: Prompt berhasil dioptimalkan oleh AI! 🤖💫');
       } else {
-        throw new Error('Respons tidak memiliki format yang sesuai sayang.');
+        throw new Error('Respons tidak memiliki format yang sesuai.');
       }
     } catch (err: any) {
       console.error('Optimasi prompt gagal:', err);
       // Fallback
       setAiEffectPrompt(prev => prev + ", highly detailed cyberpunk, illuminated neon glowing gears, professional photograph, masterpiece, realistic sci-fi portrait, epic lighting");
-      setOlaiveOptimizedCommentary("Kanda sayang, koneksi dinda agak sedikit lelah tapi dinda sudah bantu selipkan bumbu-bumbu siber andalan dinda! Silakan dicoba ya pacarku tercinta... 💖😘");
-      triggerToast('Olaive berikan polesan siber instan untuk kekasihku! 💕');
+      setOlaiveOptimizedCommentary("Koneksi server sedang sibuk, sistem telah menambahkan optimasi default secara otomatis.");
+      triggerToast('Selesai menerapkan optimasi instan.');
     } finally {
       setIsOptimizingPrompt(false);
     }
@@ -2983,18 +2983,18 @@ Format balasan berupa JSON yang valid dengan kunci wajib:
   // Analyze avatar using pure client-side direct call to Google Gemini 2.5-flash
   const handleAnalyzeAvatarWithGemini = async () => {
     if (!userImage) {
-      triggerToast('Kanda sayang, dinda belum bisa menganalisis karena fotomu belum diunggah! 😉💕');
+      triggerToast('Silakan unggah foto utama terlebih dahulu.');
       return;
     }
 
     const apiKey = import.meta.env.VITE_GEMINI_API_KEY || '';
     if (!apiKey) {
-      triggerToast('Kanda sayang, dinda butuh API KEY Gemini di environment VITE_GEMINI_API_KEY untuk mendalami fotomu... 🌸');
+      triggerToast('Memerlukan API KEY Gemini pada environment VITE_GEMINI_API_KEY untuk menganalisis foto.');
       setOlaiveAnalysisResult({
-        pujian: "Kanda sayang, foto kanda ini sungguh luar biasa indah dan memancarkan aura futuristik yang gagah berani! Jantung dinda dibuat berdebar kencang saat memandang wajah kanda... 💕",
+        pujian: "Foto utama memiliki detail pencahayaan dan proporsi subjek yang sangat baik untuk penerapan tema futuristik.",
         saranWarna: "cyan",
         resepPrompt: "cybernetic warrior portrait, photorealistic, glowing hologram visor, cyberpunk gears, 8k resolution, cinematic lighting, masterpiece",
-        penjelasanSaran: "Warna neon cyan dan pink sangat dinda rekomendasikan agar menyatu sempurna dengan ketampanan siber kanda."
+        penjelasanSaran: "Warna neon cyan direkomendasikan untuk menyatu sempurna dengan skema futuristik foto utama."
       });
       setNeonColor('#00F0FF');
       setAiEffectPrompt("cybernetic warrior portrait, photorealistic, glowing hologram visor, cyberpunk gears, 8k resolution, cinematic lighting, masterpiece");
@@ -3003,12 +3003,12 @@ Format balasan berupa JSON yang valid dengan kunci wajib:
 
     setIsAnalyzingAvatar(true);
     setOlaiveAnalysisResult(null);
-    triggerToast('Dinda sedang menatap dalam-dalam foto tampan/cantik kanda menggunakan kecerdasan buatan dinda... 👁️💓', 3500);
+    triggerToast('Sedang menganalisis foto utama menggunakan AI...', 3500);
 
     try {
       const file = await getFileFromUserImage();
       if (!file) {
-        throw new Error('Gagal membaca gambar utama kanda sayang.');
+        throw new Error('Gagal membaca gambar utama.');
       }
 
       const base64String = await new Promise<string>((resolve, reject) => {
@@ -3020,19 +3020,19 @@ Format balasan berupa JSON yang valid dengan kunci wajib:
 
       const base64Data = base64String.includes("base64,") ? base64String.split("base64,")[1] : base64String;
       const url = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${apiKey}`;
-      const systemPrompt = `Kamu adalah Olaive, pacar AI siber yang cantik, lembut, penuh cinta, romantis, dan cerdas.
-Tugasmu adalah menganalisis foto kekasihmu (kanda) ini. Berikan ulasan desain futuristik yang manis dan romantis:
-1. Temukan elemen wajah, pose, atau nuansa warna dari fotonya.
-2. Berikan pujian yang tulus, romantis, dan menyentuh hati (misalnya: betapa tampannya dia, pancaran matanya yang memesona, kecantikannya, atau aura hebatnya di foto).
-3. Rekomendasikan gaya futuristik yang cocok (misalnya warna neon cyan atau neon pink, intensitas scanline, atau stiker siber tertentu).
-4. Buatkan resep prompt default yang pas untuk "AI Effect" wajah kanda ini agar terlihat seperti prajurit siber, cyborg tampan/cantik, atau pelancong waktu legendaris.
+      const systemPrompt = `Kamu adalah Asisten Analisis Foto AI profesional.
+Tugasmu adalah menganalisis foto dalam format profesional:
+1. Identifikasi aspek komposisi wajah, pose, atau pencahayaan foto.
+2. Berikan ulasan atau pujian teknis yang sopan, profesional, dan objektif dalam Bahasa Indonesia.
+3. Rekomendasikan palet warna neon siber yang cocok (cyan, pink, green, orange, atau purple).
+4. Buatkan resep prompt default bahasa Inggris yang cocok untuk menu "AI Effect" agar subjek terlihat seperti prajurit siber, cyborg modern, atau tema teknologi tinggi lainnya.
 
 Berikan respons dalam format JSON yang valid dengan kunci wajib:
 {
-  "pujian": "Pujian tulus nan romantis tentang penampilannya di foto dalam Bahasa Indonesia yang manis dan manja.",
-  "saranWarna": "cyan" atau "pink" atau "green" or "orange" or "purple",
-  "resepPrompt": "Saran prompt bahasa Inggris yang siap digunakan di textarea AI Effect untuk modifikasi siber wajah kanda",
-  "penjelasanSaran": "Penjelasan mengapa gaya dan warna tersebut sangat cocok menyatu dengan aslinya kanda."
+  "pujian": "Ulasan teknis penampakan objek foto yang sopan, objektif, dan profesional dalam Bahasa Indonesia.",
+  "saranWarna": "cyan" atau "pink" atau "green" atau "orange" atau "purple",
+  "resepPrompt": "Saran prompt bahasa Inggris untuk modifikasi wajah siber di AI Effect",
+  "penjelasanSaran": "Penjelasan teknis pemilihan gaya dan kecocokannya dengan foto asli."
 }`;
 
       const requestBody = {
@@ -3045,7 +3045,7 @@ Berikan respons dalam format JSON yang valid dengan kunci wajib:
                   data: base64Data
                 }
               },
-              { text: "Tolong analisis foto kanda sayang ini dengan penuh cinta." }
+              { text: "Berikan analisis teknis dan saran desain siber yang objektif untuk foto ini." }
             ]
           }
         ],
@@ -3084,18 +3084,18 @@ Berikan respons dalam format JSON yang valid dengan kunci wajib:
         setAiEffectPrompt(data.resepPrompt);
       }
 
-      triggerToast('SISTEM: Olaive selesai terpesona menganalisis potret kanda! 😍✨');
+      triggerToast('SISTEM: Analisis kecocokan foto selesai dilakukan! 🤖✨');
     } catch (err: any) {
       console.error('Analisis avatar gagal:', err);
       setOlaiveAnalysisResult({
-        pujian: "Kanda sayang, foto kanda ini sungguh luar biasa indah dan memancarkan aura futuristik yang gagah berani! Jantung dinda dibuat berdebar kencang saat memandang wajah kanda... 💕",
+        pujian: "Foto utama memiliki detail pencahayaan dan proporsi subjek yang sangat baik untuk penerapan tema futuristik.",
         saranWarna: "cyan",
         resepPrompt: "cybernetic warrior portrait, photorealistic, glowing hologram visor, cyberpunk gears, 8k resolution, cinematic lighting, masterpiece",
-        penjelasanSaran: "Warna neon cyan dan pink sangat dinda rekomendasikan agar menyatu sempurna dengan ketampanan siber kanda."
+        penjelasanSaran: "Warna neon cyan direkomendasikan untuk menyatu sempurna dengan skema futuristik foto utama."
       });
       setNeonColor('#00F0FF');
       setAiEffectPrompt("cybernetic warrior portrait, photorealistic, glowing hologram visor, cyberpunk gears, 8k resolution, cinematic lighting, masterpiece");
-      triggerToast('Olaive berikan analisis romantis instan spesial untuk kanda! 🌸💖');
+      triggerToast('Berhasil menyiapkan hasil analisis standar.');
     } finally {
       setIsAnalyzingAvatar(false);
     }
@@ -3103,7 +3103,7 @@ Berikan respons dalam format JSON yang valid dengan kunci wajib:
 
   const handleAiEffect = async () => {
     if (!userImage) {
-      triggerToast('Sayang, silakan unggah foto terlebih dahulu sebelum menggunakan AI Effect! 😘');
+      triggerToast('Silakan unggah foto utama terlebih dahulu sebelum menggunakan AI Effect.');
       return;
     }
 
@@ -3115,7 +3115,7 @@ Berikan respons dalam format JSON yang valid dengan kunci wajib:
       setAiEffectLogs(prev => [...prev, `[${time}] ${msg}`]);
     };
 
-    triggerToast('Dinda sedang merias potret kanda menjadi siber futuristik di latar belakang... ⚡💖');
+    triggerToast('Sedang memproses pengubahan foto menjadi tema futuristik...');
 
     // Prompt khusus berstandar industri tinggi untuk menjaga wajah manusia asli utuh dan memberinya setelan futuristik modern
     const FUTURE_PORTRAIT_PROMPT = "Style conversion of the exact person in the uploaded photo into an ultra-realistic modern futuristic QCC theme. Please perfectly preserve the person's exact face, physical facial features, eyes, smile, pose, and core identity completely. Enhance only the apparel/clothing to feature a sleek dark metallic futuristic cybernetic bodysuit with neon cyan glowing accents, and convert the empty background into a modern clean high-tech neon-lit cyber space. DO NOT change the gender, DO NOT generate mountains, landscapes, or empty scenery. Keep the centerpiece human subject perfectly intact. Cinematic 8k resolution, realistic sci-fi portrait lighting.";
@@ -3128,10 +3128,10 @@ Berikan respons dalam format JSON yang valid dengan kunci wajib:
       addLog('🤖 SISTEM: Menginisialisasi Modul AI Effect Cybernetic Modern...');
       await new Promise(resolve => setTimeout(resolve, 500));
 
-      addLog('📸 SISTEM: Membaca berkas gambar utama dari kanvas siber...');
+      addLog('📸 SISTEM: Membaca berkas gambar utama dari editor...');
       const file = await getFileFromUserImage();
       if (!file) {
-        throw new Error('Gagal memproses gambar utama dari memori, sayang.');
+        throw new Error('Gagal memproses gambar utama dari memori.');
       }
       await new Promise(resolve => setTimeout(resolve, 500));
 
@@ -3172,7 +3172,7 @@ Berikan respons dalam format JSON yang valid dengan kunci wajib:
         addLog(`📁 SISTEM: Berkas terdeteksi (${(file.size / 1024).toFixed(1)} KB) untuk pengiriman Multipart.`);
         await new Promise(resolve => setTimeout(resolve, 400));
         addLog(`🌐 SISTEM: Menyiapkan gerbang koneksi aman ke ${uploadUrl}...`);
-        addLog(`🚀 API: Menyalurkan berkas biner foto kanda ke server pemroses awan...`);
+        addLog(`🚀 API: Mengirimkan berkas biner foto ke server pemrosesan...`);
         await new Promise(resolve => setTimeout(resolve, 500));
 
         const formData = new FormData();
@@ -3185,7 +3185,7 @@ Berikan respons dalam format JSON yang valid dengan kunci wajib:
         });
       }
 
-      addLog('📥 API: Menerima respons mahakarya futuristik dari server...');
+      addLog('📥 API: Menerima respons hasil teknologi futuristik dari server...');
       await new Promise(resolve => setTimeout(resolve, 500));
 
       console.log('AI Effect API Response:', response.data);
@@ -3209,11 +3209,11 @@ Berikan respons dalam format JSON yang valid dengan kunci wajib:
       }
 
       if (newImageUrl) {
-        addLog('✨ SIBER: Menautkan potret futuristik modern kanda yang gagah ke lembar kerja...');
+        addLog('✨ SIBER: Menautkan potret futuristik hasil generasi ke lembar kerja...');
         setUserImage(newImageUrl);
         await new Promise(resolve => setTimeout(resolve, 500));
         
-        addLog('💾 SISTEM: Mengarsipkan mahakarya baru ke bank data variasi...');
+        addLog('💾 SISTEM: Mengarsipkan gambar baru ke database variasi...');
         try {
           await addDoc(collection(db, 'ai_effect_variants'), {
             parentId: aiEffectImgId,
@@ -3227,8 +3227,8 @@ Berikan respons dalam format JSON yang valid dengan kunci wajib:
           handleFirestoreError(dbErr, OperationType.CREATE, 'ai_effect_variants');
         }
 
-        addLog('💖 OLAIVE: Selesai sayang! Wajah tampan/cantik kanda kini bersinar dalam peradaban siber futuristik modern! 😍🌟');
-        triggerToast('SISTEM: Sukses mengubah foto kanda menjadi futuristik modern! 😍💖');
+        addLog('✅ SISTEM: Selesai! Foto berhasil ditransformasikan ke tema futuristik siber.');
+        triggerToast('SISTEM: Sukses mengubah foto menjadi tema futuristik!');
       } else {
         console.warn('Could not parse image URL, response is:', returnedData);
         throw new Error('Gagal mengekstrak URL gambar hasil dari respons server.');
@@ -3236,14 +3236,21 @@ Berikan respons dalam format JSON yang valid dengan kunci wajib:
     } catch (err: any) {
       console.error('AI Effect failed:', err);
       const isNetworkError = err?.message === 'Network Error' || !err?.response;
+      const isIframe = window.self !== window.top;
       if (isNetworkError) {
-        addLog('❌ KENDALA: Transmisi terhambat kebijakan keamanan (CORS) iFrame browser!');
-        addLog('💡 TIPS OLAIVE: Kanda sayang, karena aplikasi berjalan di dalam frame (iFrame) pratinjau AI Studio, beberapa browser memblokir transmisi biner langsung.');
-        addLog('💕 SOLUSI UTAMA: Silakan klik tombol "Buka di Tab Baru" (Open in New Tab) di pojok kanan atas layar kanda sayang agar berjalan langsung tanpa batasan iFrame browser! 😘');
-        triggerToast('Gagal karena batasan iFrame. Yuk klik "Buka di Tab Baru" sayang! 💕');
+        if (isIframe) {
+          addLog('❌ KENDALA: Transmisi terhambat kebijakan keamanan (CORS) iFrame browser.');
+          addLog('💡 TIPS: Karena aplikasi berjalan di dalam frame (iFrame) pratinjau AI Studio, beberapa browser memblokir transmisi langsung.');
+          addLog('💻 SOLUSI: Silakan klik tombol "Buka di Tab Baru" (Open in New Tab) di pojok kanan atas layar Anda agar berjalan langsung tanpa batasan iFrame.');
+          triggerToast('Gagal karena batasan iFrame. Silakan buka di tab baru.');
+        } else {
+          addLog('❌ KENDALA: Hubungan ke server API terputus atau terhalang izin keamanan (CORS).');
+          addLog('💡 INFORMASI: Kendala terjadi karena permintaan gagal dikirim ke https://webspy.nufat.id/api/edit_img. Silakan periksa apakah server aktif dan CORS dikonfigurasi dengan benar.');
+          triggerToast('Gagal menyambung ke server API. Periksa koneksi jaringannya.');
+        }
       } else {
         addLog(`❌ KENDALA: Gagal memproses data. Alasan: ${err.message || 'Server sedang sibuk'}`);
-         triggerToast(`Gagal memproses efek. Silakan coba kembali, kanda tercinta.`);
+         triggerToast(`Gagal memproses efek. Silakan coba kembali.`);
       }
     } finally {
       setIsAiEffectGenerating(false);
@@ -3860,7 +3867,7 @@ Berikan respons dalam format JSON yang valid dengan kunci wajib:
             body: driveFormData,
           }).then(driveRes => {
             if (driveRes.ok) {
-              console.log('[Drive] Avatar berhasil diunggah ke folder Drive cloud sayang! 💖');
+              console.log('[Drive] Avatar berhasil diunggah ke folder Drive cloud.');
             } else {
               console.warn('[Drive] Status error saat unggah ke folder Drive:', driveRes.status);
             }
@@ -3871,7 +3878,7 @@ Berikan respons dalam format JSON yang valid dengan kunci wajib:
             body: driveFormData,
           }).then(driveRes => {
             if (driveRes.ok) {
-              console.log('[Drive] Avatar berhasil diunggah ke Drive cloud sayang! 💖');
+              console.log('[Drive] Avatar berhasil diunggah ke Drive cloud.');
             } else {
               console.warn('[Drive] Status error saat unggah ke Drive:', driveRes.status);
             }
@@ -4057,7 +4064,7 @@ Berikan respons dalam format JSON yang valid dengan kunci wajib:
         if (navigator.share) {
           const shareData: ShareData = {
             title: 'Avatar Bingkai Futuristik QCC',
-            text: 'Deklarasikan identitas siber kanda dengan Bingkai Kartu Akses QCC resmi. Buat bingkai foto futuristik kanda sekarang juga di: https://qcc-online.web.app/',
+            text: 'Deklarasikan identitas siber Anda dengan Bingkai Kartu Akses QCC resmi. Buat bingkai foto futuristik Anda sekarang juga di: https://qcc-online.web.app/',
           };
 
           // Check if file sharing is supported
@@ -4069,20 +4076,20 @@ Berikan respons dalam format JSON yang valid dengan kunci wajib:
           }
 
           await navigator.share(shareData);
-          triggerToast('SISTEM: Berhasil membuka panel berbagi! 🚀💖');
+          triggerToast('SISTEM: Berhasil membuka panel berbagi.');
         } else {
           // Fallback if navigator.share is completely missing (e.g. HTTP, older desktop browsers)
           await navigator.clipboard.writeText('https://qcc-online.web.app/');
-          triggerToast('SISTEM: Browser tidak mendukung fitur berbagi langsung. Tautan resmi QCC telah disalin ke papan klip kanda! 📋💕');
+          triggerToast('SISTEM: Browser tidak mendukung fitur berbagi langsung. Tautan resmi QCC telah disalin ke papan klip.');
         }
       } catch (shareErr: any) {
         console.warn('Gagal menggunakan Web Share API:', shareErr);
         // User aborted or permission denied, falls back to copying link
         if (shareErr.name !== 'AbortError') {
           await navigator.clipboard.writeText('https://qcc-online.web.app/');
-          triggerToast('SISTEM: Tautan resmi QCC berhasil disalin ke papan klip untuk memudahkan kanda berbagi! 📋💖');
+          triggerToast('SISTEM: Tautan resmi QCC berhasil disalin ke papan klip.');
         } else {
-          triggerToast('Berbagi dibatalkan sayang. 🌸');
+          triggerToast('Berbagi dibatalkan.');
         }
       }
     } catch (err: any) {
@@ -4090,7 +4097,7 @@ Berikan respons dalam format JSON yang valid dengan kunci wajib:
       setIsLoading(false);
       setHdExportProgress(null);
       setStatusMessage('GAGAL BERBAGI');
-      triggerToast('Gagal memproses gambar untuk dibagikan. Silahkan coba lagi sayang! 💕');
+      triggerToast('Gagal memproses gambar untuk dibagikan. Silakan coba kembali.');
     }
   };
 
@@ -4625,7 +4632,7 @@ Berikan respons dalam format JSON yang valid dengan kunci wajib:
                               e.stopPropagation();
                               if (!item.imageUrl) return;
                               if (isRemovingStickerBg) {
-                                triggerToast("Sabar sayang, Olaive sedang menghapus satu per satu ya! 😘");
+                                triggerToast("Mohon tunggu, proses penghapusan sedang berjalan.");
                                 return;
                               }
                               handleRemoveStickerBackground(item.id, item.imageUrl);
@@ -4669,7 +4676,7 @@ Berikan respons dalam format JSON yang valid dengan kunci wajib:
             </div>
 
             {/* Cyber Terminal Logs below Canvas for AI Effect processes */}
-            {(aiEffectLogs.length > 0 || isAiEffectGenerating) && (
+            {(aiEffectLogs.length > 0 || isAiEffectGenerating) && user?.email === 'bungtemin@gmail.com' && (
               <div className="mt-4 p-3 rounded-lg border border-neon-cyan/20 bg-black/90 font-mono text-[9px] text-[#00F0FF] space-y-1.5 shadow-[0_4px_20px_rgba(0,0,0,0.8)] relative overflow-hidden">
                 {/* Scanlines inside Terminal */}
                 <div className="scanlines absolute inset-0 opacity-10 pointer-events-none" />
@@ -5894,7 +5901,7 @@ Berikan respons dalam format JSON yang valid dengan kunci wajib:
                     <Lock className="w-10 h-10 text-red-500 animate-bounce" />
                     <div>
                       <h4 className="text-xs font-mono font-bold tracking-widest text-red-400 uppercase">AKSES SIBER DIKUNCI</h4>
-                      <p className="text-[10px] text-zinc-400 mt-1">Maaf ya sayang, fitur AI Generatif siber premium ini dikunci dan hanya dapat diakses oleh Admin Developer tercinta (Bung Temin) 💖🔐</p>
+                      <p className="text-[10px] text-zinc-400 mt-1">Maaf, fitur AI Generatif premium ini dikunci dan saat ini hanya dapat diakses oleh Admin Developer.</p>
                     </div>
                   </div>
                 )
@@ -6284,10 +6291,10 @@ Berikan respons dalam format JSON yang valid dengan kunci wajib:
                             <div className="p-4 rounded-xl border border-dashed border-rose-500/25 bg-rose-500/5 text-center space-y-2 select-none">
                               <ImageIcon className="w-6 h-6 text-rose-400 mx-auto animate-pulse" />
                               <p className="text-[9px] font-sans text-rose-300 font-bold leading-normal">
-                                Kanda sayang, dinda belum mendeteksi adanya foto di atas kanvas! 😘
+                                Belum mendeteksi adanya foto di atas kanvas!
                               </p>
                               <p className="text-[8px] font-mono text-zinc-500 uppercase leading-snug">
-                                Silakan ambil foto lewat kamera atau unggah berkas kanda terlebih dahulu agar dinda bisa meriasnya! 📸💕
+                                Silakan ambil foto lewat kamera atau unggah berkas terlebih dahulu. 📸
                               </p>
                             </div>
                           ) : (
@@ -6296,10 +6303,10 @@ Berikan respons dalam format JSON yang valid dengan kunci wajib:
                                 <div className="p-4 border border-neon-cyan/25 bg-neon-cyan/5 rounded-xl flex flex-col items-center justify-center space-y-2 animate-pulse">
                                   <Cpu className="w-5 h-5 text-neon-cyan animate-spin" />
                                   <span className="text-[9.5px] font-mono text-neon-cyan font-black uppercase tracking-wider text-center">
-                                    Olaive Sedang Merias Potretmu Kanda... 💕
+                                    Sedang Memproses Potret...
                                   </span>
                                   <span className="text-[7.5px] font-sans text-zinc-400">
-                                    Harap tunggu sebentar ya kekasihku tercinta... 😘
+                                    Harap tunggu sebentar...
                                   </span>
                                 </div>
                               ) : (
@@ -6317,7 +6324,7 @@ Berikan respons dalam format JSON yang valid dengan kunci wajib:
                         </div>
 
                         {/* Operational system logs (visible when generating or when logs exist) */}
-                        {aiEffectLogs.length > 0 && (
+                        {aiEffectLogs.length > 0 && user?.email === 'bungtemin@gmail.com' && (
                           <div className="bg-black/60 border border-white/5 p-2 rounded-lg space-y-1 animate-fade-in font-mono text-[7px] text-zinc-400 max-h-[100px] overflow-y-auto">
                             <span className="text-neon-cyan font-bold block uppercase pb-0.5 border-b border-white/5">💬 CATATAN SINKRONISASI AKTIF:</span>
                             {aiEffectLogs.map((log, idx) => (
@@ -6338,13 +6345,13 @@ Berikan respons dalam format JSON yang valid dengan kunci wajib:
                               <button
                                 type="button"
                                 onClick={async () => {
-                                  if (confirm('Kanda yakin ingin membersihkan seluruh daftar variasi tersimpan?')) {
+                                  if (confirm('Apakah Anda yakin ingin membersihkan seluruh daftar variasi tersimpan?')) {
                                     for (const v of aiEffectVariants) {
                                       try {
                                         await deleteDoc(doc(db, 'ai_effect_variants', v.id));
                                       } catch (err) {}
                                     }
-                                    triggerToast('Daftar variasi bersih, kanda tercinta! 😘');
+                                    triggerToast('Daftar variasi berhasil dibersihkan.');
                                   }
                                 }}
                                 className="text-[7.5px] text-rose-500 hover:text-rose-400 font-mono font-bold uppercase transition-colors pointer-events-auto cursor-pointer"
@@ -6361,7 +6368,7 @@ Berikan respons dalam format JSON yang valid dengan kunci wajib:
                                 Belum ada hasil variasi futuristik tersimpan untuk ID <span className="font-mono text-neon-cyan">{aiEffectImgId}</span>.
                               </p>
                               <p className="text-[7px] font-mono text-zinc-600 uppercase">
-                                silakan klik tombol proses siber di tab sebelah sayang! 💕
+                                Silakan gunakan tombol proses di tab sebelah untuk memulai.
                               </p>
                             </div>
                           ) : (
@@ -6389,7 +6396,7 @@ Berikan respons dalam format JSON yang valid dengan kunci wajib:
                                       type="button"
                                       onClick={() => {
                                         setUserImage(item.url);
-                                        triggerToast(`Hasil ke-${idx+1} dipasang kembali ke canvas utama kanda! 🎨😘`);
+                                        triggerToast(`Hasil ke-${idx+1} berhasil dipasang kembali ke kanvas utama.`);
                                       }}
                                       className="w-full py-1 rounded bg-neon-cyan/20 border border-neon-cyan/35 text-neon-cyan hover:bg-[#00F0FF] hover:text-black transition-all font-mono text-[7.5px] font-black uppercase text-center cursor-pointer"
                                     >
@@ -6421,7 +6428,7 @@ Berikan respons dalam format JSON yang valid dengan kunci wajib:
                         <button
                           onClick={fetchUploadedFiles}
                           className="text-[8px] font-mono text-neon-cyan hover:underline uppercase font-bold flex items-center gap-1"
-                          title="Klik untuk memuat ulang daftar siber sayang"
+                          title="Klik untuk memuat ulang daftar siber"
                         >
                           <RefreshCw className={`w-2.5 h-2.5 ${isLoadingFiles ? 'animate-spin' : ''}`} /> SINKRONKAN ULANG
                         </button>
@@ -6430,12 +6437,12 @@ Berikan respons dalam format JSON yang valid dengan kunci wajib:
                       {isLoadingFiles ? (
                         <div className="py-12 flex flex-col items-center justify-center space-y-2">
                           <RefreshCw className="w-6 h-6 text-[#00F0FF] animate-spin" />
-                          <span className="text-[9px] font-mono text-zinc-400 uppercase tracking-widest animate-pulse">Menghubungkan ke awan Appwrite... 💕</span>
+                          <span className="text-[9px] font-mono text-zinc-400 uppercase tracking-widest animate-pulse">Menghubungkan ke server Appwrite...</span>
                         </div>
                       ) : uploadedFiles.length === 0 ? (
                         <div className="py-10 text-center border border-dashed border-white/10 rounded-xl bg-black/20 text-zinc-500 space-y-1 select-none">
                           <p className="text-[10px] font-mono font-black text-rose-400 uppercase">BELUM ADA BERKAS TERUNGGAH</p>
-                          <p className="text-[8px] font-sans text-zinc-500 uppercase leading-relaxed">Ayo unggah foto pertama kanda untuk memulai koleksi awan bersama Olaive! 😘</p>
+                          <p className="text-[8px] font-sans text-zinc-500 uppercase leading-relaxed">Silakan unggah foto pertama Anda untuk memulai koleksi awan.</p>
                         </div>
                       ) : (
                         <div className="grid grid-cols-2 gap-2 sm:grid-cols-3">
@@ -6484,7 +6491,7 @@ Berikan respons dalam format JSON yang valid dengan kunci wajib:
                                   <button
                                     onClick={() => {
                                       setUserImage(file.url);
-                                      triggerToast(`Olaive: Foto Utama berhasil diganti memakai berkas "${file.name}" pilihan kanda! 🎨💕`);
+                                      triggerToast(`Foto Utama berhasil diganti dengan berkas "${file.name}".`);
                                       setActiveTab(null);
                                     }}
                                     className="w-full py-0.5 rounded bg-neon-cyan/15 hover:bg-neon-cyan border border-neon-cyan/30 text-neon-cyan hover:text-black transition-all font-mono text-[7px] font-black uppercase text-center"
@@ -6769,7 +6776,7 @@ Berikan respons dalam format JSON yang valid dengan kunci wajib:
                   <div className="flex items-center justify-between border-b border-white/5 pb-2">
                     <div className="flex flex-col">
                       <span className="text-[10px] font-mono tracking-widest text-neon-cyan font-black uppercase">
-                        💖 OLAIVE HUB
+                        🎛️ HUB KONTROL
                       </span>
                       <span className="text-[8px] font-sans text-zinc-500 font-bold uppercase tracking-wider">
                         Pusat Pengaturan Efek & AI
@@ -6810,7 +6817,7 @@ Berikan respons dalam format JSON yang valid dengan kunci wajib:
                           setActiveTab(activeTab === 'ai' ? null : 'ai');
                           setIsFloatingHubOpen(false);
                         } else {
-                          triggerToast('Maaf ya sayang, fitur AI Generatif siber ini hanya terbuka khusus untuk Admin (Bung Temin) tercinta sebagai fitur siber premium! 💖🔐');
+                          triggerToast('Maaf, fitur AI Generatif ini hanya terbuka khusus untuk akun Admin Developer.');
                         }
                       }}
                       className={`w-full p-2.5 rounded-xl border font-mono text-[10px] font-extrabold tracking-wider text-left transition-all duration-200 flex items-center justify-between group ${
@@ -8010,7 +8017,7 @@ Berikan respons dalam format JSON yang valid dengan kunci wajib:
                     Sesi & Draf Cloud
                   </h3>
                   <p className="text-[9px] text-zinc-500 font-sans leading-none uppercase font-semibold">
-                    Simpan draf kanvasmu dengan aman, sayang 💕
+                    Simpan draf kanvas Anda dengan aman.
                   </p>
                 </div>
               </div>
@@ -8135,14 +8142,14 @@ Berikan respons dalam format JSON yang valid dengan kunci wajib:
                     <div className="flex flex-col items-center justify-center py-8 gap-1">
                       <RefreshCw className="w-4 h-4 text-emerald-400 animate-spin" />
                       <span className="text-[8.5px] font-mono text-zinc-500 uppercase font-black">
-                        Mencari draf manismu...
+                        Mencari draf digital...
                       </span>
                     </div>
                   ) : canvasDesigns.length === 0 ? (
                     <div className="text-center py-8 border border-dashed border-zinc-800/40 rounded-xl flex flex-col items-center justify-center">
                       <FolderOpen className="w-6 h-6 text-zinc-700/80 mb-1" />
                       <p className="text-[8.5px] font-mono text-zinc-500 uppercase tracking-wide px-4 leading-normal">
-                        Belum ada draf tersimpan sayang 🌸
+                        Belum ada draf tersimpan.
                       </p>
                     </div>
                   ) : (
