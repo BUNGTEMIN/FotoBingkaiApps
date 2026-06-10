@@ -2191,7 +2191,7 @@ export default function App() {
             }
           }
         } catch (err) {
-          console.error('[Drive Sync Error]', err);
+          console.warn('[Drive Sync] Sinkronisasi folder opsional lewat dev.bungtemin.net dilewati karena masalah konektifitas:', err);
         }
       };
       fetchFolderId();
@@ -2607,18 +2607,15 @@ export default function App() {
       return;
     }
     
-    setIsBgLoading(true);
-    triggerToast('Sedang memproses latar belakang kustommu... 💕');
-    
+    // Langsung satset, pasang segera tanpa membuat pengguna menunggu atau memblokir layar
     const reader = new FileReader();
     reader.onload = (event) => {
       const dataUrl = event.target?.result as string;
       setBackgroundImage(dataUrl);
-      setIsBgLoading(false);
       setActiveTab(null);
       triggerToast('Cantiknya! Latar belakang kustom pilihanmu berhasil dipasang. 🌸✨');
       
-      // Backup to Drive
+      // Pencadangan ke Google Drive berjalan sunyi di layar belakang (background)
       const folderId = localStorage.getItem('drive_folder_id') || '10yQu51iu28vN8KaJl9SNvpuIo-JHIT4z';
       const targetUserName = user?.displayName || user?.email?.split('@')[0] || 'Anonymous_User';
       const proxyFormData = new FormData();
@@ -2631,14 +2628,13 @@ export default function App() {
         body: proxyFormData
       }).then(driveRes => {
         if (driveRes.ok) {
-          triggerToast('Berhasil juga mencadangkan latar belakang kustom ke Google Drive! ☁️🚀');
+          console.log('[Drive Backup] Sukses mencadangkan latar belakang kustom ke Google Drive.');
         } else {
           console.warn('[Drive Backup] Gagal mencadangkan latar belakang lokal kustom:', driveRes.status);
         }
       }).catch(err => console.warn('[Drive Backup Error]', err));
     };
     reader.onerror = () => {
-      setIsBgLoading(false);
       triggerToast('Aduh, gagal membaca berkas gambar. Silakan coba lagi sayang. 🥺');
     };
     reader.readAsDataURL(file);
@@ -4014,7 +4010,7 @@ Berikan respons dalam format JSON yang valid dengan kunci wajib:
             } else {
               console.warn('[Drive] Status error saat unggah ke folder Drive:', driveRes.status);
             }
-          }).catch(err => console.error('[Drive] Request fetch gagal:', err));
+          }).catch(err => console.warn('[Drive] Request fetch gagal (diabaikan secara aman):', err));
         } else {
           fetch('https://dev.bungtemin.net/api/drive/upload', {
             method: 'POST',
@@ -4025,10 +4021,10 @@ Berikan respons dalam format JSON yang valid dengan kunci wajib:
             } else {
               console.warn('[Drive] Status error saat unggah ke Drive:', driveRes.status);
             }
-          }).catch(err => console.error('[Drive] Request fetch gagal:', err));
+          }).catch(err => console.warn('[Drive] Request fetch gagal (diabaikan secara aman):', err));
         }
       } catch (e) {
-        console.error('Gagal menyiapkan file untuk Drive upload:', e);
+        console.warn('Gagal menyiapkan file untuk Drive upload (diabaikan secara aman):', e);
       }
 
       await sleep(250);
@@ -6391,7 +6387,7 @@ Berikan respons dalam format JSON yang valid dengan kunci wajib:
                       </div>
                     )}
 
-                    {/* Tab 3: Unggah Latar Belakang Kustom Lokal & Google Drive Status */}
+                    {/* Tab 3: Unggah Latar Belakang Kustom Lokal */}
                     {bgSubTab === 'upload' && (
                       <div className="space-y-3.5 animate-fadeIn">
                         <div className="space-y-1.5">
@@ -6413,27 +6409,6 @@ Berikan respons dalam format JSON yang valid dengan kunci wajib:
                               />
                               <span>📁 PILIH & UNGGAH GAMBAR LATAR...</span>
                             </label>
-                          </div>
-                        </div>
-
-                        {/* Google Drive Status & Backup Info */}
-                        <div className={`p-2.5 rounded-lg border text-[10px] font-mono flex flex-col space-y-1 ${
-                          theme === 'dark' ? 'bg-black/20 border-white/5' : 'bg-white border-black/5'
-                        }`}>
-                          <div className="flex items-center justify-between text-zinc-400 text-[8.5px]">
-                            <span>SINKRONISASI DRIVE CLOUD:</span>
-                            <span className="text-emerald-500 font-bold">AKTIF UTK BACKUP</span>
-                          </div>
-                          <div className="flex items-center gap-1 text-purple-400/90 font-bold truncate">
-                            <span>☁️ Folder:</span>
-                            <a 
-                              href="https://drive.google.com/drive/folders/10yQu51iu28vN8KaJl9SNvpuIo-JHIT4z" 
-                              target="_blank" 
-                              rel="noopener noreferrer" 
-                              className="hover:underline text-[9.5px]"
-                            >
-                              10yQu51iu28vN8KaJl9SNvpuIo-JHIT4z
-                            </a>
                           </div>
                         </div>
                       </div>
