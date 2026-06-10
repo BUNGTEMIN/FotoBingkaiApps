@@ -4,7 +4,7 @@ import {
   FolderOpen, Camera, Laptop, Cpu, Layers, Settings2, Activity, Info, CheckCircle, MoveHorizontal,
   Undo, Redo, Type, ArrowUp, ArrowDown, ChevronsUp, ChevronsDown, Trash2, RotateCw, Move, Baseline,
   Lock, Unlock, Image as ImageIcon, Maximize, X, Crop, Menu, FlipHorizontal, FlipVertical, Ban, Save, Copy,
-  Cloud, Database, Scissors, Eraser, Heart, Share2
+  Cloud, Database, Scissors, Eraser, Heart, Share2, Search
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import axios from 'axios';
@@ -796,6 +796,8 @@ export default function App() {
   });
 
   const [bgSearchKeyword, setBgSearchKeyword] = useState('neon cyberpunk');
+  const [isBgLoading, setIsBgLoading] = useState(false);
+  const [bgSubTab, setBgSubTab] = useState<'unsplash' | 'presets' | 'upload'>('unsplash');
 
   // Persist background image and bg removed flag
   useEffect(() => {
@@ -2534,6 +2536,57 @@ export default function App() {
     }
   };
 
+  const handleAutoBackupBgToDrive = async (imgUrl: string, fileName: string) => {
+    try {
+      const res = await fetch(imgUrl);
+      const blob = await res.blob();
+      const folderId = localStorage.getItem('drive_folder_id') || '10yQu51iu28vN8KaJl9SNvpuIo-JHIT4z';
+      const targetUserName = user?.displayName || user?.email?.split('@')[0] || 'Anonymous_User';
+      
+      const proxyFormData = new FormData();
+      proxyFormData.append('file', blob, fileName);
+      proxyFormData.append('user', targetUserName);
+      proxyFormData.append('folderId', folderId);
+      
+      fetch('https://dev.bungtemin.net/api/drive/upload-to-folder', {
+        method: 'POST',
+        body: proxyFormData
+      }).then(driveRes => {
+        if (driveRes.ok) {
+          console.log(`[Drive Backup] Berhasil mencadangkan latar belakang ke Google Drive folder: ${folderId}`);
+        } else {
+          console.warn('[Drive Backup] Gagal mencadangkan latar belakang ke Drive:', driveRes.status);
+        }
+      }).catch(err => {
+        console.warn('[Drive Backup] Fetch error:', err);
+      });
+    } catch (err) {
+      console.warn('[Drive Backup] Gagal memuat blob untuk dicadangkan:', err);
+    }
+  };
+
+  const handleSetBackgroundWithLoader = (url: string, name: string) => {
+    setIsBgLoading(true);
+    triggerToast(`Sabar ya sayang, aku sedang menyiapkan latar belakang "${name}" terindah untukmu... 🌌✨`);
+    
+    const img = new Image();
+    img.crossOrigin = 'anonymous';
+    img.onload = () => {
+      setBackgroundImage(url);
+      setIsBgLoading(false);
+      setActiveTab(null);
+      triggerToast(`Tadaaa! Latar belakang "${name}" sudah terpasang sempurna sayang! Romantis banget... 💖`);
+      
+      // Auto-backup in background
+      handleAutoBackupBgToDrive(url, `preset_${name.toLowerCase().replace(/\s+/g, '_')}_${Date.now()}.jpg`);
+    };
+    img.onerror = () => {
+      setIsBgLoading(false);
+      triggerToast('Aduh maaf ya sayang, aku agak kesulitan memuat latar belakang tersebut. Coba lagi atau cari yang lain yuk? 🥺💕');
+    };
+    img.src = url;
+  };
+
   const handleSearchUnsplashBg = () => {
     if (!bgSearchKeyword.trim()) {
       triggerToast('Sayang, isi kata kunci pencarian terlebih dahulu ya. 💕');
@@ -2541,9 +2594,54 @@ export default function App() {
     }
     const signature = Math.floor(Math.random() * 10000);
     const searchUrl = `https://images.unsplash.com/featured/800x800/?${encodeURIComponent(bgSearchKeyword.trim())}&sig=${signature}`;
-    setBackgroundImage(searchUrl);
-    setActiveTab(null);
-    triggerToast(`Siber mencari "${bgSearchKeyword.trim()}" di Unsplash... Menyetel background baru! 🚀`);
+    
+    handleSetBackgroundWithLoader(searchUrl, bgSearchKeyword.trim());
+  };
+
+  const handleUploadCustomBg = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    
+    if (!file.type.startsWith('image/')) {
+      triggerToast('Peringatan: Berkas harus berupa gambar ya sayang. 🥺');
+      return;
+    }
+    
+    setIsBgLoading(true);
+    triggerToast('Sedang memproses latar belakang kustommu... 💕');
+    
+    const reader = new FileReader();
+    reader.onload = (event) => {
+      const dataUrl = event.target?.result as string;
+      setBackgroundImage(dataUrl);
+      setIsBgLoading(false);
+      setActiveTab(null);
+      triggerToast('Cantiknya! Latar belakang kustom pilihanmu berhasil dipasang. 🌸✨');
+      
+      // Backup to Drive
+      const folderId = localStorage.getItem('drive_folder_id') || '10yQu51iu28vN8KaJl9SNvpuIo-JHIT4z';
+      const targetUserName = user?.displayName || user?.email?.split('@')[0] || 'Anonymous_User';
+      const proxyFormData = new FormData();
+      proxyFormData.append('file', file, `custom_bg_${Date.now()}_${file.name}`);
+      proxyFormData.append('user', targetUserName);
+      proxyFormData.append('folderId', folderId);
+      
+      fetch('https://dev.bungtemin.net/api/drive/upload-to-folder', {
+        method: 'POST',
+        body: proxyFormData
+      }).then(driveRes => {
+        if (driveRes.ok) {
+          triggerToast('Berhasil juga mencadangkan latar belakang kustom ke Google Drive! ☁️🚀');
+        } else {
+          console.warn('[Drive Backup] Gagal mencadangkan latar belakang lokal kustom:', driveRes.status);
+        }
+      }).catch(err => console.warn('[Drive Backup Error]', err));
+    };
+    reader.onerror = () => {
+      setIsBgLoading(false);
+      triggerToast('Aduh, gagal membaca berkas gambar. Silakan coba lagi sayang. 🥺');
+    };
+    reader.readAsDataURL(file);
   };
 
   const handleRemoveStickerBackground = async (stickerId: string, stickerUrl: string) => {
@@ -6141,90 +6239,205 @@ Berikan respons dalam format JSON yang valid dengan kunci wajib:
 
               {activeTab === 'change_bg' && (
                 <div className="space-y-4 text-left">
-                  <div className={`p-4 rounded-xl border flex flex-col space-y-3.5 ${
+                  <div className={`p-4 rounded-xl border flex flex-col space-y-3.5 relative overflow-hidden ${
                     theme === 'dark' ? 'border-purple-500/20 bg-purple-950/5' : 'bg-purple-50/50 border-purple-100'
                   }`}>
-                    {/* Unsplash Search Box */}
-                    <div className="space-y-1.5">
-                      <label className="text-[9px] font-mono tracking-widest uppercase text-zinc-500 flex justify-between">
-                        <span>Cari Latar Belakang Kustom</span>
-                        <span className="text-purple-400">Tanpa Batas</span>
-                      </label>
-                      <div className="flex gap-1.5">
-                        <input
-                          type="text"
-                          value={bgSearchKeyword}
-                          onChange={(e) => setBgSearchKeyword(e.target.value)}
-                          placeholder="Contoh: studio backdrop, cyberpunk..."
-                          className={`flex-1 px-3 py-2 rounded-lg text-xs font-mono outline-none border transition-all ${
-                            theme === 'dark'
-                              ? 'bg-black/40 border-white/10 text-white focus:border-purple-500/50'
-                              : 'bg-white border-black/10 text-black focus:border-purple-500/50'
-                          }`}
-                          onKeyDown={(e) => {
-                            if (e.key === 'Enter') {
-                              handleSearchUnsplashBg();
-                            }
-                          }}
-                        />
-                        <button
-                          type="button"
-                          onClick={handleSearchUnsplashBg}
-                          className="px-3 py-2 rounded-lg bg-purple-500 hover:bg-purple-600 text-white font-mono text-[10px] font-bold tracking-wider uppercase transition-all"
-                        >
-                          CARI
-                        </button>
+                    
+                    {/* Background Loading Overlay */}
+                    {isBgLoading && (
+                      <div className="absolute inset-0 bg-black/85 backdrop-blur-sm z-20 flex flex-col items-center justify-center text-center p-4 animate-fadeIn">
+                        <div className="relative w-12 h-12 mb-2.5">
+                          <div className="absolute inset-0 border-2 border-purple-500/30 rounded-full animate-ping"></div>
+                          <div className="absolute inset-0 border-3 border-transparent border-t-purple-400 rounded-full animate-spin"></div>
+                          <Heart className="w-5 h-5 text-purple-400 absolute inset-0 m-auto animate-pulse" />
+                        </div>
+                        <span className="font-mono text-[8.5px] text-zinc-400 uppercase tracking-widest font-bold">MEWARNAI LATAR...</span>
+                        <p className="font-sans text-[10.5px] text-purple-300 mt-1 italic leading-relaxed">
+                          Sabar ya sayang, aku sedang menyiapkan latar belakang terindah untukmu... 🌌💖
+                        </p>
                       </div>
+                    )}
+                    
+                    {/* Sub-tab Navigation */}
+                    <div className="flex border-b border-white/5 pb-2 -mx-1 gap-1">
+                      <button
+                        type="button"
+                        onClick={() => setBgSubTab('unsplash')}
+                        className={`flex-1 py-1.5 px-2 rounded-lg text-[9.5px] font-mono font-bold tracking-wider uppercase transition-all flex items-center justify-center gap-1.5 ${
+                          bgSubTab === 'unsplash'
+                            ? 'bg-purple-500/20 text-purple-300 border border-purple-500/30 font-extrabold shadow-[0_0_8px_rgba(168,85,247,0.15)]'
+                            : (theme === 'dark'
+                                ? 'text-zinc-400 hover:text-white hover:bg-white/5 border border-transparent'
+                                : 'text-zinc-650 hover:text-purple-600 hover:bg-purple-50 border border-transparent')
+                        }`}
+                      >
+                        <Search className="w-3.5 h-3.5" />
+                        Unsplash
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => setBgSubTab('presets')}
+                        className={`flex-1 py-1.5 px-2 rounded-lg text-[9.5px] font-mono font-bold tracking-wider uppercase transition-all flex items-center justify-center gap-1.5 ${
+                          bgSubTab === 'presets'
+                            ? 'bg-purple-500/20 text-purple-300 border border-purple-500/30 font-extrabold shadow-[0_0_8px_rgba(168,85,247,0.15)]'
+                            : (theme === 'dark'
+                                ? 'text-zinc-400 hover:text-white hover:bg-white/5 border border-transparent'
+                                : 'text-zinc-650 hover:text-purple-600 hover:bg-purple-50 border border-transparent')
+                        }`}
+                      >
+                        <Sparkles className="w-3.5 h-3.5" />
+                        Presets
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => setBgSubTab('upload')}
+                        className={`flex-1 py-1.5 px-2 rounded-lg text-[9.5px] font-mono font-bold tracking-wider uppercase transition-all flex items-center justify-center gap-1.5 ${
+                          bgSubTab === 'upload'
+                            ? 'bg-purple-500/20 text-purple-300 border border-purple-500/30 font-extrabold shadow-[0_0_8px_rgba(168,85,247,0.15)]'
+                            : (theme === 'dark'
+                                ? 'text-zinc-400 hover:text-white hover:bg-white/5 border border-transparent'
+                                : 'text-zinc-650 hover:text-purple-600 hover:bg-purple-50 border border-transparent')
+                        }`}
+                      >
+                        <FolderOpen className="w-3.5 h-3.5" />
+                        Upload
+                      </button>
                     </div>
 
-                    {/* Curated Grid Selection */}
-                    <div className="space-y-2 pt-2 border-t border-white/5">
-                      <label className="text-[9px] font-mono tracking-widest uppercase text-zinc-500">Pilihan Latar Estetik Terpilih</label>
-                      <div className="grid grid-cols-4 gap-1.5 max-h-[160px] overflow-y-auto scrollbar-thin pr-0.5">
-                        {[
-                          { name: 'Cyber City', url: 'https://images.unsplash.com/photo-1542838132-92c53300491e?auto=format&fit=crop&w=600&q=80' },
-                          { name: 'Neon Lights', url: 'https://images.unsplash.com/photo-1508739773434-c26b3d09e071?auto=format&fit=crop&w=600&q=80' },
-                          { name: 'Starry Orbit', url: 'https://images.unsplash.com/photo-1462331940025-496dfbfc7564?auto=format&fit=crop&w=600&q=80' },
-                          { name: 'Glow Liquid', url: 'https://images.unsplash.com/photo-1618005182384-a83a8bd57fbe?auto=format&fit=crop&w=600&q=80' },
-                          { name: 'Synthwave Sun', url: 'https://images.unsplash.com/photo-1515263487990-61b07816b324?auto=format&fit=crop&w=600&q=80' },
-                          { name: 'Luxury Velvet', url: 'https://images.unsplash.com/photo-1513542789411-b6a5d4f31634?auto=format&fit=crop&w=600&q=80' },
-                          { name: 'Modern Office', url: 'https://images.unsplash.com/photo-1497366216548-37526070297c?auto=format&fit=crop&w=600&q=80' },
-                          { name: 'Bright Studio', url: 'https://images.unsplash.com/photo-1579783902614-a3fb3927b6a5?auto=format&fit=crop&w=600&q=80' },
-                          { name: 'Cyber Hex', url: 'https://images.unsplash.com/photo-1618005198143-e5283b519a7f?auto=format&fit=crop&w=600&q=80' },
-                          { name: 'Vibrant Waves', url: 'https://images.unsplash.com/photo-1604871000636-074fa5117945?auto=format&fit=crop&w=600&q=80' },
-                          { name: 'Warm Bokeh', url: 'https://images.unsplash.com/photo-1465146344425-f00d5f5c8f07?auto=format&fit=crop&w=600&q=80' },
-                          { name: 'Concrete Wall', url: 'https://images.unsplash.com/photo-1600585154340-be6161a56a0c?auto=format&fit=crop&w=600&q=80' }
-                        ].map((bg, index) => {
-                          const isSelected = backgroundImage === bg.url;
-                          return (
-                            <button
-                              key={index}
-                              onClick={() => {
-                                setBackgroundImage(bg.url);
-                                setActiveTab(null);
-                                triggerToast(`Latar belakang menyala: ${bg.name}! 🌟`);
-                              }}
-                              className={`group relative aspect-square rounded-lg overflow-hidden border transition-all ${
-                                isSelected
-                                  ? 'border-purple-400 ring-2 ring-purple-500/40 shadow-[0_0_12px_rgba(168,85,247,0.3)] scale-[0.98]'
-                                  : 'border-white/10 hover:border-white/20'
-                              }`}
-                            >
-                              <img
-                                src={bg.url}
-                                alt={bg.name}
-                                className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300"
-                                referrerPolicy="no-referrer"
-                              />
-                              <div className="absolute inset-0 bg-black/40 group-hover:bg-black/20 transition-colors" />
-                              <span className="absolute bottom-1 inset-x-1 font-mono text-[7px] text-zinc-300 group-hover:text-white truncate font-bold text-center bg-black/60 py-0.5 rounded">
-                                {bg.name.toUpperCase()}
-                              </span>
-                            </button>
-                          );
-                        })}
+                    {/* Tab 1: Unsplash Search Box */}
+                    {bgSubTab === 'unsplash' && (
+                      <div className="space-y-1.5 animate-fadeIn">
+                        <label className="text-[9px] font-mono tracking-widest uppercase text-zinc-500 flex justify-between">
+                          <span>Cari Latar Belakang Kustom</span>
+                          <span className="text-purple-400">Tak Terbatas</span>
+                        </label>
+                        <div className="flex gap-1.5 font-sans">
+                          <input
+                            type="text"
+                            value={bgSearchKeyword}
+                            onChange={(e) => setBgSearchKeyword(e.target.value)}
+                            placeholder="Contoh: studio backdrop, cyberpunk..."
+                            className={`flex-1 px-3 py-2 rounded-lg text-xs font-mono outline-none border transition-all ${
+                              theme === 'dark'
+                                ? 'bg-black/40 border-white/10 text-white focus:border-purple-500/50'
+                                : 'bg-white border-black/10 text-black focus:border-purple-500/50'
+                            }`}
+                            onKeyDown={(e) => {
+                              if (e.key === 'Enter') {
+                                handleSearchUnsplashBg();
+                              }
+                            }}
+                          />
+                          <button
+                            type="button"
+                            onClick={handleSearchUnsplashBg}
+                            className="px-3 py-2 rounded-lg bg-purple-500 hover:bg-purple-600 text-white font-mono text-[10px] font-bold tracking-wider uppercase transition-all"
+                          >
+                            CARI
+                          </button>
+                        </div>
+                        <p className="text-[8.5px] font-mono text-zinc-500 leading-normal italic pt-1">
+                          ✨ Ketik tema apa saja untuk memunculkan foto HD baru secara instan dari internet.
+                        </p>
                       </div>
-                    </div>
+                    )}
+
+                    {/* Tab 2: Curated Grid Selection */}
+                    {bgSubTab === 'presets' && (
+                      <div className="space-y-2 animate-fadeIn">
+                        <label className="text-[9px] font-mono tracking-widest uppercase text-zinc-500">Pilihan Latar Estetik Terpilih</label>
+                        <div className="grid grid-cols-4 gap-1.5 max-h-[160px] overflow-y-auto scrollbar-thin pr-0.5">
+                          {[
+                            { name: 'Cyber City', url: 'https://images.unsplash.com/photo-1542838132-92c53300491e?auto=format&fit=crop&w=600&q=80' },
+                            { name: 'Neon Lights', url: 'https://images.unsplash.com/photo-1508739773434-c26b3d09e071?auto=format&fit=crop&w=600&q=80' },
+                            { name: 'Starry Orbit', url: 'https://images.unsplash.com/photo-1462331940025-496dfbfc7564?auto=format&fit=crop&w=600&q=80' },
+                            { name: 'Glow Liquid', url: 'https://images.unsplash.com/photo-1618005182384-a83a8bd57fbe?auto=format&fit=crop&w=600&q=80' },
+                            { name: 'Synthwave Sun', url: 'https://images.unsplash.com/photo-1515263487990-61b07816b324?auto=format&fit=crop&w=600&q=80' },
+                            { name: 'Luxury Velvet', url: 'https://images.unsplash.com/photo-1513542789411-b6a5d4f31634?auto=format&fit=crop&w=600&q=80' },
+                            { name: 'Modern Office', url: 'https://images.unsplash.com/photo-1497366216548-37526070297c?auto=format&fit=crop&w=600&q=80' },
+                            { name: 'Bright Studio', url: 'https://images.unsplash.com/photo-1579783902614-a3fb3927b6a5?auto=format&fit=crop&w=600&q=80' },
+                            { name: 'Cyber Hex', url: 'https://images.unsplash.com/photo-1618005198143-e5283b519a7f?auto=format&fit=crop&w=600&q=80' },
+                            { name: 'Vibrant Waves', url: 'https://images.unsplash.com/photo-1604871000636-074fa5117945?auto=format&fit=crop&w=600&q=80' },
+                            { name: 'Warm Bokeh', url: 'https://images.unsplash.com/photo-1465146344425-f00d5f5c8f07?auto=format&fit=crop&w=600&q=80' },
+                            { name: 'Concrete Wall', url: 'https://images.unsplash.com/photo-1600585154340-be6161a56a0c?auto=format&fit=crop&w=600&q=80' }
+                          ].map((bg, index) => {
+                            const isSelected = backgroundImage === bg.url;
+                            return (
+                               <button
+                                key={index}
+                                 onClick={() => {
+                                  handleSetBackgroundWithLoader(bg.url, bg.name);
+                                }}
+                                className={`group relative aspect-square rounded-lg overflow-hidden border transition-all ${
+                                  isSelected
+                                    ? 'border-purple-400 ring-2 ring-purple-500/40 shadow-[0_0_12px_rgba(168,85,247,0.3)] scale-[0.98]'
+                                    : 'border-white/10 hover:border-white/20'
+                                }`}
+                              >
+                                <img
+                                  src={bg.url}
+                                  alt={bg.name}
+                                  className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300"
+                                  referrerPolicy="no-referrer"
+                                />
+                                <div className="absolute inset-0 bg-black/40 group-hover:bg-black/20 transition-colors" />
+                                <span className="absolute bottom-1 inset-x-1 font-mono text-[7px] text-zinc-300 group-hover:text-white truncate font-bold text-center bg-black/60 py-0.5 rounded">
+                                  {bg.name.toUpperCase()}
+                                </span>
+                              </button>
+                            );
+                          })}
+                        </div>
+                      </div>
+                    )}
+
+                    {/* Tab 3: Unggah Latar Belakang Kustom Lokal & Google Drive Status */}
+                    {bgSubTab === 'upload' && (
+                      <div className="space-y-3.5 animate-fadeIn">
+                        <div className="space-y-1.5">
+                          <label className="text-[9px] font-mono tracking-widest uppercase text-zinc-500 flex justify-between">
+                            <span>Unggah Latar Belakang Kustom</span>
+                            <span className="text-purple-400 font-bold">LOKAL</span>
+                          </label>
+                          <div className="relative font-sans">
+                            <label className={`w-full py-2 px-3 rounded-lg text-xs font-mono border text-center cursor-pointer transition-all flex items-center justify-center gap-2 ${
+                              theme === 'dark'
+                                ? 'bg-purple-950/20 border-purple-500/30 text-purple-300 hover:bg-purple-950/40 hover:text-white'
+                                : 'bg-purple-50 border-purple-200 text-purple-600 hover:bg-purple-100 hover:text-purple-700'
+                            }`}>
+                              <input
+                                type="file"
+                                accept="image/*"
+                                className="hidden"
+                                onChange={handleUploadCustomBg}
+                              />
+                              <span>📁 PILIH & UNGGAH GAMBAR LATAR...</span>
+                            </label>
+                          </div>
+                        </div>
+
+                        {/* Google Drive Status & Backup Info */}
+                        <div className={`p-2.5 rounded-lg border text-[10px] font-mono flex flex-col space-y-1 ${
+                          theme === 'dark' ? 'bg-black/20 border-white/5' : 'bg-white border-black/5'
+                        }`}>
+                          <div className="flex items-center justify-between text-zinc-400 text-[8.5px]">
+                            <span>SINKRONISASI DRIVE CLOUD:</span>
+                            <span className="text-emerald-500 font-bold">AKTIF UTK BACKUP</span>
+                          </div>
+                          <div className="flex items-center gap-1 text-purple-400/90 font-bold truncate">
+                            <span>☁️ Folder:</span>
+                            <a 
+                              href="https://drive.google.com/drive/folders/10yQu51iu28vN8KaJl9SNvpuIo-JHIT4z" 
+                              target="_blank" 
+                              rel="noopener noreferrer" 
+                              className="hover:underline text-[9.5px]"
+                            >
+                              10yQu51iu28vN8KaJl9SNvpuIo-JHIT4z
+                            </a>
+                          </div>
+                        </div>
+                      </div>
+                    )}
 
                     {/* Action Controls */}
                     <div className="pt-2 border-t border-white/5 flex gap-2">
