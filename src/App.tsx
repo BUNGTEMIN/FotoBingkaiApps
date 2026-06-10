@@ -795,9 +795,12 @@ export default function App() {
     return localStorage.getItem('bt_is_bg_removed') === 'true';
   });
 
-  const [bgSearchKeyword, setBgSearchKeyword] = useState('neon cyberpunk');
+  const [bgSearchKeyword, setBgSearchKeyword] = useState('retro');
   const [isBgLoading, setIsBgLoading] = useState(false);
-  const [bgSubTab, setBgSubTab] = useState<'unsplash' | 'presets' | 'upload'>('unsplash');
+  const [bgSubTab, setBgSubTab] = useState<'unsplash' | 'upload'>('unsplash');
+  const [unsplashSearchResults, setUnsplashSearchResults] = useState<any[]>([]);
+  const [isSearchingUnsplash, setIsSearchingUnsplash] = useState(false);
+  const [adjustSubTab, setAdjustSubTab] = useState<'posisi' | 'remove_bg'>('posisi');
 
   // Persist background image and bg removed flag
   useEffect(() => {
@@ -2529,7 +2532,8 @@ export default function App() {
       setUserImage(previousUserImageBeforeBg);
       setIsBgRemovedForCurrentUserImage(false);
       setBackgroundImage(null);
-      setActiveTab('remove_bg');
+      setActiveTab('adjust');
+      setAdjustSubTab('remove_bg');
       triggerToast("Foto asli berhasil dikembalikan ke kanvas utama.");
     } else {
       triggerToast("Belum ada riwayat foto asli sebelum penghapusan latar belakang.");
@@ -2587,16 +2591,40 @@ export default function App() {
     img.src = url;
   };
 
-  const handleSearchUnsplashBg = () => {
+  const handleSearchUnsplashBg = async () => {
     if (!bgSearchKeyword.trim()) {
       triggerToast('Sayang, isi kata kunci pencarian terlebih dahulu ya. 💕');
       return;
     }
-    const signature = Math.floor(Math.random() * 10000);
-    const searchUrl = `https://images.unsplash.com/featured/800x800/?${encodeURIComponent(bgSearchKeyword.trim())}&sig=${signature}`;
-    
-    handleSetBackgroundWithLoader(searchUrl, bgSearchKeyword.trim());
+    setIsSearchingUnsplash(true);
+    triggerToast(`Mencari foto "${bgSearchKeyword}" terindah dari Unsplash sayang... 🔍✨`);
+    try {
+      const response = await fetch(`https://api.unsplash.com/search/photos?page=1&client_id=SoXaVoqFa0Q5C2LgjQRlTbowuHauUrryE34JF-0UowE&query=${encodeURIComponent(bgSearchKeyword.trim())}&per_page=16`);
+      if (!response.ok) {
+        throw new Error('API Unsplash limit atau gangguan jaringan');
+      }
+      const data = await response.json();
+      if (data && data.results && data.results.length > 0) {
+        setUnsplashSearchResults(data.results);
+        triggerToast(`Yeay! Aku temukan banyak foto "${bgSearchKeyword}" yang manis untukmu sayang. Silakan pilih ya! 🥰📸`);
+      } else {
+        setUnsplashSearchResults([]);
+        triggerToast('Maaf sayang, tidak ada foto yang pas dengan kata kunci tersebut. Coba cari kata kunci lain yuk? 🥺');
+      }
+    } catch (error) {
+      console.error('[Unsplash API error]', error);
+      triggerToast('Aduh maaf ya sayang, gagal menghubungi Unsplash saat ini. Masih ada preset estetik di tab sebelah lho... 🥺💕');
+    } finally {
+      setIsSearchingUnsplash(false);
+    }
   };
+
+  // Auto-fetch Unsplash on tab load
+  useEffect(() => {
+    if (activeTab === 'change_bg' && bgSubTab === 'unsplash' && unsplashSearchResults.length === 0) {
+      handleSearchUnsplashBg();
+    }
+  }, [activeTab, bgSubTab]);
 
   const handleUploadCustomBg = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
@@ -5294,22 +5322,26 @@ Berikan respons dalam format JSON yang valid dengan kunci wajib:
                 : 'bg-black/5 border-black/5 text-[#0066FF] font-extrabold'
             }`}>
               <span className="font-extrabold flex items-center gap-1.5 text-[10px]">
-                {activeTab === 'adjust' && <><Settings2 className="w-3.5 h-3.5 text-neon-cyan animate-pulse" /> POSISI FOTO</>}
+                {activeTab === 'adjust' && (
+                  <>
+                    <Settings2 className="w-3.5 h-3.5 text-neon-cyan animate-pulse" />{' '}
+                    {adjustSubTab === 'posisi' ? 'ATUR POSISI & SKALA FOTO' : 'HAPUS LATAR BELAKANG AI'}
+                  </>
+                )}
                 {activeTab === 'crop' && <><Crop className="w-3.5 h-3.5 text-neon-cyan animate-pulse" /> POTONG (CROP) FOTO</>}
                 {activeTab === 'filter' && <><Sliders className="w-3.5 h-3.5 text-neon-cyan" /> FILTER ESTETIK</>}
-                {activeTab === 'color' && <><Cpu className="w-3.5 h-3.5 text-neon-cyan" /> KOREKSI WARNA & BLUR</>}
-                {activeTab === 'stickers' && <><Layers className="w-3.5 h-3.5 text-neon-cyan" /> BADGE & DEKORASI</>}
-                {activeTab === 'png_stickers' && <><ImageIcon className="w-3.5 h-3.5 text-neon-cyan animate-pulse" /> GRABBER STIKER PNG</>}
-                {activeTab === 'text' && <><Type className="w-3.5 h-3.5 text-neon-cyan" /> TEKS KUSTOM</>}
-                {activeTab === 'text_preset' && <><Baseline className="w-3.5 h-3.5 text-neon-cyan" /> TEKS ESTETIK</>}
-                {activeTab === 'layers' && <><Layers className="w-3.5 h-3.5 text-neon-cyan" /> MANAJEMEN LAYER</>}
+                {activeTab === 'color' && <><Cpu className="w-3.5 h-3.5 text-[#00F0FF]" /> KOREKSI WARNA & BLUR</>}
+                {activeTab === 'stickers' && <><Layers className="w-3.5 h-3.5 text-[#00F0FF]" /> BADGE & DEKORASI</>}
+                {activeTab === 'png_stickers' && <><ImageIcon className="w-3.5 h-3.5 text-[#00F0FF] animate-pulse" /> GRABBER STIKER PNG</>}
+                {activeTab === 'text' && <><Type className="w-3.5 h-3.5 text-[#00F0FF]" /> TEKS KUSTOM</>}
+                {activeTab === 'text_preset' && <><Baseline className="w-3.5 h-3.5 text-[#00F0FF]" /> TEKS ESTETIK</>}
+                {activeTab === 'layers' && <><Layers className="w-3.5 h-3.5 text-[#00F0FF]" /> MANAJEMEN LAYER</>}
                 {activeTab === 'ai' && <><Sparkles className="w-3.5 h-3.5 text-amber-400 animate-pulse" /> AI GENERATE</>}
-                {activeTab === 'download' && <><Download className="w-3.5 h-3.5 text-neon-cyan animate-bounce" /> FORMAT UNDUH & RESOLUSI</>}
+                {activeTab === 'download' && <><Download className="w-3.5 h-3.5 text-[#00F0FF] animate-bounce" /> FORMAT UNDUH & RESOLUSI</>}
                 {activeTab === 'history' && <><Activity className="w-3.5 h-3.5 text-emerald-400 animate-pulse" /> RIWAYAT PERUBAHAN</>}
-                {activeTab === 'settings' && <><Settings2 className="w-3.5 h-3.5 text-neon-cyan animate-pulse" /> PENGATURAN EFEK GLOBAL</>}
-                {activeTab === 'ai_effect' && user?.email === 'bungtemin@gmail.com' && <><Sparkles className="w-3.5 h-3.5 text-neon-cyan animate-pulse" /> AI EFFECT FUTURISTIK</>}
-                {activeTab === 'koleksi_media' && <><Database className="w-3.5 h-3.5 text-neon-cyan animate-pulse" /> KOLEKSI MEDIA SIBER</>}
-                {activeTab === 'remove_bg' && <><Eraser className="w-3.5 h-3.5 text-neon-cyan animate-pulse" /> HAPUS LATAR BELAKANG AI</>}
+                {activeTab === 'settings' && <><Settings2 className="w-3.5 h-3.5 text-[#00F0FF] animate-pulse" /> PENGATURAN EFEK GLOBAL</>}
+                {activeTab === 'ai_effect' && user?.email === 'bungtemin@gmail.com' && <><Sparkles className="w-3.5 h-3.5 text-[#00F0FF] animate-pulse" /> AI EFFECT FUTURISTIK</>}
+                {activeTab === 'koleksi_media' && <><Database className="w-3.5 h-3.5 text-[#00F0FF] animate-pulse" /> KOLEKSI MEDIA SIBER</>}
                 {activeTab === 'change_bg' && <><ImageIcon className="w-3.5 h-3.5 text-purple-400 animate-pulse" /> GANTI BACKGROUND UNSPLASH</>}
               </span>
               <button 
@@ -5489,21 +5521,204 @@ Berikan respons dalam format JSON yang valid dengan kunci wajib:
               )}
 
               {activeTab === 'adjust' && (
-                <ImageAdjuster
-                  settings={imageSettings}
-                  onChangeSettings={setImageSettings}
-                  activeFilterPresetId={filterPresetId}
-                  onSelectFilterPreset={handleSelectFilterPreset}
-                  onResetSettings={() => {
-                    setImageSettings(DEFAULT_SETTINGS);
-                    setFilterPresetId('none');
-                    triggerToast('Posisi foto dikembalikan ke awal.');
-                  }}
-                  activeSection="posisi"
-                  enableParallax={enableParallax}
-                  onToggleParallax={setEnableParallax}
-                  theme={theme}
-                />
+                <div className="space-y-4">
+                  {/* Sub-tab Navigation within Adjust Tab */}
+                  <div className="flex border-b border-white/5 pb-2 -mx-1 gap-1">
+                    <button
+                      type="button"
+                      onClick={() => setAdjustSubTab('posisi')}
+                      className={`flex-1 py-1.5 px-2 rounded-lg text-[9.5px] font-mono font-bold tracking-wider uppercase transition-all flex items-center justify-center gap-1.5 ${
+                        adjustSubTab === 'posisi'
+                          ? 'bg-neon-cyan/25 text-neon-cyan border border-neon-cyan/30 font-extrabold shadow-[0_0_8px_rgba(0,240,255,0.15)]'
+                          : (theme === 'dark'
+                              ? 'text-zinc-400 hover:text-white hover:bg-white/5 border border-transparent'
+                              : 'text-zinc-650 hover:text-cyan-600 hover:bg-cyan-50 border border-transparent')
+                      }`}
+                    >
+                      <Settings2 className="w-3.5 h-3.5 text-neon-cyan" />
+                      Atur Posisi
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        if (!userImage) {
+                          triggerToast("Sayang, silakan unggah foto terlebih dahulu sebelum menghapus latar belakang! 💖");
+                          return;
+                        }
+                        setAdjustSubTab('remove_bg');
+                      }}
+                      className={`flex-1 py-1.5 px-2 rounded-lg text-[9.5px] font-mono font-bold tracking-wider uppercase transition-all flex items-center justify-center gap-1.5 ${
+                        adjustSubTab === 'remove_bg'
+                          ? 'bg-rose-500/25 text-rose-400 border border-rose-500/30 font-extrabold shadow-[0_0_8px_rgba(244,63,94,0.15)]'
+                          : (theme === 'dark'
+                              ? 'text-zinc-400 hover:text-white hover:bg-white/5 border border-transparent'
+                              : 'text-zinc-650 hover:text-rose-600 hover:bg-rose-50 border border-transparent')
+                      }`}
+                    >
+                      <Eraser className="w-3.5 h-3.5 text-rose-500 animate-pulse" />
+                      Hapus Latar (BG)
+                    </button>
+                  </div>
+
+                  {adjustSubTab === 'posisi' ? (
+                    <ImageAdjuster
+                      settings={imageSettings}
+                      onChangeSettings={setImageSettings}
+                      activeFilterPresetId={filterPresetId}
+                      onSelectFilterPreset={handleSelectFilterPreset}
+                      onResetSettings={() => {
+                        setImageSettings(DEFAULT_SETTINGS);
+                        setFilterPresetId('none');
+                        triggerToast('Posisi foto dikembalikan ke awal.');
+                      }}
+                      activeSection="posisi"
+                      enableParallax={enableParallax}
+                      onToggleParallax={setEnableParallax}
+                      theme={theme}
+                    />
+                  ) : (
+                    <div className="space-y-3.5 text-left animate-fadeIn">
+                      <div className={`p-4 hover:border-rose-500/30 transition-colors rounded-xl border flex flex-col space-y-3 ${
+                        theme === 'dark' ? 'border-rose-500/15 bg-rose-950/10' : 'bg-red-50/40 border-red-100/60'
+                      }`}>
+                        <div className="flex items-center justify-between mb-1">
+                          <div className="flex items-center gap-2">
+                            <Eraser className="w-4 h-4 text-rose-500 animate-pulse" />
+                            <span className="font-mono text-[10.5px] font-bold tracking-widest text-rose-400 uppercase">Hapus Latar Belakang AI</span>
+                          </div>
+                          <span className="text-[7.5px] font-mono px-2 py-0.5 bg-rose-500/10 text-rose-400 rounded-md font-bold border border-rose-500/20">🔥 ocr.nufat.id</span>
+                        </div>
+
+                        {/* Color Options */}
+                        <div className="space-y-2">
+                          <label className="text-[9px] font-mono tracking-widest uppercase text-zinc-500">Warna Latar Baru</label>
+                          <div className="flex flex-wrap gap-1.5">
+                            {(['transparent', 'green', 'black', 'white', 'custom'] as const).map(color => (
+                              <button
+                                key={color}
+                                type="button"
+                                onClick={() => setRemoveBgColorOption(color)}
+                                className={`px-2.5 py-1 rounded-lg text-[8.5px] font-mono tracking-wider transition-all border ${
+                                  removeBgColorOption === color
+                                    ? 'bg-rose-500 text-white border-rose-500 font-extrabold shadow-[0_0_10px_rgba(244,63,94,0.25)]'
+                                    : theme === 'dark'
+                                      ? 'bg-zinc-900/50 border-white/5 text-zinc-400 hover:text-white'
+                                      : 'bg-white border-black/10 text-zinc-650 hover:text-black'
+                                }`}
+                              >
+                                {color.toUpperCase()}
+                              </button>
+                            ))}
+                          </div>
+                          
+                          {removeBgColorOption === 'custom' && (
+                            <div className="flex items-center gap-2.5 pt-1">
+                              <input
+                                type="color"
+                                value={removeBgCustomHex}
+                                onChange={(e) => setRemoveBgCustomHex(e.target.value)}
+                                className="w-8 h-8 rounded cursor-pointer border-0 p-0 bg-transparent"
+                              />
+                              <span className="text-xs font-mono font-bold text-zinc-400 uppercase">{removeBgCustomHex}</span>
+                            </div>
+                          )}
+                        </div>
+                        
+                        {/* Advanced Alpha Matting Toggle */}
+                        <div className="flex items-center justify-between py-1.5 border-t border-white/5 mt-2">
+                          <span className="text-[9.5px] font-mono tracking-widest uppercase text-zinc-500">Alpha Matting (Rambut/Detail)</span>
+                          <button
+                            type="button"
+                            onClick={() => setRemoveBgAlphaMatting(!removeBgAlphaMatting)}
+                            className={`w-9 h-4.5 rounded-full relative transition-colors ${
+                              removeBgAlphaMatting ? 'bg-rose-500' : 'bg-zinc-700'
+                            }`}
+                          >
+                            <div className={`w-3.5 h-3.5 rounded-full bg-white absolute top-0.5 transition-all ${
+                              removeBgAlphaMatting ? 'left-5' : 'left-0.5'
+                            }`} />
+                          </button>
+                        </div>
+
+                        {removeBgAlphaMatting && (
+                          <div className="space-y-3 pt-2 border-t border-white/5">
+                            <div className="space-y-1">
+                              <label className="text-[8.5px] font-mono uppercase text-zinc-500 flex justify-between">
+                                <span>Batas Objek (FG Threshold)</span>
+                                <span className="text-rose-500 font-bold">{removeBgFgThreshold}</span>
+                              </label>
+                              <input
+                                type="range"
+                                min="0"
+                                max="255"
+                                value={removeBgFgThreshold}
+                                onChange={(e) => setRemoveBgFgThreshold(Number(e.target.value))}
+                                className="w-full accent-rose-500 h-1 bg-zinc-800 rounded-lg appearance-none cursor-pointer"
+                              />
+                            </div>
+                            <div className="space-y-1">
+                              <label className="text-[8.5px] font-mono uppercase text-zinc-500 flex justify-between">
+                                <span>Batas Latar (BG Threshold)</span>
+                                <span className="text-rose-500 font-bold">{removeBgBgThreshold}</span>
+                              </label>
+                              <input
+                                type="range"
+                                min="0"
+                                max="255"
+                                value={removeBgBgThreshold}
+                                onChange={(e) => setRemoveBgBgThreshold(Number(e.target.value))}
+                                className="w-full accent-rose-500 h-1 bg-zinc-800 rounded-lg appearance-none cursor-pointer"
+                              />
+                            </div>
+                            <div className="space-y-1">
+                              <label className="text-[8.5px] font-mono uppercase text-zinc-500 flex justify-between">
+                                <span>Koreksi Tepi (Erode Size)</span>
+                                <span className="text-rose-500 font-bold">{removeBgErodeSize}</span>
+                              </label>
+                              <input
+                                type="range"
+                                min="0"
+                                max="50"
+                                value={removeBgErodeSize}
+                                onChange={(e) => setRemoveBgErodeSize(Number(e.target.value))}
+                                className="w-full accent-rose-500 h-1 bg-zinc-800 rounded-lg appearance-none cursor-pointer"
+                              />
+                            </div>
+                          </div>
+                        )}
+
+                        <div className="pt-1.5 flex gap-2">
+                           <button
+                            type="button"
+                            onClick={handleRemoveBackground}
+                            disabled={isRemovingBg || !userImage}
+                            className={`flex-1 py-2.5 rounded-xl flex items-center justify-center gap-2 font-mono text-[10.5px] font-bold tracking-wider transition-all duration-300 ${
+                              isRemovingBg || !userImage
+                                ? 'bg-zinc-800 text-zinc-500 cursor-not-allowed'
+                                : 'bg-rose-500 hover:bg-rose-600 text-white shadow-[0_0_12px_rgba(244,63,94,0.3)] font-extrabold'
+                            }`}
+                          >
+                            <Eraser className={`w-3.5 h-3.5 ${isRemovingBg ? 'animate-pulse' : ''}`} />
+                            {isRemovingBg ? 'MEMPROSES...' : '🔥 EKSEKUSI HAPUS BG'}
+                          </button>
+                          
+                          {previousUserImageBeforeBg && (
+                            <button
+                              type="button"
+                              onClick={handleRestoreOriginalImage}
+                              title="Kembalikan Foto Asli"
+                              className={`w-9 rounded-xl flex items-center justify-center transition-all ${
+                                theme === 'dark' ? 'bg-zinc-800 hover:bg-zinc-700 text-zinc-300' : 'bg-gray-200 hover:bg-gray-300 text-black'
+                              }`}
+                            >
+                              <Undo className="w-3.5 h-3.5" />
+                            </button>
+                          )}
+                        </div>
+                      </div>
+                    </div>
+                  )}
+                </div>
               )}
 
               {activeTab === 'crop' && (
@@ -6091,148 +6306,6 @@ Berikan respons dalam format JSON yang valid dengan kunci wajib:
                 )
               )}
 
-              {activeTab === 'remove_bg' && (
-                <div className="space-y-4">
-                  <div className={`p-4 hover:border-rose-500/50 transition-colors rounded-xl border flex flex-col space-y-3 ${
-                    theme === 'dark' ? 'border-rose-500/20 bg-rose-950/10' : 'bg-red-50/50 border-red-100'
-                  }`}>
-                    <div className="flex items-center justify-between mb-2">
-                      <div className="flex items-center gap-2">
-                        <Eraser className="w-4 h-4 text-rose-500 animate-pulse" />
-                        <span className="font-mono text-xs font-bold tracking-widest text-rose-500 uppercase">Hapus Latar Belakang AI</span>
-                      </div>
-                      <span className="text-[8px] font-mono px-2 py-1 bg-rose-500/10 text-rose-400 rounded-lg font-bold border border-rose-500/20">🔥 ocr.nufat.id</span>
-                    </div>
-
-                    {/* Color Options */}
-                    <div className="space-y-2">
-                      <label className="text-[10px] font-mono tracking-widest uppercase text-zinc-500">Warna Latar Baru</label>
-                      <div className="flex flex-wrap gap-2">
-                        {(['transparent', 'green', 'black', 'white', 'custom'] as const).map(color => (
-                          <button
-                            key={color}
-                            onClick={() => setRemoveBgColorOption(color)}
-                            className={`px-3 py-1.5 rounded-lg text-[9px] font-mono tracking-wider transition-all border ${
-                              removeBgColorOption === color
-                                ? 'bg-rose-500 text-white border-rose-500 font-bold shadow-[0_0_10px_rgba(244,63,94,0.3)]'
-                                : theme === 'dark'
-                                  ? 'bg-zinc-900/50 border-white/5 text-zinc-400 hover:text-white'
-                                  : 'bg-white border-black/10 text-zinc-600 hover:text-black'
-                            }`}
-                          >
-                            {color.toUpperCase()}
-                          </button>
-                        ))}
-                      </div>
-                      
-                      {removeBgColorOption === 'custom' && (
-                        <div className="flex items-center gap-3 pt-2">
-                          <input
-                            type="color"
-                            value={removeBgCustomHex}
-                            onChange={(e) => setRemoveBgCustomHex(e.target.value)}
-                            className="w-10 h-10 rounded cursor-pointer border-0 p-0 bg-transparent"
-                          />
-                          <span className="text-xs font-mono font-bold text-zinc-400 uppercase">{removeBgCustomHex}</span>
-                        </div>
-                      )}
-                    </div>
-                    
-                    {/* Advanced Alpha Matting Toggle */}
-                    <div className="flex items-center justify-between py-2 border-t border-white/5 mt-4">
-                      <span className="text-[10px] font-mono tracking-widest uppercase text-zinc-500">Alpha Matting (Rambut/Detail)</span>
-                      <button
-                        onClick={() => setRemoveBgAlphaMatting(!removeBgAlphaMatting)}
-                        className={`w-10 h-5 rounded-full relative transition-colors ${
-                          removeBgAlphaMatting ? 'bg-rose-500' : 'bg-zinc-700'
-                        }`}
-                      >
-                        <div className={`w-3.5 h-3.5 rounded-full bg-white absolute top-0.5 transition-all ${
-                          removeBgAlphaMatting ? 'left-6' : 'left-0.5'
-                        }`} />
-                      </button>
-                    </div>
-
-                    {removeBgAlphaMatting && (
-                      <div className="space-y-4 pt-2 border-t border-white/5">
-                        <div className="space-y-1">
-                          <label className="text-[9px] font-mono uppercase text-zinc-600 flex justify-between">
-                            <span>Batas Objek (FG Threshold)</span>
-                            <span className="text-rose-500 font-bold">{removeBgFgThreshold}</span>
-                          </label>
-                          <input
-                            type="range"
-                            min="0"
-                            max="255"
-                            value={removeBgFgThreshold}
-                            onChange={(e) => setRemoveBgFgThreshold(Number(e.target.value))}
-                            className="w-full accent-rose-500 h-1.5 bg-zinc-800 rounded-lg appearance-none cursor-pointer"
-                          />
-                        </div>
-                        <div className="space-y-1">
-                          <label className="text-[9px] font-mono uppercase text-zinc-600 flex justify-between">
-                            <span>Batas Latar (BG Threshold)</span>
-                            <span className="text-rose-500 font-bold">{removeBgBgThreshold}</span>
-                          </label>
-                          <input
-                            type="range"
-                            min="0"
-                            max="255"
-                            value={removeBgBgThreshold}
-                            onChange={(e) => setRemoveBgBgThreshold(Number(e.target.value))}
-                            className="w-full accent-rose-500 h-1.5 bg-zinc-800 rounded-lg appearance-none cursor-pointer"
-                          />
-                        </div>
-                        <div className="space-y-1">
-                          <label className="text-[9px] font-mono uppercase text-zinc-600 flex justify-between">
-                            <span>Koreksi Tepi (Erode Size)</span>
-                            <span className="text-rose-500 font-bold">{removeBgErodeSize}</span>
-                          </label>
-                          <input
-                            type="range"
-                            min="0"
-                            max="50"
-                            value={removeBgErodeSize}
-                            onChange={(e) => setRemoveBgErodeSize(Number(e.target.value))}
-                            className="w-full accent-rose-500 h-1.5 bg-zinc-800 rounded-lg appearance-none cursor-pointer"
-                          />
-                        </div>
-                      </div>
-                    )}
-
-                    <div className="pt-2 flex gap-2">
-                       <button
-                        onClick={handleRemoveBackground}
-                        disabled={isRemovingBg || !userImage}
-                        className={`flex-1 py-3 rounded-xl flex items-center justify-center gap-2 font-mono text-xs tracking-widest transition-all duration-300 ${
-                          isRemovingBg || !userImage
-                            ? 'bg-zinc-800 text-zinc-500 cursor-not-allowed'
-                            : 'bg-rose-500 hover:bg-rose-600 text-white shadow-[0_0_15px_rgba(244,63,94,0.4)] font-black'
-                        }`}
-                      >
-                        <Eraser className={`w-3.5 h-3.5 ${isRemovingBg ? 'animate-pulse' : ''}`} />
-                        {isRemovingBg ? 'MEMPROSES...' : '🔥 EKSEKUSI HAPUS BG'}
-                      </button>
-                      
-                      {previousUserImageBeforeBg && (
-                        <button
-                          onClick={handleRestoreOriginalImage}
-                          title="Kembalikan Foto Asli"
-                          className={`w-10 rounded-xl flex items-center justify-center transition-all ${
-                            theme === 'dark' ? 'bg-zinc-800 hover:bg-zinc-700 text-zinc-300' : 'bg-gray-200 hover:bg-gray-300 text-black'
-                          }`}
-                        >
-                          <Undo className="w-3.5 h-3.5" />
-                        </button>
-                      )}
-                    </div>
-                    <p className="text-[8.5px] font-sans text-zinc-500 leading-relaxed text-center italic mt-2">
-                      Didukung oleh teknologi Siber <span className="font-semibold text-rose-400">OCR Nufat API</span>.
-                    </p>
-                  </div>
-                </div>
-              )}
-
               {activeTab === 'change_bg' && (
                 <div className="space-y-4 text-left">
                   <div className={`p-4 rounded-xl border flex flex-col space-y-3.5 relative overflow-hidden ${
@@ -6268,21 +6341,7 @@ Berikan respons dalam format JSON yang valid dengan kunci wajib:
                         }`}
                       >
                         <Search className="w-3.5 h-3.5" />
-                        Unsplash
-                      </button>
-                      <button
-                        type="button"
-                        onClick={() => setBgSubTab('presets')}
-                        className={`flex-1 py-1.5 px-2 rounded-lg text-[9.5px] font-mono font-bold tracking-wider uppercase transition-all flex items-center justify-center gap-1.5 ${
-                          bgSubTab === 'presets'
-                            ? 'bg-purple-500/20 text-purple-300 border border-purple-500/30 font-extrabold shadow-[0_0_8px_rgba(168,85,247,0.15)]'
-                            : (theme === 'dark'
-                                ? 'text-zinc-400 hover:text-white hover:bg-white/5 border border-transparent'
-                                : 'text-zinc-650 hover:text-purple-600 hover:bg-purple-50 border border-transparent')
-                        }`}
-                      >
-                        <Sparkles className="w-3.5 h-3.5" />
-                        Presets
+                        Cari
                       </button>
                       <button
                         type="button"
@@ -6302,90 +6361,95 @@ Berikan respons dalam format JSON yang valid dengan kunci wajib:
 
                     {/* Tab 1: Unsplash Search Box */}
                     {bgSubTab === 'unsplash' && (
-                      <div className="space-y-1.5 animate-fadeIn">
-                        <label className="text-[9px] font-mono tracking-widest uppercase text-zinc-500 flex justify-between">
-                          <span>Cari Latar Belakang Kustom</span>
-                          <span className="text-purple-400">Tak Terbatas</span>
-                        </label>
-                        <div className="flex gap-1.5 font-sans">
-                          <input
-                            type="text"
-                            value={bgSearchKeyword}
-                            onChange={(e) => setBgSearchKeyword(e.target.value)}
-                            placeholder="Contoh: studio backdrop, cyberpunk..."
-                            className={`flex-1 px-3 py-2 rounded-lg text-xs font-mono outline-none border transition-all ${
-                              theme === 'dark'
-                                ? 'bg-black/40 border-white/10 text-white focus:border-purple-500/50'
-                                : 'bg-white border-black/10 text-black focus:border-purple-500/50'
-                            }`}
-                            onKeyDown={(e) => {
-                              if (e.key === 'Enter') {
-                                handleSearchUnsplashBg();
-                              }
-                            }}
-                          />
-                          <button
-                            type="button"
-                            onClick={handleSearchUnsplashBg}
-                            className="px-3 py-2 rounded-lg bg-purple-500 hover:bg-purple-600 text-white font-mono text-[10px] font-bold tracking-wider uppercase transition-all"
-                          >
-                            CARI
-                          </button>
+                      <div className="space-y-3 animate-fadeIn">
+                        <div className="space-y-1.5">
+                          <label className="text-[9px] font-mono tracking-widest uppercase text-zinc-500 flex justify-between">
+                            <span>Cari Latar Belakang Kustom</span>
+                            <span className="text-purple-400">Tak Terbatas</span>
+                          </label>
+                          <div className="flex gap-1.5 font-sans">
+                            <input
+                              type="text"
+                              value={bgSearchKeyword}
+                              onChange={(e) => setBgSearchKeyword(e.target.value)}
+                              placeholder="Contoh: studio backdrop, cyberpunk, retro..."
+                              className={`flex-1 px-3 py-2 rounded-lg text-xs font-mono outline-none border transition-all ${
+                                theme === 'dark'
+                                  ? 'bg-black/40 border-white/10 text-white focus:border-purple-500/50'
+                                  : 'bg-white border-black/10 text-black focus:border-purple-500/50'
+                              }`}
+                              onKeyDown={(e) => {
+                                if (e.key === 'Enter') {
+                                  handleSearchUnsplashBg();
+                                }
+                              }}
+                            />
+                            <button
+                              type="button"
+                              onClick={handleSearchUnsplashBg}
+                              className="px-3 py-2 rounded-lg bg-purple-500 hover:bg-purple-600 text-white font-mono text-[10px] font-bold tracking-wider uppercase transition-all"
+                            >
+                              CARI
+                            </button>
+                          </div>
                         </div>
-                        <p className="text-[8.5px] font-mono text-zinc-500 leading-normal italic pt-1">
-                          ✨ Ketik tema apa saja untuk memunculkan foto HD baru secara instan dari internet.
-                        </p>
+
+                        {/* Unsplash Search Results Grid */}
+                        {isSearchingUnsplash ? (
+                          <div className="py-8 flex flex-col items-center justify-center text-center">
+                            <div className="animate-spin rounded-full h-6 w-6 border-2 border-purple-500 border-t-transparent mb-2"></div>
+                            <span className="text-[9px] font-mono text-zinc-400 uppercase tracking-widest animate-pulse">Mencari foto terindah...</span>
+                          </div>
+                        ) : (
+                          unsplashSearchResults.length > 0 && (
+                            <div className="space-y-2 pt-2 border-t border-white/5">
+                              <label className="text-[9px] font-mono tracking-widest uppercase text-zinc-400 flex justify-between">
+                                <span>Hasil Foto Unsplash ({unsplashSearchResults.length})</span>
+                                <span className="text-purple-400 text-[8px] tracking-wide animate-pulse">Pilihlah salah satu sayang</span>
+                              </label>
+                              <div className="grid grid-cols-4 gap-2 max-h-[180px] overflow-y-auto scrollbar-thin pr-0.5">
+                                {unsplashSearchResults.map((photo: any) => {
+                                  // we match if current background is the same as regular size or small/thumb
+                                  const isSelected = backgroundImage === photo.urls.regular;
+                                  return (
+                                    <button
+                                      key={photo.id}
+                                      type="button"
+                                      onClick={() => handleSetBackgroundWithLoader(photo.urls.regular, `Unsplash: ${photo.alt_description || photo.id}`)}
+                                      className={`group relative aspect-square rounded-lg overflow-hidden border transition-all ${
+                                        isSelected
+                                          ? 'border-purple-500 scale-[0.96] ring-1 ring-purple-500/50 shadow-[0_0_12px_rgba(168,85,247,0.35)]'
+                                          : 'border-white/10 hover:border-purple-500/50 hover:scale-[1.03]'
+                                      }`}
+                                      title={`Foto oleh ${photo.user.name} (${photo.alt_description || 'Tanpa deskripsi'})`}
+                                    >
+                                      <img
+                                        src={photo.urls.thumb}
+                                        alt={photo.alt_description || 'Unsplash backdrop'}
+                                        referrerPolicy="no-referrer"
+                                        className="w-full h-full object-cover transition-transform duration-550 group-hover:scale-110"
+                                      />
+                                      <div className="absolute inset-x-0 bottom-0 bg-gradient-to-t from-black/90 via-black/50 to-transparent p-1 translate-y-1.5 group-hover:translate-y-0 transition-transform duration-350">
+                                        <p className="text-[6.5px] font-sans text-white/90 truncate font-semibold">
+                                          {photo.user.name}
+                                        </p>
+                                      </div>
+                                      {isSelected && (
+                                        <div className="absolute top-1 right-1 w-3.5 h-3.5 rounded-full bg-purple-500 flex items-center justify-center shadow-lg border border-purple-300 animate-bounce">
+                                          <Heart className="w-2 h-2 text-white fill-white" />
+                                        </div>
+                                      )}
+                                    </button>
+                                  );
+                                })}
+                              </div>
+                            </div>
+                          )
+                        )}
                       </div>
                     )}
 
-                    {/* Tab 2: Curated Grid Selection */}
-                    {bgSubTab === 'presets' && (
-                      <div className="space-y-2 animate-fadeIn">
-                        <label className="text-[9px] font-mono tracking-widest uppercase text-zinc-500">Pilihan Latar Estetik Terpilih</label>
-                        <div className="grid grid-cols-4 gap-1.5 max-h-[160px] overflow-y-auto scrollbar-thin pr-0.5">
-                          {[
-                            { name: 'Cyber City', url: 'https://images.unsplash.com/photo-1542838132-92c53300491e?auto=format&fit=crop&w=600&q=80' },
-                            { name: 'Neon Lights', url: 'https://images.unsplash.com/photo-1508739773434-c26b3d09e071?auto=format&fit=crop&w=600&q=80' },
-                            { name: 'Starry Orbit', url: 'https://images.unsplash.com/photo-1462331940025-496dfbfc7564?auto=format&fit=crop&w=600&q=80' },
-                            { name: 'Glow Liquid', url: 'https://images.unsplash.com/photo-1618005182384-a83a8bd57fbe?auto=format&fit=crop&w=600&q=80' },
-                            { name: 'Synthwave Sun', url: 'https://images.unsplash.com/photo-1515263487990-61b07816b324?auto=format&fit=crop&w=600&q=80' },
-                            { name: 'Luxury Velvet', url: 'https://images.unsplash.com/photo-1513542789411-b6a5d4f31634?auto=format&fit=crop&w=600&q=80' },
-                            { name: 'Modern Office', url: 'https://images.unsplash.com/photo-1497366216548-37526070297c?auto=format&fit=crop&w=600&q=80' },
-                            { name: 'Bright Studio', url: 'https://images.unsplash.com/photo-1579783902614-a3fb3927b6a5?auto=format&fit=crop&w=600&q=80' },
-                            { name: 'Cyber Hex', url: 'https://images.unsplash.com/photo-1618005198143-e5283b519a7f?auto=format&fit=crop&w=600&q=80' },
-                            { name: 'Vibrant Waves', url: 'https://images.unsplash.com/photo-1604871000636-074fa5117945?auto=format&fit=crop&w=600&q=80' },
-                            { name: 'Warm Bokeh', url: 'https://images.unsplash.com/photo-1465146344425-f00d5f5c8f07?auto=format&fit=crop&w=600&q=80' },
-                            { name: 'Concrete Wall', url: 'https://images.unsplash.com/photo-1600585154340-be6161a56a0c?auto=format&fit=crop&w=600&q=80' }
-                          ].map((bg, index) => {
-                            const isSelected = backgroundImage === bg.url;
-                            return (
-                               <button
-                                key={index}
-                                 onClick={() => {
-                                  handleSetBackgroundWithLoader(bg.url, bg.name);
-                                }}
-                                className={`group relative aspect-square rounded-lg overflow-hidden border transition-all ${
-                                  isSelected
-                                    ? 'border-purple-400 ring-2 ring-purple-500/40 shadow-[0_0_12px_rgba(168,85,247,0.3)] scale-[0.98]'
-                                    : 'border-white/10 hover:border-white/20'
-                                }`}
-                              >
-                                <img
-                                  src={bg.url}
-                                  alt={bg.name}
-                                  className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300"
-                                  referrerPolicy="no-referrer"
-                                />
-                                <div className="absolute inset-0 bg-black/40 group-hover:bg-black/20 transition-colors" />
-                                <span className="absolute bottom-1 inset-x-1 font-mono text-[7px] text-zinc-300 group-hover:text-white truncate font-bold text-center bg-black/60 py-0.5 rounded">
-                                  {bg.name.toUpperCase()}
-                                </span>
-                              </button>
-                            );
-                          })}
-                        </div>
-                      </div>
-                    )}
+
 
                     {/* Tab 3: Unggah Latar Belakang Kustom Lokal */}
                     {bgSubTab === 'upload' && (
@@ -6981,43 +7045,42 @@ Berikan respons dalam format JSON yang valid dengan kunci wajib:
                 <span className="text-[8px] uppercase tracking-wider font-extrabold">KOLEKSI</span>
               </button>
 
-              {!isBgRemovedForCurrentUserImage ? (
-                <button
-                  onClick={() => {
-                    if (!userImage) {
-                      triggerToast("Sayang, silakan unggah foto terlebih dahulu sebelum menghapus latar belakang! 💖");
-                      return;
-                    }
-                    setActiveTab(activeTab === 'remove_bg' ? null : 'remove_bg');
-                  }}
-                  className={`snap-center flex-shrink-0 px-3.5 py-1.5 rounded-xl font-mono text-xs font-bold tracking-widest transition-all duration-150 flex flex-col items-center justify-center space-y-1 min-w-[76px] ${
-                    activeTab === 'remove_bg'
-                      ? 'bg-rose-500/25 text-rose-500 border-t-2 border-rose-500 shadow-[0_0_15px_rgba(244,63,94,0.3)]'
-                      : 'text-zinc-450 hover:text-zinc-200 hover:bg-white/5'
-                  }`}
-                >
-                  <Eraser className="w-4 h-4 text-rose-500 animate-pulse" />
-                  <span className="text-[8px] uppercase tracking-wider font-extrabold text-rose-500">HAPUS BG</span>
-                </button>
-              ) : (
-                <button
-                  onClick={() => {
-                    if (!userImage) {
-                      triggerToast("Sayang, silakan unggah foto terlebih dahulu! 💖");
-                      return;
-                    }
-                    setActiveTab(activeTab === 'change_bg' ? null : 'change_bg');
-                  }}
-                  className={`snap-center flex-shrink-0 px-3.5 py-1.5 rounded-xl font-mono text-xs font-bold tracking-widest transition-all duration-150 flex flex-col items-center justify-center space-y-1 min-w-[76px] ${
-                    activeTab === 'change_bg'
-                      ? 'bg-purple-500/25 text-purple-400 border-t-2 border-purple-500 shadow-[0_0_15px_rgba(168,85,247,0.3)]'
-                      : 'text-zinc-450 hover:text-purple-300 hover:bg-purple-950/10'
-                  }`}
-                >
-                  <ImageIcon className="w-4 h-4 text-purple-400 animate-pulse" />
-                  <span className="text-[8px] uppercase tracking-wider font-extrabold text-purple-400">GANTI BG</span>
-                </button>
-              )}
+              <button
+                onClick={() => {
+                  if (activeTab === 'adjust') {
+                    setActiveTab(null);
+                  } else {
+                    setActiveTab('adjust');
+                    setAdjustSubTab('posisi');
+                  }
+                }}
+                className={`snap-center flex-shrink-0 px-3.5 py-1.5 rounded-xl font-mono text-xs font-bold tracking-widest transition-all duration-150 flex flex-col items-center justify-center space-y-1 min-w-[76px] ${
+                  activeTab === 'adjust'
+                    ? 'bg-neon-cyan/20 text-neon-cyan border-t-2 border-neon-cyan shadow-[0_0_15px_rgba(0,240,255,0.2)] font-bold'
+                    : 'text-zinc-450 hover:text-zinc-200 hover:bg-white/5'
+                }`}
+              >
+                <Settings2 className="w-4 h-4 text-neon-cyan" />
+                <span className="text-[8px] uppercase tracking-wider font-extrabold text-neon-cyan">EDIT</span>
+              </button>
+
+              <button
+                onClick={() => {
+                  if (!userImage) {
+                    triggerToast("Sayang, silakan unggah foto terlebih dahulu! 💖");
+                    return;
+                  }
+                  setActiveTab(activeTab === 'change_bg' ? null : 'change_bg');
+                }}
+                className={`snap-center flex-shrink-0 px-3.5 py-1.5 rounded-xl font-mono text-xs font-bold tracking-widest transition-all duration-150 flex flex-col items-center justify-center space-y-1 min-w-[76px] ${
+                  activeTab === 'change_bg'
+                    ? 'bg-purple-500/25 text-purple-400 border-t-2 border-purple-500 shadow-[0_0_15px_rgba(168,85,247,0.3)] font-bold'
+                    : 'text-zinc-450 hover:text-purple-300 hover:bg-purple-950/10'
+                }`}
+              >
+                <ImageIcon className="w-4 h-4 text-purple-400" />
+                <span className="text-[8px] uppercase tracking-wider font-extrabold text-purple-400">GANTI BG</span>
+              </button>
 
               {user?.email === 'bungtemin@gmail.com' && (
                 <button
@@ -7113,17 +7176,7 @@ Berikan respons dalam format JSON yang valid dengan kunci wajib:
                 <span className="text-[8px] uppercase tracking-wider font-extrabold">WARNA</span>
               </button>
 
-              <button
-                onClick={() => setActiveTab(activeTab === 'adjust' ? null : 'adjust')}
-                className={`snap-center flex-shrink-0 px-3.5 py-1.5 rounded-xl font-mono text-xs font-bold tracking-widest transition-all duration-150 flex flex-col items-center justify-center space-y-1 min-w-[76px] ${
-                  activeTab === 'adjust'
-                    ? 'bg-neon-cyan/20 text-neon-cyan border-t-2 border-neon-cyan shadow-[0_0_15px_rgba(0,240,255,0.2)]'
-                    : 'text-zinc-450 hover:text-zinc-200 hover:bg-white/5'
-                }`}
-              >
-                <Settings2 className="w-4 h-4" />
-                <span className="text-[8px] uppercase tracking-wider font-extrabold">ATUR GAYA</span>
-              </button>
+
 
               <button
                 onClick={() => setActiveTab(activeTab === 'crop' ? null : 'crop')}
