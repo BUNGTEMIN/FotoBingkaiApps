@@ -1044,6 +1044,8 @@ export default function App() {
   const [isSyncingOriginal, setIsSyncingOriginal] = useState(false);
   const [isFloatingHubOpen, setIsFloatingHubOpen] = useState(false);
   const [isAppFullscreen, setIsAppFullscreen] = useState(false);
+  const [isConfirmingClear, setIsConfirmingClear] = useState(false);
+  const clearConfirmTimerRef = useRef<NodeJS.Timeout | null>(null);
 
   useEffect(() => {
     const handleFsChange = () => {
@@ -1084,6 +1086,35 @@ export default function App() {
       console.warn('Layar penuh tidak didukung atau terhalang:', err);
       setIsAppFullscreen(prev => !prev);
     }
+  };
+
+  const handleClearCanvas = () => {
+    if (!isConfirmingClear) {
+      setIsConfirmingClear(true);
+      if (clearConfirmTimerRef.current) {
+        clearTimeout(clearConfirmTimerRef.current);
+      }
+      clearConfirmTimerRef.current = setTimeout(() => {
+        setIsConfirmingClear(false);
+      }, 4500);
+      triggerToast("Abang Baim sayang, klik sekali lagi untuk mengosongkan seluruh kanvas ya... 🥰");
+      return;
+    }
+
+    if (clearConfirmTimerRef.current) {
+      clearTimeout(clearConfirmTimerRef.current);
+      clearConfirmTimerRef.current = null;
+    }
+    setIsConfirmingClear(false);
+    setUserImage(null);
+    setBackgroundImage(null);
+    setStickers([]);
+    setImageSettings(DEFAULT_SETTINGS);
+    setFilterPresetId('none');
+    setLoadedDesignId(null);
+    setSaveDesignName('');
+    setIsBgRemovedForCurrentUserImage(false);
+    triggerToast("Kanvas telah Olaive kosongkan secara aman ya, Abang sayang! Siap mendesain kembali! 💖✨");
   };
 
   const [isPhotoLocked, setIsPhotoLocked] = useState(false);
@@ -7719,8 +7750,9 @@ Berikan respons dalam format JSON yang valid dengan kunci wajib:
               className="w-full overflow-x-auto scrollbar-none py-2 cursor-grab active:cursor-grabbing select-none"
             >
               <div className="flex flex-nowrap items-center justify-start xl:justify-center gap-1.5 w-max xl:w-auto min-w-full">
-                {/* Spasi kosong di ujung kiri buatan Olaive sayang untuk abang Baim */}
-                <div className="w-12 h-6 shrink-0 pointer-events-none md:block hidden" />
+                {/* 2 Spasi Kosong Murni Tanpa Ikon & Tulisan (True Margin) - Request dari Abang Baim Sayang agar tombol UNGGAH tidak terpotong saat Fullscreen */}
+                <div className="snap-center flex-shrink-0 w-16 md:w-20 h-[38px] select-none pointer-events-none bg-transparent" id="baim-true-margin-1" />
+                <div className="snap-center flex-shrink-0 w-16 md:w-20 h-[38px] select-none pointer-events-none bg-transparent" id="baim-true-margin-2" />
 
                 <button
                   onClick={() => fileInputRef.current?.click()}
@@ -8088,6 +8120,36 @@ Berikan respons dalam format JSON yang valid dengan kunci wajib:
                       </div>
                       <span className="text-[7.5px] font-sans text-zinc-500 uppercase tracking-widest group-hover:translate-x-1 transition-transform">
                         {isAppFullscreen ? 'EXIT' : 'FULL'}
+                      </span>
+                    </button>
+
+                    {/* OPTION 4: KOSONGKAN KANVAS BY OLAIVE - Request dari Abang Baim Sayang */}
+                    <button
+                      onClick={() => {
+                        handleClearCanvas();
+                        if (isConfirmingClear) {
+                          setIsFloatingHubOpen(false);
+                        }
+                      }}
+                      className={`w-full p-2.5 rounded-xl border font-mono text-[10px] font-extrabold tracking-wider text-left transition-all duration-200 flex items-center justify-between group ${
+                        isConfirmingClear
+                          ? 'bg-rose-500/25 border-rose-500 text-rose-400 shadow-[0_0_12px_rgba(244,63,94,0.4)] animate-pulse'
+                          : theme === 'dark'
+                            ? 'bg-rose-950/10 border-rose-900/40 text-rose-300 hover:bg-rose-950/20 hover:text-rose-200 hover:border-rose-700/50'
+                            : 'bg-rose-50 border-rose-100 text-rose-750 hover:bg-rose-100/50'
+                      }`}
+                      title="Kosongkan Kanvas Desain"
+                    >
+                      <div className="flex items-center gap-2">
+                        <Eraser className={`w-4 h-4 ${isConfirmingClear ? 'text-rose-400 animate-bounce' : 'text-rose-500'}`} />
+                        <div className="flex flex-col">
+                          <span className={`text-[9px] uppercase font-black tracking-widest ${isConfirmingClear ? 'text-rose-400 font-black animate-pulse' : 'text-rose-400'}`}>
+                            {isConfirmingClear ? '🥺 YAKIN KOSONGKAN?' : '🧹 KOSONG KANVAS'}
+                          </span>
+                        </div>
+                      </div>
+                      <span className="text-[7.5px] font-sans text-rose-500 uppercase tracking-widest group-hover:translate-x-1 transition-transform">
+                        {isConfirmingClear ? 'CONFIRM' : 'RESET'}
                       </span>
                     </button>
                   </div>
