@@ -161,6 +161,9 @@ export default function StickerSelector({
 
   const [manualUsernameInput, setManualUsernameInput] = useState(driveUsername || localStorage.getItem('drive_username') || '');
   const [manualFolderIdInput, setManualFolderIdInput] = useState(driveFolderId || localStorage.getItem('drive_folder_id') || '');
+  const [textPresets, setTextPresets] = useState<any[]>(() => [...TEXT_PRESETS]);
+  const [isFetchingTextPresets, setIsFetchingTextPresets] = useState(false);
+  const [fetchTextPresetsError, setFetchTextPresetsError] = useState<string | null>(null);
 
   // Keep state updated in case parent props change
   useEffect(() => {
@@ -281,9 +284,57 @@ export default function StickerSelector({
       });
   };
 
+  const fetchTextPresets = () => {
+    setIsFetchingTextPresets(true);
+    setFetchTextPresetsError(null);
+    axios.get('https://dev.bungtemin.net/api/textpreset')
+      .then(res => {
+        const rawData = res.data;
+        let list: any[] = [];
+        if (Array.isArray(rawData)) {
+          list = rawData;
+        } else if (rawData && Array.isArray(rawData.data)) {
+          list = rawData.data;
+        } else if (rawData && Array.isArray(rawData.presets)) {
+          list = rawData.presets;
+        } else if (rawData && typeof rawData === 'object') {
+          const values = Object.values(rawData);
+          const foundArray = values.find(val => Array.isArray(val));
+          if (foundArray) {
+            list = foundArray as any[];
+          }
+        }
+
+        if (list.length > 0) {
+          const parsed = list.map((item: any, idx: number) => {
+            return {
+              id: item.id || `api-preset-${idx}-${Date.now()}`,
+              name: item.name || item.title || `Style ${idx + 1}`,
+              text: item.text || item.content || 'E F E K',
+              style: item.style || item.effectStyle || item.textStyle || 'neon',
+              fontFamily: item.fontFamily || item.font || 'Orbitron',
+              color: item.color || item.textColor || '#00f2fe'
+            };
+          });
+
+          // Filter duplicates by merging. Put API ones first
+          const combined = [...parsed, ...TEXT_PRESETS];
+          const unique = combined.filter((v, i, a) => a.findIndex(t => t.id === v.id) === i);
+          setTextPresets(unique);
+        }
+        setIsFetchingTextPresets(false);
+      })
+      .catch(err => {
+        console.warn('Gagal mengambil textpreset dari API, menggunakan lokal:', err);
+        setFetchTextPresetsError(err.message || 'Error occurred');
+        setIsFetchingTextPresets(false);
+      });
+  };
+
   useEffect(() => {
     fetchGeneralStickers();
     fetchUserCloudStickers();
+    fetchTextPresets();
   }, []);
 
   // Fetch when folder ID or username props change
@@ -447,7 +498,7 @@ export default function StickerSelector({
     setLetterSpacing(0); // Reset after adding
   };
 
-  const handleAddPresetText = (preset: typeof TEXT_PRESETS[number]) => {
+  const handleAddPresetText = (preset: any) => {
     const newText: PlacedSticker = {
       id: `placed-text-preset-${Date.now()}`,
       type: 'text',
@@ -465,7 +516,7 @@ export default function StickerSelector({
     onSelectSticker(newText.id);
   };
 
-  const getPreviewStyleForPreset = (preset: typeof TEXT_PRESETS[number]) => {
+  const getPreviewStyleForPreset = (preset: any) => {
     const color = preset.color;
     switch (preset.style) {
       case 'double-neon':
@@ -851,34 +902,49 @@ export default function StickerSelector({
             </div>
             
             <div className="grid grid-cols-2 gap-1.5 select-none max-h-[175px] overflow-y-auto pr-1 scrollbar-thin">
-              {TEXT_PRESETS.map((preset) => (
-                <button
-                  key={preset.id}
-                  type="button"
-                  onClick={() => handleAddPresetText(preset)}
-                  className={`p-2 border rounded-lg text-left transition-all active:scale-[0.97] flex flex-col justify-between group overflow-hidden relative ${
-                    theme === 'dark'
-                      ? 'bg-zinc-950 border-white/5 hover:border-neon-cyan/40 hover:bg-zinc-900'
-                      : 'bg-zinc-50 border-black/5 hover:border-neon-cyan/40 hover:bg-white/70'
-                  }`}
-                >
-                  {/* Background laser neon lines */}
-                  <div className="absolute inset-0 bg-[radial-gradient(ellipse_at_top_right,_var(--tw-gradient-stops))] from-neon-cyan/5 via-transparent to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-300 pointer-events-none" />
-                  
-                  <div className="text-[7.5px] font-mono font-extrabold text-zinc-500 group-hover:text-neon-cyan transition-colors z-10">
-                    {preset.name}
-                  </div>
-                  
-                  <div className="mt-1 pb-1 flex items-center justify-center min-h-[22px] w-full overflow-hidden text-center z-10">
-                    <span 
-                      style={getPreviewStyleForPreset(preset)}
-                      className="text-[9px] font-extrabold tracking-wider select-none leading-none inline-block break-all"
-                    >
-                      {preset.text}
-                    </span>
-                  </div>
-                </button>
-              ))}
+              {isFetchingTextPresets && textPresets.length === TEXT_PRESETS.length && (
+                <div className="col-span-2 text-center py-2 text-[8px] font-mono text-neon-cyan animate-pulse">
+                  MENGHUBUNGKAN KE API BUNGTEMIN...
+                </div>
+              )}
+              {textPresets.map((preset) => {
+                const isFromApi = !TEXT_PRESETS.some(p => p.id === preset.id);
+                return (
+                  <button
+                    key={preset.id}
+                    type="button"
+                    onClick={() => handleAddPresetText(preset)}
+                    className={`p-2 border rounded-lg text-left transition-all active:scale-[0.97] flex flex-col justify-between group overflow-hidden relative ${
+                      theme === 'dark'
+                        ? 'bg-zinc-950 border-white/5 hover:border-neon-cyan/40 hover:bg-zinc-900'
+                        : 'bg-zinc-50 border-black/5 hover:border-neon-cyan/40 hover:bg-white/70'
+                    }`}
+                  >
+                    {/* Background laser neon lines */}
+                    <div className="absolute inset-0 bg-[radial-gradient(ellipse_at_top_right,_var(--tw-gradient-stops))] from-neon-cyan/5 via-transparent to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-300 pointer-events-none" />
+                    
+                    <div className="flex items-center justify-between w-full z-10">
+                      <div className="text-[7.5px] font-mono font-extrabold text-zinc-500 group-hover:text-neon-cyan transition-colors truncate">
+                        {preset.name}
+                      </div>
+                      {isFromApi && (
+                        <span className="text-[6.5px] font-mono text-emerald-400 bg-emerald-400/10 border border-emerald-400/20 px-0.5 rounded leading-none shrink-0 scale-90">
+                          API
+                        </span>
+                      )}
+                    </div>
+                    
+                    <div className="mt-1 pb-1 flex items-center justify-center min-h-[22px] w-full overflow-hidden text-center z-10">
+                      <span 
+                        style={getPreviewStyleForPreset(preset)}
+                        className="text-[9px] font-extrabold tracking-wider select-none leading-none inline-block break-all"
+                      >
+                        {preset.text}
+                      </span>
+                    </div>
+                  </button>
+                );
+              })}
             </div>
 
             <div className={`my-2 border-t ${theme === 'dark' ? 'border-white/5' : 'border-black/5'}`} />
