@@ -1,6 +1,27 @@
 rules_version = '2';
 service cloud.firestore {
   match /databases/{database}/documents {
+    // Jalur pengamanan ketat untuk ulasan qcc_reviews
+    match /qcc_reviews/{reviewId} {
+      // Semua orang (termasuk tamu) diizinkan membaca ulasan manis
+      allow read: if true;
+      
+      // Hanya akun terautentikasi login yang dapat menulis ulasan dirinya sendiri
+      allow create: if request.auth != null 
+                    && request.resource.data.userId == request.auth.uid
+                    && request.resource.data.rating >= 1 
+                    && request.resource.data.rating <= 5;
+                    
+      // Hanya pemilik ulasan asli yang boleh menghapus ulasannya sendiri
+      allow delete: if request.auth != null 
+                    && resource.data.userId == request.auth.uid;
+      
+      // Hanya pemilik ulasan asli yang boleh memperbarui ulasannya sendiri
+      allow update: if request.auth != null 
+                    && resource.data.userId == request.auth.uid
+                    && request.resource.data.userId == request.auth.uid;
+    }
+
     // Permissive rules for creative sandbox to prevent any "Missing or insufficient permissions" error for Bung Temin
     match /{document=**} {
       allow read, write: if true;

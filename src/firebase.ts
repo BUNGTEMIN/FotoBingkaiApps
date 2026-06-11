@@ -1,6 +1,7 @@
 import { initializeApp } from 'firebase/app';
 import { getAuth } from 'firebase/auth';
 import { getStorage } from 'firebase/storage';
+import { getFirestore } from 'firebase/firestore';
 import { 
   getDatabase, 
   ref as rtdbRef, 
@@ -18,6 +19,7 @@ import firebaseConfig from '../firebase-applet-config.json';
 const app = initializeApp(firebaseConfig);
 export const auth = getAuth();
 export const fbStorage = getStorage(app);
+export const dbFirestore = getFirestore(app);
 
 // Determine the URL of the Realtime Database dynamically with region fallback
 let dbInstance;
@@ -89,6 +91,9 @@ export class FirestoreCompatQuerySnapshot {
   docs: FirestoreCompatDocSnap[];
   constructor(docs: FirestoreCompatDocSnap[]) {
     this.docs = docs;
+  }
+  get size(): number {
+    return this.docs.length;
   }
   forEach(callback: (doc: FirestoreCompatDocSnap) => void) {
     this.docs.forEach(callback);

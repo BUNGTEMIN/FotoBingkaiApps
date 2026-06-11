@@ -13,9 +13,20 @@ import axios from 'axios';
 import { onAuthStateChanged, signInWithPopup, GoogleAuthProvider, signOut, User } from 'firebase/auth';
 import { ref, uploadBytes, getDownloadURL } from 'firebase/storage';
 import { 
-  db, auth, handleFirestoreError, OperationType, fbStorage,
+  db, auth, handleFirestoreError, OperationType, fbStorage, dbFirestore,
   doc, setDoc, serverTimestamp, collection, getDocs, query, orderBy, deleteDoc, where, updateDoc, increment, addDoc, onSnapshot 
 } from './firebase';
+import { 
+  collection as fsCollection, 
+  addDoc as fsAddDoc, 
+  onSnapshot as fsOnSnapshot, 
+  query as fsQuery, 
+  orderBy as fsOrderBy, 
+  serverTimestamp as fsServerTimestamp,
+  deleteDoc as fsDeleteDoc,
+  doc as fsDoc,
+  where as fsWhere
+} from 'firebase/firestore';
 
 // Custom components
 import BungteminHeader from './components/BungteminHeader';
@@ -24,6 +35,8 @@ import ImageAdjuster from './components/ImageAdjuster';
 import StickerSelector, { FUTURISTIC_FONTS, STICKER_COLORS } from './components/StickerSelector';
 import { LazyImage } from './components/LazyImage';
 import { CloudItem } from './components/CloudItem';
+import { InstagramComments } from './components/InstagramComments';
+import { PhotoDetailPage } from './components/PhotoDetailPage';
 import { DeleteConfirmationModal } from './components/DeleteConfirmationModal';
 import PreviewImageModal from './components/PreviewImageModal';
 
@@ -32,7 +45,7 @@ import { Frame, ImageSettings, PlacedSticker } from './types';
 import { FRAMES, FILTER_PRESETS, PRESET_STICKERS } from './presets';
 import { renderToCanvas, resolveApiUrl, compressImage, ensureFullSvg } from './canvasUtils';
 import { storage, BUCKET_ID, databases, DATABASE_ID, COLLECTION_ID, Query, ID, ensureAppwriteBucketExists } from './appwrite';
-import { getCache, setCache } from './indexedDb';
+import { getCache, setCache, deleteCache } from './indexedDb';
 
 // Use direct API endpoints instead of proxy helpers since they support CORS natively
 const getWabotApiUrl = () => 'https://wabot.nufat.id/imagelist_nufat/api';
@@ -596,6 +609,7 @@ export default function App() {
         if (currentUid) {
           localStorage.removeItem(`bt_my_gallery_${currentUid}`);
           localStorage.removeItem(`bt_my_gallery_time_${currentUid}`);
+          await deleteCache(`bt_my_gallery_${currentUid}`);
         }
         localStorage.removeItem(`bt_cloud_downloads_all_${currentUid || 'guest'}`);
         localStorage.removeItem(`bt_cloud_downloads_time_all_${currentUid || 'guest'}`);
@@ -603,6 +617,10 @@ export default function App() {
         localStorage.removeItem(`bt_cloud_downloads_time_mine_${currentUid || 'guest'}`);
         localStorage.removeItem(`bt_cloud_downloads_others_${currentUid || 'guest'}`);
         localStorage.removeItem(`bt_cloud_downloads_time_others_${currentUid || 'guest'}`);
+
+        await deleteCache(`bt_cloud_downloads_all_${currentUid || 'guest'}`);
+        await deleteCache(`bt_cloud_downloads_mine_${currentUid || 'guest'}`);
+        await deleteCache(`bt_cloud_downloads_others_${currentUid || 'guest'}`);
 
         fetchCloudDownloads(undefined, true);
       } catch (err: any) {
@@ -627,6 +645,11 @@ export default function App() {
         localStorage.removeItem(`bt_cloud_downloads_time_mine_${currentUid}`);
         localStorage.removeItem(`bt_cloud_downloads_others_${currentUid}`);
         localStorage.removeItem(`bt_cloud_downloads_time_others_${currentUid}`);
+
+        await deleteCache(`bt_my_gallery_${currentUid}`);
+        await deleteCache(`bt_cloud_downloads_all_${currentUid}`);
+        await deleteCache(`bt_cloud_downloads_mine_${currentUid}`);
+        await deleteCache(`bt_cloud_downloads_others_${currentUid}`);
       }
       
       fetchMyGallery(true);
@@ -992,6 +1015,103 @@ export default function App() {
   const [isFetchingCloudBgs, setIsFetchingCloudBgs] = useState<boolean>(false);
   const [fetchCloudBgsError, setFetchCloudBgsError] = useState<string | null>(null);
   const [adjustSubTab, setAdjustSubTab] = useState<'posisi' | 'remove_bg'>('posisi');
+
+  // States for durably persistent review & rating system using Cloud Firestore (only for logged-in accounts)
+  const [showReviewsModal, setShowReviewsModal] = useState(false);
+  const [isReviewsSectionOpen, setIsReviewsSectionOpen] = useState(false);
+  const [reviews, setReviews] = useState<any[]>([]);
+  const [reviewTab, setReviewTab] = useState<'app' | 'frame'>('app');
+  const [selectedCloudItemDetail, setSelectedCloudItemDetail] = useState<any | null>(null);
+  const [rating, setRating] = useState<number>(5);
+  const [comment, setComment] = useState<string>('');
+  const [isSubmittingReview, setIsSubmittingReview] = useState<boolean>(false);
+
+  // Firestore Realtime snapshot listener for reviews
+  useEffect(() => {
+    if (!showReviewsModal && currentPage !== 'bingkai' && !isReviewsSectionOpen) return;
+
+    let q;
+    try {
+      if (reviewTab === 'app') {
+        q = fsQuery(
+          fsCollection(dbFirestore, 'qcc_reviews'),
+          fsWhere('reviewType', '==', 'app'),
+          fsOrderBy('createdAt', 'desc')
+        );
+      } else {
+        const frameId = selectedFrame?.id || 'no-frame';
+        q = fsQuery(
+          fsCollection(dbFirestore, 'qcc_reviews'),
+          fsWhere('reviewType', '==', 'frame'),
+          fsWhere('frameId', '==', frameId),
+          fsOrderBy('createdAt', 'desc')
+        );
+      }
+
+      const unsubscribe = fsOnSnapshot(q, (snapshot) => {
+        const fetched: any[] = [];
+        snapshot.forEach((docSnap) => {
+          fetched.push({ id: docSnap.id, ...docSnap.data() });
+        });
+        setReviews(fetched);
+      }, (err) => {
+        console.warn("Firestore reviews read denied or failed:", err);
+      });
+
+      return () => unsubscribe();
+    } catch (e) {
+      console.error("Gagal mendeteksi ulasan Firestore:", e);
+    }
+  }, [showReviewsModal, currentPage, isReviewsSectionOpen, reviewTab, selectedFrame?.id]);
+
+  const handleAddReview = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!user) {
+      triggerToast("Silakan login menggunakan akun Google Anda terlebih dahulu ya, Sayang! 🔐");
+      return;
+    }
+    if (!comment.trim()) {
+      triggerToast("Komentar ulasan tidak boleh kosong ya, Sayang! ✍️");
+      return;
+    }
+
+    setIsSubmittingReview(true);
+    try {
+      await fsAddDoc(fsCollection(dbFirestore, 'qcc_reviews'), {
+        userId: user.uid,
+        userName: user.displayName || 'Pengguna QCC',
+        userPhoto: user.photoURL || 'https://images.unsplash.com/photo-1535713875002-d1d0cf377fde?auto=format&fit=crop&w=80&q=80',
+        rating: rating,
+        comment: comment.trim(),
+        createdAt: fsServerTimestamp(),
+        reviewType: reviewTab,
+        frameId: reviewTab === 'frame' ? (selectedFrame?.id || 'unknown') : null,
+        frameName: reviewTab === 'frame' ? (selectedFrame?.name || 'Bingkai Kustom') : null
+      });
+
+      setComment('');
+      setRating(5);
+      triggerToast("Terima kasih atas ulasan berharganya, Sayang! Sukses disimpan di Firestore. 💖");
+    } catch (err) {
+      console.error("Gagal mengirim ulasan ke Firestore:", err);
+      triggerToast("Gagal mengirim ulasan. Silakan coba lagi ya, Sayang.");
+    } finally {
+      setIsSubmittingReview(false);
+    }
+  };
+
+  const handleDeleteReview = async (reviewId: string) => {
+    if (!user) return;
+    if (confirm("Apakah kamu yakin ingin menghapus ulasan ini, Sayang? 🥺")) {
+      try {
+        await fsDeleteDoc(fsDoc(dbFirestore, 'qcc_reviews', reviewId));
+        triggerToast("Ulasan berhasil dihapus dari cloud Firestore! 🗑️");
+      } catch (err) {
+        console.error("Gagal menghapus ulasan:", err);
+        triggerToast("Gagal menghapus ulasan.");
+      }
+    }
+  };
 
   // Persist background image and bg removed flag
   useEffect(() => {
@@ -5454,6 +5574,8 @@ Berikan respons dalam format JSON yang valid dengan kunci wajib:
               className="hidden" 
             />
           </div>
+
+
         </main>
       )}
 
@@ -8152,6 +8274,32 @@ Berikan respons dalam format JSON yang valid dengan kunci wajib:
                         {isConfirmingClear ? 'CONFIRM' : 'RESET'}
                       </span>
                     </button>
+
+                    {/* OPTION 5: ULASAN & RATING BY OLAIVE */}
+                    <button
+                      onClick={() => {
+                        setCurrentPage('bingkai');
+                        setIsFloatingHubOpen(false);
+                      }}
+                      className={`w-full p-2.5 rounded-xl border font-mono text-[10px] font-extrabold tracking-wider text-left transition-all duration-200 flex items-center justify-between group ${
+                        theme === 'dark'
+                          ? 'bg-amber-400/5 border-amber-400/25 text-amber-300 hover:bg-amber-400/12 hover:text-amber-200 hover:border-amber-400/50 shadow-[0_0_8px_rgba(251,191,36,0.1)]'
+                          : 'bg-amber-50 border-amber-200 text-amber-800 hover:bg-amber-100/50'
+                      }`}
+                      title="Komentar & Ulasan (Instagram Style)"
+                    >
+                      <div className="flex items-center gap-2">
+                        <Heart className="w-4 h-4 text-amber-400 animate-pulse" />
+                        <div className="flex flex-col">
+                          <span className="text-[9px] uppercase font-black tracking-widest text-[#FFC107]">
+                            ⭐ KOMENTAR CLOUD
+                          </span>
+                        </div>
+                      </div>
+                      <span className="text-[7.5px] font-sans text-amber-500 uppercase tracking-widest group-hover:translate-x-1 transition-transform">
+                        BUKA ➔
+                      </span>
+                    </button>
                   </div>
                 </motion.div>
               )}
@@ -8768,6 +8916,17 @@ Berikan respons dalam format JSON yang valid dengan kunci wajib:
                     </button>
                   )}
                 </div>
+
+                {/* Real-time Instagram Comments for Frame */}
+                <InstagramComments 
+                  targetId={frame.id}
+                  targetType="frame"
+                  user={user}
+                  theme={theme}
+                  handleGoogleLogin={handleGoogleLogin}
+                  triggerToast={triggerToast}
+                  targetName={frame.name}
+                />
               </div>
             );
           })}
@@ -8835,7 +8994,14 @@ Berikan respons dalam format JSON yang valid dengan kunci wajib:
                           matchesUser={!!matchesUser}
                           onLike={() => handleLike(item.id)}
                           onDelete={cloudSubTab === 'mine' ? () => deleteCloudDownload(item.id) : undefined}
-                          onPreview={handleOpenPreviewModal}
+                          onOpenDetail={() => {
+                            setSelectedCloudItemDetail(item);
+                            setCurrentPage('photo-detail');
+                          }}
+                          user={user}
+                          theme={theme}
+                          handleGoogleLogin={handleGoogleLogin}
+                          triggerToast={triggerToast}
                         />
                       );
                     })}
@@ -8846,6 +9012,26 @@ Berikan respons dalam format JSON yang valid dengan kunci wajib:
           }
       </div>
     )}
+
+    {currentPage === 'photo-detail' && selectedCloudItemDetail && (() => {
+      const activeItem = cloudDownloads.find(d => d.id === selectedCloudItemDetail.id) || selectedCloudItemDetail;
+      return (
+        <PhotoDetailPage
+          onBack={() => {
+            setSelectedCloudItemDetail(null);
+            setCurrentPage('galeri');
+          }}
+          item={activeItem}
+          user={user}
+          theme={theme}
+          handleGoogleLogin={handleGoogleLogin}
+          triggerToast={triggerToast}
+          onLike={() => handleLike(activeItem.id)}
+          matchesUser={auth.currentUser?.uid ? activeItem.userId === auth.currentUser.uid : user?.uid ? activeItem.userId === user.uid : false}
+          onDelete={activeItem.userId === (auth.currentUser?.uid || user?.uid) ? () => deleteCloudDownload(activeItem.id) : undefined}
+        />
+      );
+    })()}
 
 
     {currentPage === 'wabot' && (
@@ -9203,13 +9389,13 @@ Berikan respons dalam format JSON yang valid dengan kunci wajib:
                       setShowAuthWarning(false);
                       handleGoogleLogin();
                     }}
-                    className={`py-2 px-2 rounded-lg border text-center font-bold font-sans text-xs transition-all active:scale-95 ${
+                    className={`py-2 px-1 rounded-lg border text-center font-bold font-sans text-xs transition-all active:scale-95 ${
                       theme === 'dark'
                         ? 'border-white/10 bg-white/5 text-zinc-300 hover:bg-white/10'
                         : 'border-zinc-300 bg-zinc-100 text-zinc-800 hover:bg-zinc-200'
                     }`}
                   >
-                    COBA LAGI 🔐
+                    🚨 LOGIN GOOGLE 🔐
                   </button>
                 </div>
                 <button

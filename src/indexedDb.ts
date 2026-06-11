@@ -128,3 +128,40 @@ export async function getCache(key: string): Promise<any> {
 
   return undefined;
 }
+
+export async function deleteCache(key: string): Promise<void> {
+  // 1. Delete from memory cache
+  delete memoryCache[key];
+
+  // 2. Delete from IndexedDB
+  try {
+    const db = await openDB();
+    if (db) {
+      await new Promise<void>((resolve) => {
+        try {
+          const transaction = db.transaction('cache', 'readwrite');
+          const store = transaction.objectStore('cache');
+          store.delete(key);
+          transaction.oncomplete = () => resolve();
+          transaction.onerror = () => {
+            console.warn("[IndexedDB delete transaction error]", transaction.error);
+            resolve();
+          };
+        } catch (txErr) {
+          console.warn("[IndexedDB delete session error]", txErr);
+          resolve();
+        }
+      });
+    }
+  } catch (dbErr) {
+    console.warn("[IndexedDB deleteCache error]", dbErr);
+  }
+
+  // 3. Delete from LocalStorage
+  try {
+    localStorage.removeItem(key);
+  } catch (lsErr) {
+    console.warn("[LocalStorage deleteCache error]", lsErr);
+  }
+}
+
