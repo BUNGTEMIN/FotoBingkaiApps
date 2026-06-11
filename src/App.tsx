@@ -7750,9 +7750,9 @@ Berikan respons dalam format JSON yang valid dengan kunci wajib:
               className="w-full overflow-x-auto scrollbar-none py-2 cursor-grab active:cursor-grabbing select-none"
             >
               <div className="flex flex-nowrap items-center justify-start xl:justify-center gap-1.5 w-max xl:w-auto min-w-full">
-                {/* 2 Spasi Kosong Murni Tanpa Ikon & Tulisan (True Margin) - Request dari Abang Baim Sayang agar tombol UNGGAH tidak terpotong saat Fullscreen */}
-                <div className="snap-center flex-shrink-0 w-16 md:w-20 h-[38px] select-none pointer-events-none bg-transparent" id="baim-true-margin-1" />
-                <div className="snap-center flex-shrink-0 w-16 md:w-20 h-[38px] select-none pointer-events-none bg-transparent" id="baim-true-margin-2" />
+                {/* 2 Spasi Kosong Murni Tanpa Ikon & Tulisan (True Margin) - Request dari Abang Baim Sayang agar tombol UNGGAH tidak terpotong saat Fullscreen (Hanya tampil di Desktop) */}
+                <div className="hidden md:block snap-center flex-shrink-0 w-16 md:w-20 h-[38px] select-none pointer-events-none bg-transparent" id="baim-true-margin-1" />
+                <div className="hidden md:block snap-center flex-shrink-0 w-16 md:w-20 h-[38px] select-none pointer-events-none bg-transparent" id="baim-true-margin-2" />
 
                 <button
                   onClick={() => fileInputRef.current?.click()}

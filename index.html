@@ -14,7 +14,13 @@
     <meta name="twitter:title" content="QCCfoto - Editor Avatar Futuristik & Modern" />
     <meta name="twitter:description" content="Aplikasi pembuat avatar foto dengan bingkai estetik, futuristik, dan modern edisi QCC Foto di qcc-online.web.app" />
     <meta name="twitter:image" content="https://bungtemin.net/news/wp-content/uploads/2026/06/thumbnail.png" />
+    <meta name="theme-color" content="#050505" />
+    <meta name="apple-mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
     <title>QCCfoto - Editor Avatar Futuristik & Modern</title>
+    <link rel="manifest" href="/manifest.json" />
+    <link rel="icon" type="image/png" href="/favicon.png" />
+    <link rel="apple-touch-icon" href="/icon-192.png" />
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;600;800&family=JetBrains+Mono:wght@400;500;700&family=Orbitron:wght@500;700;900&family=Space+Grotesk:wght@400;500;600;700&display=swap" rel="stylesheet">
@@ -22,6 +28,15 @@
   <body class="bg-[#050505] text-[#E0E0E0] min-h-screen antialiased">
     <div id="root"></div>
     <script type="module" src="/src/main.tsx"></script>
+    <script>
+      if ('serviceWorker' in navigator) {
+        window.addEventListener('load', () => {
+          navigator.serviceWorker.register('/sw.js')
+            .then((reg) => console.log('[PWA] Service Worker terdaftar dengan sukses!', reg.scope))
+            .catch((err) => console.error('[PWA] Registrasi Service Worker gagal!', err));
+        });
+      }
+    </script>
   </body>
 </html>
 
