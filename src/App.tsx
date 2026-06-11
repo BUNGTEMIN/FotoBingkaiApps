@@ -4233,8 +4233,8 @@ Berikan respons dalam format JSON yang valid dengan kunci wajib:
 
         if (navigator.share) {
           const shareData: ShareData = {
-            title: 'Avatar Bingkai Futuristik QCC',
-            text: 'Deklarasikan identitas siber Anda dengan Bingkai Kartu Akses QCC resmi. Buat bingkai foto futuristik Anda sekarang juga di: https://qcc-online.web.app/',
+            title: 'QCC Foto - Editor Avatar Futuristik',
+            text: 'Yuk pasang bingkai foto futuristik QCC yang aesthetic & keren! Bikin punya kamu sekarang di: https://qcc-online.web.app/ ✨',
           };
 
           // Check if file sharing is supported
@@ -4329,9 +4329,9 @@ Berikan respons dalam format JSON yang valid dengan kunci wajib:
           
           <div className="bg-transparent lg:bg-[#0b0b0b] lg:rounded-xl p-0 lg:p-5 border-0 lg:border lg:border-white/10 shadow-none lg:shadow-[0_4px_30px_rgba(0,0,0,0.5)] relative overflow-hidden flex flex-col">
 
-            {/* MOBILE QUICK CONTROLLER - Focus Slider above Main Canvas (hidden when activeTab is active to let the canvas push up) */}
+            {/* QUICK CONTROLLER - Focus Slider above Main Canvas (hidden when activeTab is active to let the canvas push up) */}
             {!activeTab && (
-              <div className="lg:hidden mb-4 space-y-3 w-full animate-fadeIn">
+              <div className="mb-4 space-y-3 w-full animate-fadeIn">
                 {/* Horizontal Frame Selection Carousel (Slider Bingkai) */}
                 <div className="flex gap-2.5 overflow-x-auto pb-2 scrollbar-thin scrollbar-thumb-white/10 scrollbar-track-transparent w-full">
                   {displayFrames.map((frame) => {
@@ -7021,10 +7021,10 @@ Berikan respons dalam format JSON yang valid dengan kunci wajib:
             animate={{ opacity: 1, y: 0 }}
             exit={{ opacity: 0, y: 65 }}
             transition={{ type: 'spring', damping: 28, stiffness: 300 }}
-            className="fixed bottom-0 left-0 right-0 z-50 bg-[#070709]/80 backdrop-blur-md border-t border-white/10 shadow-[0_-5px_30px_rgba(0,0,0,0.8)] pb-safe"
+            className="fixed bottom-0 left-0 right-0 z-50 bg-[#070709]/80 backdrop-blur-md border-t border-white/10 shadow-[0_-5px_30px_rgba(0,0,0,0.8)] pb-safe py-1"
           >
-          <div className="w-full max-w-lg mx-auto overflow-x-auto scrollbar-none px-4 py-2">
-            <div className="flex flex-nowrap items-center gap-1.5 w-max min-w-full">
+          <div className="w-full max-w-6xl mx-auto overflow-x-auto scrollbar-none px-4 py-2">
+            <div className="flex flex-nowrap items-center justify-start xl:justify-center gap-1.5 w-max xl:w-auto min-w-full">
               <button
                 onClick={() => fileInputRef.current?.click()}
                 className="snap-center flex-shrink-0 px-3.5 py-1.5 rounded-xl font-mono text-xs font-bold tracking-widest transition-all duration-150 flex flex-col items-center justify-center space-y-1 min-w-[76px] text-neon-cyan hover:bg-[#00F0FF]/15 bg-[#00F0FF]/5 hover:text-white"
@@ -8326,7 +8326,7 @@ Berikan respons dalam format JSON yang valid dengan kunci wajib:
                 <div className="font-bold mb-1 text-[11px] text-[#4285F4]">SOLUSI DISARANKAN:</div>
                 <ul className="list-disc list-inside space-y-1 opacity-85 leading-relaxed font-sans text-xs">
                   <li>Buka di <strong>Tab Baru</strong> untuk login normal.</li>
-                  <li>Atau pilih <strong>Sesi Tamu</strong> untuk langsung mengunduh avatar gratis sekarang tanpa login!</li>
+                  <li>Atau pilih <strong>Sesi Tamu</strong> untuk langsung mengunduh avatar sekarang tanpa login!</li>
                 </ul>
               </div>
               <div className="flex flex-col gap-2.5">
