@@ -7064,23 +7064,48 @@ Berikan respons dalam format JSON yang valid dengan kunci wajib:
                 <span className="text-[8px] uppercase tracking-wider font-extrabold text-neon-cyan">EDIT</span>
               </button>
 
-              <button
-                onClick={() => {
-                  if (!userImage) {
-                    triggerToast("Sayang, silakan unggah foto terlebih dahulu! 💖");
-                    return;
-                  }
-                  setActiveTab(activeTab === 'change_bg' ? null : 'change_bg');
-                }}
-                className={`snap-center flex-shrink-0 px-3.5 py-1.5 rounded-xl font-mono text-xs font-bold tracking-widest transition-all duration-150 flex flex-col items-center justify-center space-y-1 min-w-[76px] ${
-                  activeTab === 'change_bg'
-                    ? 'bg-purple-500/25 text-purple-400 border-t-2 border-purple-500 shadow-[0_0_15px_rgba(168,85,247,0.3)] font-bold'
-                    : 'text-zinc-450 hover:text-purple-300 hover:bg-purple-950/10'
-                }`}
-              >
-                <ImageIcon className="w-4 h-4 text-purple-400" />
-                <span className="text-[8px] uppercase tracking-wider font-extrabold text-purple-400">GANTI BG</span>
-              </button>
+              {isBgRemovedForCurrentUserImage ? (
+                <button
+                  onClick={() => {
+                    if (!userImage) {
+                      triggerToast("Sayang, silakan unggah foto terlebih dahulu! 💖");
+                      return;
+                    }
+                    setActiveTab(activeTab === 'change_bg' ? null : 'change_bg');
+                  }}
+                  className={`snap-center flex-shrink-0 px-3.5 py-1.5 rounded-xl font-mono text-xs font-bold tracking-widest transition-all duration-150 flex flex-col items-center justify-center space-y-1 min-w-[76px] ${
+                    activeTab === 'change_bg'
+                      ? 'bg-purple-500/25 text-purple-400 border-t-2 border-purple-500 shadow-[0_0_15px_rgba(168,85,247,0.3)] font-bold'
+                      : 'text-zinc-450 hover:text-purple-300 hover:bg-purple-950/10'
+                  }`}
+                >
+                  <ImageIcon className="w-4 h-4 text-purple-400" />
+                  <span className="text-[8px] uppercase tracking-wider font-extrabold text-purple-400">GANTI BG</span>
+                </button>
+              ) : (
+                <button
+                  onClick={() => {
+                    if (!userImage) {
+                      triggerToast("Sayang, silakan unggah foto terlebih dahulu! 💖");
+                      return;
+                    }
+                    if (activeTab === 'adjust' && adjustSubTab === 'remove_bg') {
+                      setActiveTab(null);
+                    } else {
+                      setActiveTab('adjust');
+                      setAdjustSubTab('remove_bg');
+                    }
+                  }}
+                  className={`snap-center flex-shrink-0 px-3.5 py-1.5 rounded-xl font-mono text-xs font-bold tracking-widest transition-all duration-150 flex flex-col items-center justify-center space-y-1 min-w-[76px] ${
+                    activeTab === 'adjust' && adjustSubTab === 'remove_bg'
+                      ? 'bg-rose-500/25 text-rose-400 border-t-2 border-rose-500 shadow-[0_0_15px_rgba(244,63,94,0.3)] font-bold'
+                      : 'text-zinc-450 hover:text-rose-300 hover:bg-rose-950/10'
+                  }`}
+                >
+                  <Eraser className="w-4 h-4 text-rose-500 animate-pulse" />
+                  <span className="text-[8px] uppercase tracking-wider font-extrabold text-rose-500">HAPUS BG</span>
+                </button>
+              )}
 
               {user?.email === 'bungtemin@gmail.com' && (
                 <button
