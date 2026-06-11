@@ -1,19 +1,20 @@
 import React, { useState } from 'react';
 import { LazyImage } from './LazyImage';
 import { AnimatePresence, motion } from "motion/react";
-import { Trash2 } from 'lucide-react';
+import { Trash2, Eye } from 'lucide-react';
 import { DeleteConfirmationModal } from './DeleteConfirmationModal';
 
 interface CloudItemProps {
   item: any;
   matchesUser: boolean;
-  onEdit: () => void;
-  onDownload: () => void;
+  onEdit?: () => void;
+  onDownload?: () => void;
   onDelete?: () => void;
   onLike: () => void;
+  onPreview?: (url: string, name: string) => void;
 }
 
-export const CloudItem: React.FC<CloudItemProps> = ({ item, matchesUser, onDelete, onLike }) => {
+export const CloudItem: React.FC<CloudItemProps> = ({ item, matchesUser, onDelete, onLike, onPreview }) => {
   const [hearts, setHearts] = useState<{ id: number }[]>([]);
   const [isDeleteModalOpen, setIsDeleteModalOpen] = useState(false);
 
@@ -79,13 +80,24 @@ export const CloudItem: React.FC<CloudItemProps> = ({ item, matchesUser, onDelet
       </div>
 
       {/* Image Thumbnail */}
-      <div className="relative aspect-square bg-zinc-950 flex items-center justify-center p-0 overflow-hidden border-b border-white/5">
+      <div 
+        onClick={() => onPreview && onPreview(item.imageUrl, item.fileName || `Karya_${item.format || 'Foto'}`)}
+        className="relative aspect-square bg-zinc-950 flex items-center justify-center p-0 overflow-hidden border-b border-white/5 cursor-pointer group/thumb"
+        title="Klik untuk Perbesar / Zoom Foto 🔍"
+      >
         <LazyImage
           src={item.imageUrl}
           alt="Image"
-          className="w-full h-full object-cover transition-transform duration-500 group-hover:scale-105 pointer-events-none select-none"
+          className="w-full h-full object-cover transition-transform duration-500 group-hover/thumb:scale-105 pointer-events-none select-none"
         />
-        <div className="absolute bottom-2 left-2 bg-black/85 px-1.5 py-0.5 rounded border border-white/10 font-mono text-[8px] text-neon-cyan tracking-wider">
+        {/* Hover overlay indicator */}
+        <div className="absolute inset-0 bg-black/45 opacity-0 group-hover/thumb:opacity-100 flex items-center justify-center transition-all duration-300">
+          <div className="bg-zinc-900/95 border border-[#00F0FF]/30 text-neon-cyan px-2.5 py-1.5 rounded-lg text-[9px] font-mono font-bold tracking-wider flex items-center gap-1.5 shadow-[0_0_12px_rgba(0,240,255,0.25)] scale-90 group-hover/thumb:scale-100 transition-transform duration-300">
+            <Eye className="w-3.5 h-3.5 animate-pulse text-[#00F0FF]" />
+            ZOOM IN / OUT
+          </div>
+        </div>
+        <div className="absolute bottom-2 left-2 bg-black/85 px-1.5 py-0.5 rounded border border-white/10 font-mono text-[8px] text-neon-cyan tracking-wider z-10">
           FORMAT: {item.format ? item.format.toUpperCase() : 'JPG'}
         </div>
       </div>

@@ -1,10 +1,10 @@
 import React, { useState, useEffect, useRef, useMemo } from 'react';
 import { 
-  Upload, Sparkles, RefreshCw, Sliders, CircleHelp, Download, Maximize2, Edit2, Pencil,
+  Upload, Sparkles, RefreshCw, Sliders, CircleHelp, Download, Maximize2, Minimize2, Edit2, Pencil,
   FolderOpen, Camera, Laptop, Cpu, Layers, Settings2, Activity, Info, CheckCircle, MoveHorizontal,
   Undo, Redo, Type, ArrowUp, ArrowDown, ChevronsUp, ChevronsDown, Trash2, RotateCw, Move, Baseline,
   Lock, Unlock, Image as ImageIcon, Maximize, X, Crop, Menu, FlipHorizontal, FlipVertical, Ban, Save, Copy,
-  Cloud, Database, Scissors, Eraser, Heart, Share2, Search
+  Cloud, Database, Scissors, Eraser, Heart, Share2, Search, ChevronLeft, ChevronRight
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import axios from 'axios';
@@ -25,6 +25,7 @@ import StickerSelector, { FUTURISTIC_FONTS, STICKER_COLORS } from './components/
 import { LazyImage } from './components/LazyImage';
 import { CloudItem } from './components/CloudItem';
 import { DeleteConfirmationModal } from './components/DeleteConfirmationModal';
+import PreviewImageModal from './components/PreviewImageModal';
 
 // Types & presets
 import { Frame, ImageSettings, PlacedSticker } from './types';
@@ -135,6 +136,63 @@ const getSavedNeonColor = (): string => {
   return localStorage.getItem('bt_neon_color') || '#00f2fe';
 };
 
+export interface FullHistoryEntry {
+  imageSettings: ImageSettings;
+  selectedFrameId: string | null;
+  stickers: PlacedSticker[];
+  backgroundImage: string | null;
+  isBgRemoved: boolean;
+  userImage: string | null;
+  filterPresetId: string;
+  neonColor: string;
+}
+
+const createInitialHistoryEntry = (): FullHistoryEntry => {
+  if (typeof window === 'undefined') {
+    return {
+      imageSettings: DEFAULT_SETTINGS,
+      selectedFrameId: null,
+      stickers: [],
+      backgroundImage: null,
+      isBgRemoved: false,
+      userImage: null,
+      filterPresetId: 'none',
+      neonColor: '#00f2fe',
+    };
+  }
+
+  let frameId: string | null = null;
+  try {
+    frameId = localStorage.getItem('bt_selected_frame_id');
+  } catch (_) {}
+
+  let bgImg: string | null = null;
+  try {
+    bgImg = localStorage.getItem('bt_background_image');
+  } catch (_) {}
+
+  let bgRem = false;
+  try {
+    bgRem = localStorage.getItem('bt_is_bg_removed') === 'true';
+  } catch (_) {}
+
+  let uImg: string | null = null;
+  try {
+    uImg = localStorage.getItem('bt_user_image');
+  } catch (_) {}
+
+  return {
+    imageSettings: getSavedSettings(),
+    selectedFrameId: frameId,
+    stickers: getSavedStickers(),
+    backgroundImage: bgImg,
+    isBgRemoved: bgRem,
+    userImage: uImg,
+    filterPresetId: getSavedFilterPresetId(),
+    neonColor: getSavedNeonColor(),
+  };
+};
+
 const initIndexedDB = (): Promise<IDBDatabase> => {
   return new Promise((resolve, reject) => {
     if (typeof window === 'undefined' || !window.indexedDB) {
@@ -233,6 +291,79 @@ const loadDraftImageFromIDB = async (): Promise<string | null> => {
 
 export default function App() {
   const hasRestoredAutosaveRef = useRef(false);
+
+  // Hook custom horizontal drag scrolling buatan Olaive pinter coding untuk kenyamanan abang Baim 💖
+  const useDragScroll = () => {
+    const ref = useRef<HTMLDivElement | null>(null);
+    const isDragging = useRef(false);
+    const startX = useRef(0);
+    const scrollLeft = useRef(0);
+    const dragMoved = useRef(false);
+
+    const onMouseDown = (e: React.MouseEvent) => {
+      if (!ref.current) return;
+      isDragging.current = true;
+      startX.current = e.pageX - ref.current.offsetLeft;
+      scrollLeft.current = ref.current.scrollLeft;
+      dragMoved.current = false;
+    };
+
+    const onMouseMove = (e: React.MouseEvent) => {
+      if (!isDragging.current || !ref.current) return;
+      e.preventDefault();
+      const x = e.pageX - ref.current.offsetLeft;
+      const walk = (x - startX.current) * 1.5; // multiplier for slightly faster scroll response
+      if (Math.abs(walk) > 4) {
+        dragMoved.current = true;
+      }
+      ref.current.scrollLeft = scrollLeft.current - walk;
+    };
+
+    const onMouseUpOrLeave = () => {
+      isDragging.current = false;
+    };
+
+    const onClickCapture = (e: React.MouseEvent) => {
+      if (dragMoved.current) {
+        e.stopPropagation();
+        e.preventDefault();
+      }
+    };
+
+    return {
+      ref,
+      onMouseDown,
+      onMouseMove,
+      onMouseUp: onMouseUpOrLeave,
+      onMouseLeave: onMouseUpOrLeave,
+      onClickCapture,
+    };
+  };
+
+  const taskbarDrag = useDragScroll();
+  const frameSliderDrag = useDragScroll();
+  const historySliderDrag = useDragScroll();
+
+  const handleHorizontalScroll = (e: React.WheelEvent<HTMLDivElement>) => {
+    const container = e.currentTarget;
+    if (container.scrollWidth > container.clientWidth) {
+      if (Math.abs(e.deltaY) > Math.abs(e.deltaX)) {
+        container.scrollLeft += e.deltaY;
+        e.preventDefault();
+      }
+    }
+  };
+
+  const scrollContainer = (element: HTMLDivElement | null, direction: 'left' | 'right') => {
+    if (element) {
+      const scrollAmount = 280;
+      element.scrollTo({
+        left: element.scrollLeft + (direction === 'left' ? -scrollAmount : scrollAmount),
+        behavior: 'smooth'
+      });
+    }
+  };
+
   // Google Authentication State
   const [user, setUser] = useState<User | null>(null);
   const [isAuthLoading, setIsAuthLoading] = useState(true);
@@ -680,10 +811,20 @@ export default function App() {
           }
           if (saved.imageSettings) {
             setImageSettings(saved.imageSettings);
-            // Sync history/refs
-            setHistory([saved.imageSettings]);
+            // Sync history/refs using FullHistoryEntry structure
+            const restoredEntry: FullHistoryEntry = {
+              imageSettings: saved.imageSettings,
+              selectedFrameId: saved.selectedFrameId || null,
+              stickers: saved.stickers || [],
+              backgroundImage: saved.backgroundImage || null,
+              isBgRemoved: saved.isBgRemoved || false,
+              userImage: saved.userImage || null,
+              filterPresetId: saved.filterPresetId || 'none',
+              neonColor: saved.neonColor || '#00f2fe',
+            };
+            setHistory([restoredEntry]);
             setHistoryIndex(0);
-            lastCommittedRef.current = saved.imageSettings;
+            lastCommittedRef.current = restoredEntry;
             imageSettingsRef.current = saved.imageSettings;
           }
           if (saved.stickers) {
@@ -777,18 +918,31 @@ export default function App() {
   const [neonColor, setNeonColor] = useState<string>(getSavedNeonColor); // default tech cyan
   const [imageSettings, setImageSettings] = useState<ImageSettings>(getSavedSettings);
   
-  // Undo/Redo history states for ImageSettings
-  const [history, setHistory] = useState<ImageSettings[]>(() => [getSavedSettings()]);
+  // Undo/Redo history states for Full editor layout (Bingkai, Stiker, Background, DLL)
+  const [history, setHistory] = useState<FullHistoryEntry[]>(() => [createInitialHistoryEntry()]);
   const [historyIndex, setHistoryIndex] = useState<number>(0);
-  const lastCommittedRef = useRef<ImageSettings>(getSavedSettings());
+  const lastCommittedRef = useRef<FullHistoryEntry>(createInitialHistoryEntry());
   const pendingHistoryTimerRef = useRef<NodeJS.Timeout | null>(null);
   const imageSettingsRef = useRef<ImageSettings>(getSavedSettings());
+
+
 
   const [filterPresetId, setFilterPresetId] = useState<string>(getSavedFilterPresetId);
   const [stickers, setStickers] = useState<PlacedSticker[]>(getSavedStickers);
   const [selectedStickerId, setSelectedStickerId] = useState<string | null>(null);
   const [isHudOpen, setIsHudOpen] = useState(false);
   const [activeTab, setActiveTab] = useState<'adjust' | 'crop' | 'filter' | 'color' | 'stickers' | 'text' | 'text_preset' | 'layers' | 'ai' | 'download' | 'history' | 'settings' | 'ai_effect' | 'koleksi_media' | 'remove_bg' | 'change_bg' | null>(null);
+  
+  // States for aesthetic zoom preview modal
+  const [previewModalOpen, setPreviewModalOpen] = useState(false);
+  const [previewModalSrc, setPreviewModalSrc] = useState('');
+  const [previewModalName, setPreviewModalName] = useState('');
+
+  const handleOpenPreviewModal = (src: string, name: string) => {
+    setPreviewModalSrc(src);
+    setPreviewModalName(name);
+    setPreviewModalOpen(true);
+  };
   
   const [backgroundImage, setBackgroundImage] = useState<string | null>(() => {
     return localStorage.getItem('bt_background_image') || null;
@@ -797,6 +951,37 @@ export default function App() {
   const [isBgRemovedForCurrentUserImage, setIsBgRemovedForCurrentUserImage] = useState<boolean>(() => {
     return localStorage.getItem('bt_is_bg_removed') === 'true';
   });
+
+  // Olaive Mutable Refs to bypass state closures and fetch latest state values instantly
+  const backgroundImageRef = useRef<string | null>(null);
+  const isBgRemovedRef = useRef<boolean>(false);
+  const userImageRef = useRef<string | null>(null);
+  const filterPresetIdRef = useRef<string>('none');
+  const neonColorRef = useRef<string>('#00f2fe');
+  const stickersRef = useRef<PlacedSticker[]>([]);
+  const selectedFrameRef = useRef<any>(null);
+
+  // Sync state values with refs synchronously on change
+  useEffect(() => { backgroundImageRef.current = backgroundImage; }, [backgroundImage]);
+  useEffect(() => { isBgRemovedRef.current = isBgRemovedForCurrentUserImage; }, [isBgRemovedForCurrentUserImage]);
+  useEffect(() => { userImageRef.current = userImage; }, [userImage]);
+  useEffect(() => { filterPresetIdRef.current = filterPresetId; }, [filterPresetId]);
+  useEffect(() => { neonColorRef.current = neonColor; }, [neonColor]);
+  useEffect(() => { stickersRef.current = stickers; }, [stickers]);
+  useEffect(() => { selectedFrameRef.current = selectedFrame; }, [selectedFrame]);
+
+  const getCurrentState = (): FullHistoryEntry => {
+    return {
+      imageSettings: imageSettingsRef.current,
+      selectedFrameId: selectedFrameRef.current ? selectedFrameRef.current.id : null,
+      stickers: stickersRef.current ? JSON.parse(JSON.stringify(stickersRef.current)) : [],
+      backgroundImage: backgroundImageRef.current,
+      isBgRemoved: isBgRemovedRef.current,
+      userImage: userImageRef.current,
+      filterPresetId: filterPresetIdRef.current,
+      neonColor: neonColorRef.current,
+    };
+  };
 
   const [bgSearchKeyword, setBgSearchKeyword] = useState('retro');
   const [isBgLoading, setIsBgLoading] = useState(false);
@@ -858,6 +1043,49 @@ export default function App() {
   const [aiEffectSubTab, setAiEffectSubTab] = useState<'proses' | 'galeri'>('proses');
   const [isSyncingOriginal, setIsSyncingOriginal] = useState(false);
   const [isFloatingHubOpen, setIsFloatingHubOpen] = useState(false);
+  const [isAppFullscreen, setIsAppFullscreen] = useState(false);
+
+  useEffect(() => {
+    const handleFsChange = () => {
+      setIsAppFullscreen(!!document.fullscreenElement);
+    };
+    document.addEventListener('fullscreenchange', handleFsChange);
+    document.addEventListener('webkitfullscreenchange', handleFsChange);
+    document.addEventListener('mozfullscreenchange', handleFsChange);
+    document.addEventListener('MSFullscreenChange', handleFsChange);
+    return () => {
+      document.removeEventListener('fullscreenchange', handleFsChange);
+      document.removeEventListener('webkitfullscreenchange', handleFsChange);
+      document.removeEventListener('mozfullscreenchange', handleFsChange);
+      document.removeEventListener('MSFullscreenChange', handleFsChange);
+    };
+  }, []);
+
+  const toggleAppFullscreen = async () => {
+    try {
+      if (!document.fullscreenElement) {
+        if (document.documentElement.requestFullscreen) {
+          await document.documentElement.requestFullscreen();
+        } else if ((document.documentElement as any).webkitRequestFullscreen) { /* Safari */
+          await (document.documentElement as any).webkitRequestFullscreen();
+        } else if ((document.documentElement as any).msRequestFullscreen) { /* IE11 */
+          await (document.documentElement as any).msRequestFullscreen();
+        }
+      } else {
+        if (document.exitFullscreen) {
+          await document.exitFullscreen();
+        } else if ((document as any).webkitExitFullscreen) { /* Safari */
+          await (document as any).webkitExitFullscreen();
+        } else if ((document as any).msExitFullscreen) { /* IE11 */
+          await (document as any).msExitFullscreen();
+        }
+      }
+    } catch (err) {
+      console.warn('Layar penuh tidak didukung atau terhalang:', err);
+      setIsAppFullscreen(prev => !prev);
+    }
+  };
+
   const [isPhotoLocked, setIsPhotoLocked] = useState(false);
   const [downloadSize, setDownloadSize] = useState<number>(1080);
   const [downloadFormat, setDownloadFormat] = useState<'png' | 'webp' | 'jpeg'>('png');
@@ -1209,6 +1437,46 @@ export default function App() {
     return base64Image;
   };
 
+  const ensureBackgroundImageUploadedToAppwrite = async (base64Image: string | null): Promise<string | null> => {
+    if (!base64Image) return null;
+    if (!base64Image.startsWith('data:')) {
+      return base64Image;
+    }
+    try {
+      const arr = base64Image.split(',');
+      const mimeMatch = arr[0].match(/:(.*?);/);
+      if (!mimeMatch) return base64Image;
+      const mime = mimeMatch[1];
+      const bstr = atob(arr[1]);
+      let n = bstr.length;
+      const u8arr = new Uint8Array(n);
+      while (n--) {
+        u8arr[n] = bstr.charCodeAt(n);
+      }
+      const file = new File([u8arr], `bg_img_${Date.now()}.png`, { type: mime });
+      
+      const activeBucketId = BUCKET_ID;
+      if (!activeBucketId) {
+        throw new Error('VITE_APPWRITE_STORAGE_BUCKET_ID belum dikonfigurasi.');
+      }
+      
+      const fileId = ID.unique();
+      const uploadResult = await storage.createFile(activeBucketId, fileId, file);
+      if (uploadResult) {
+        const usedBucketId = uploadResult.bucketId || activeBucketId;
+        const viewUrlObj = storage.getFileView(usedBucketId, uploadResult.$id) as any;
+        const downloadUrl = typeof viewUrlObj === 'string' ? viewUrlObj : (viewUrlObj?.href || viewUrlObj?.toString() || '');
+        if (downloadUrl) {
+          setBackgroundImage(downloadUrl);
+          return downloadUrl;
+        }
+      }
+    } catch (error) {
+      console.error('[ensureBackgroundImageUploadedToAppwrite] Gagal upload background image ke Appwrite:', error);
+    }
+    return base64Image;
+  };
+
   const ensureStickersUploadedToAppwrite = async (stickersList: PlacedSticker[]): Promise<PlacedSticker[]> => {
     if (!stickersList || stickersList.length === 0) return [];
     
@@ -1291,6 +1559,13 @@ export default function App() {
         finalUserImage = await compressImageBase64(finalUserImage);
       }
 
+      // Ensure background image is uploaded to Appwrite if it is a local base64
+      let finalBackgroundImage = backgroundImage;
+      if (backgroundImage && backgroundImage.startsWith('data:')) {
+        triggerToast("Menyiapkan cadangan latar belakang di Appwrite...");
+        finalBackgroundImage = await ensureBackgroundImageUploadedToAppwrite(backgroundImage);
+      }
+
       // Upload base64 custom stickers to Appwrite so our draf payload is ultra light and perfectly durable
       let finalStickers = stickers;
       try {
@@ -1317,7 +1592,7 @@ export default function App() {
         
         await renderToCanvas(tempCanvas, {
           userImageSrc: finalUserImage,
-          backgroundImageSrc: backgroundImage,
+          backgroundImageSrc: finalBackgroundImage,
           frame: selectedFrame,
           neonColor,
           settings: imageSettings,
@@ -1396,7 +1671,8 @@ export default function App() {
         imageSettings,
         filterPresetId,
         stickers,
-        userImage: finalUserImage
+        userImage: finalUserImage,
+        backgroundImage: finalBackgroundImage
       };
 
       // Retrieve existing timestamps if overwriting
@@ -1528,6 +1804,13 @@ export default function App() {
         setUserImage(data.userImage);
       } else {
         setUserImage(null);
+      }
+
+      // Restore backgroundImage
+      if (data.backgroundImage) {
+        setBackgroundImage(data.backgroundImage);
+      } else {
+        setBackgroundImage(null);
       }
 
       // Keep track of loaded design ID and name
@@ -1827,32 +2110,88 @@ export default function App() {
   }, []);
 
   // Settings equality helper
-  const areSettingsEqual = (s1: ImageSettings, s2: ImageSettings) => {
-    return (
-      s1.scale === s2.scale &&
-      s1.rotation === s2.rotation &&
-      s1.x === s2.x &&
-      s1.y === s2.y &&
-      s1.flipH === s2.flipH &&
-      s1.flipV === s2.flipV &&
-      s1.brightness === s2.brightness &&
-      s1.contrast === s2.contrast &&
-      s1.saturate === s2.saturate &&
-      s1.hueRotate === s2.hueRotate &&
-      s1.blur === s2.blur &&
-      s1.noise === s2.noise
+  const areStatesEqual = (s1: FullHistoryEntry, s2: FullHistoryEntry) => {
+    if (!s1 || !s2) return false;
+    const settingsEqual = (
+      s1.imageSettings.scale === s2.imageSettings.scale &&
+      s1.imageSettings.rotation === s2.imageSettings.rotation &&
+      s1.imageSettings.x === s2.imageSettings.x &&
+      s1.imageSettings.y === s2.imageSettings.y &&
+      s1.imageSettings.flipH === s2.imageSettings.flipH &&
+      s1.imageSettings.flipV === s2.imageSettings.flipV &&
+      s1.imageSettings.brightness === s2.imageSettings.brightness &&
+      s1.imageSettings.contrast === s2.imageSettings.contrast &&
+      s1.imageSettings.saturate === s2.imageSettings.saturate &&
+      s1.imageSettings.hueRotate === s2.imageSettings.hueRotate &&
+      s1.imageSettings.blur === s2.imageSettings.blur &&
+      s1.imageSettings.noise === s2.imageSettings.noise &&
+      s1.imageSettings.maskShape === s2.imageSettings.maskShape &&
+      s1.imageSettings.scanlines === s2.imageSettings.scanlines
     );
+
+    const basicEqual = (
+      s1.selectedFrameId === s2.selectedFrameId &&
+      s1.backgroundImage === s2.backgroundImage &&
+      s1.isBgRemoved === s2.isBgRemoved &&
+      s1.userImage === s2.userImage &&
+      s1.filterPresetId === s2.filterPresetId &&
+      s1.neonColor === s2.neonColor
+    );
+
+    if (!settingsEqual || !basicEqual) return false;
+
+    if (s1.stickers.length !== s2.stickers.length) return false;
+    for (let i = 0; i < s1.stickers.length; i++) {
+      const st1 = s1.stickers[i];
+      const st2 = s2.stickers[i];
+      if (
+        st1.id !== st2.id ||
+        st1.type !== st2.type ||
+        st1.text !== st2.text ||
+        st1.x !== st2.x ||
+        st1.y !== st2.y ||
+        st1.scale !== st2.scale ||
+        st1.rotation !== st2.rotation ||
+        st1.color !== st2.color ||
+        st1.imageUrl !== st2.imageUrl
+      ) {
+        return false;
+      }
+    }
+
+    return true;
+  };
+
+  const applyEditorState = (state: FullHistoryEntry) => {
+    if (!state) return;
+    
+    setImageSettings(state.imageSettings);
+
+    const availableFrames = appwriteFrames.length > 0 ? appwriteFrames : FRAMES;
+    if (state.selectedFrameId && state.selectedFrameId !== 'none') {
+      const found = availableFrames.find(f => f.id === state.selectedFrameId);
+      if (found) setSelectedFrame(found);
+    } else {
+      setSelectedFrame(null);
+    }
+
+    setStickers(state.stickers);
+    setBackgroundImage(state.backgroundImage);
+    setIsBgRemovedForCurrentUserImage(state.isBgRemoved);
+    setUserImage(state.userImage);
+    setFilterPresetId(state.filterPresetId);
+    setNeonColor(state.neonColor);
   };
 
   // Helper to commit a state into the history stack
-  const pushToHistory = (newSettings: ImageSettings) => {
-    if (areSettingsEqual(newSettings, lastCommittedRef.current)) {
+  const pushToHistory = (newState: FullHistoryEntry) => {
+    if (areStatesEqual(newState, lastCommittedRef.current)) {
       return;
     }
 
     // Slice any redo paths if user edited in the past
     const updatedHistory = history.slice(0, historyIndex + 1);
-    updatedHistory.push(newSettings);
+    updatedHistory.push(newState);
 
     // Keep history maximum size reasonable to preserve performance and memory (e.g. 50 items)
     if (updatedHistory.length > 50) {
@@ -1861,12 +2200,13 @@ export default function App() {
 
     setHistory(updatedHistory);
     setHistoryIndex(updatedHistory.length - 1);
-    lastCommittedRef.current = newSettings;
+    lastCommittedRef.current = newState;
   };
 
   // Automated debounced tracker to automatically commit sliders & clicks safely
   useEffect(() => {
-    if (areSettingsEqual(imageSettings, lastCommittedRef.current)) {
+    const currentState = getCurrentState();
+    if (areStatesEqual(currentState, lastCommittedRef.current)) {
       return;
     }
 
@@ -1875,7 +2215,10 @@ export default function App() {
     }
 
     pendingHistoryTimerRef.current = setTimeout(() => {
-      pushToHistory(imageSettingsRef.current);
+      const latestState = getCurrentState();
+      if (!areStatesEqual(latestState, lastCommittedRef.current)) {
+        pushToHistory(latestState);
+      }
       pendingHistoryTimerRef.current = null;
     }, 350); // Settle time of 350ms captures gestures and range sliders cleanly
 
@@ -1884,17 +2227,17 @@ export default function App() {
         clearTimeout(pendingHistoryTimerRef.current);
       }
     };
-  }, [imageSettings]);
+  }, [imageSettings, selectedFrame, stickers, backgroundImage, isBgRemovedForCurrentUserImage, userImage, filterPresetId, neonColor]);
 
   // Clean the stack (e.g. fresh image load)
-  const resetHistoryStack = (initialSettings: ImageSettings = DEFAULT_SETTINGS) => {
+  const resetHistoryStack = (initialState: FullHistoryEntry = createInitialHistoryEntry()) => {
     if (pendingHistoryTimerRef.current) {
       clearTimeout(pendingHistoryTimerRef.current);
       pendingHistoryTimerRef.current = null;
     }
-    setHistory([initialSettings]);
+    setHistory([initialState]);
     setHistoryIndex(0);
-    lastCommittedRef.current = initialSettings;
+    lastCommittedRef.current = initialState;
   };
 
   // Undo Handler
@@ -1906,14 +2249,14 @@ export default function App() {
 
     if (historyIndex > 0) {
       const prevIndex = historyIndex - 1;
-      const prevSettings = history[prevIndex];
+      const prevEntry = history[prevIndex];
 
-      lastCommittedRef.current = prevSettings;
-      setImageSettings(prevSettings);
+      lastCommittedRef.current = prevEntry;
+      applyEditorState(prevEntry);
       setHistoryIndex(prevIndex);
-      triggerToast("Sistem: Urungkan perubahan berhasil! ↩️");
+      triggerToast("Olaive: Urungkan perubahan berhasil! ↩️");
     } else {
-      triggerToast("Sistem: Tidak ada perubahan untuk diurungkan.");
+      triggerToast("Olaive: Tidak ada perubahan untuk diurungkan.");
     }
   };
 
@@ -1926,14 +2269,14 @@ export default function App() {
 
     if (historyIndex < history.length - 1) {
       const nextIndex = historyIndex + 1;
-      const nextSettings = history[nextIndex];
+      const nextEntry = history[nextIndex];
 
-      lastCommittedRef.current = nextSettings;
-      setImageSettings(nextSettings);
+      lastCommittedRef.current = nextEntry;
+      applyEditorState(nextEntry);
       setHistoryIndex(nextIndex);
-      triggerToast("Sistem: Urungkan kembali berhasil! ↪️");
+      triggerToast("Olaive: Urungkan kembali berhasil! ↪️");
     } else {
-      triggerToast("Sistem: Tidak ada perubahan untuk diurungkan kembali.");
+      triggerToast("Olaive: Tidak ada perubahan untuk diurungkan kembali.");
     }
   };
 
@@ -2902,7 +3245,18 @@ export default function App() {
       };
       // Reset positioning settings for fresh images
       setImageSettings(startSettings);
-      resetHistoryStack(startSettings);
+      
+      const freshHistoryState: FullHistoryEntry = {
+        imageSettings: startSettings,
+        selectedFrameId: selectedFrame ? selectedFrame.id : null,
+        stickers: [],
+        backgroundImage: null,
+        isBgRemoved: false,
+        userImage: originalDataUrl,
+        filterPresetId: 'none',
+        neonColor: neonColor,
+      };
+      resetHistoryStack(freshHistoryState);
       setFilterPresetId('none');
 
       // Trigger a direct, non-blocking toast so the user knows everything is running smoothly in the background
@@ -4435,45 +4789,82 @@ Berikan respons dalam format JSON yang valid dengan kunci wajib:
             {!activeTab && (
               <div className="mb-4 space-y-3 w-full animate-fadeIn">
                 {/* Horizontal Frame Selection Carousel (Slider Bingkai) */}
-                <div className="flex gap-2.5 overflow-x-auto pb-2 scrollbar-thin scrollbar-thumb-white/10 scrollbar-track-transparent w-full">
-                  {displayFrames.map((frame) => {
-                    const isSelected = frame.id === selectedFrame?.id;
-                    return (
-                      <button
-                        key={frame.id}
-                        onClick={() => {
-                          setSelectedFrame(frame);
-                          // triggerToast(`Bingkai "${frame.name}" dipilih`);
-                        }}
-                        className={`flex-none w-[56px] h-[56px] p-1 rounded transition-all duration-200 relative overflow-hidden flex items-center justify-center border ${
-                          isSelected 
-                            ? 'border-neon-cyan bg-cyan-950/25 shadow-[0_0_12px_rgba(0,240,255,0.25)] scale-102 z-10' 
-                            : 'border-white/10 hover:border-white/15 bg-black/50'
-                        }`}
-                        title={frame.name}
-                      >
-                        <div className="relative w-full h-full flex items-center justify-center overflow-hidden">
-                          {frame.renderSvg ? (
-                            <div 
-                              className="w-[42px] h-[42px] p-0.5 scale-90"
-                              dangerouslySetInnerHTML={{ __html: ensureFullSvg(frame.renderSvg(neonColor)) }}
-                            />
-                          ) : frame.src ? (
-                            <LazyImage 
-                              src={resolveApiUrl(frame.src)} 
-                              alt={frame.name}
-                              className="w-full h-full object-contain pointer-events-none"
-                            />
-                          ) : null}
-                        </div>
-                        
-                        {/* Active cyan light dot in corner for clean, labeled visual selection */}
-                        {isSelected && (
-                          <div className="absolute top-1 right-1 w-1.5 h-1.5 rounded-full bg-neon-cyan shadow-[0_0_6px_#00F0FF]" />
-                        )}
-                      </button>
-                    );
-                  })}
+                <div className="relative w-full flex items-center group/frames px-1">
+                  {/* Left Arrow */}
+                  <button
+                    type="button"
+                    onClick={() => scrollContainer(frameSliderDrag.ref.current, 'left')}
+                    className="absolute left-1 z-20 p-1 rounded-full bg-neutral-950/80 border border-neon-cyan/30 text-neon-cyan hover:bg-neon-cyan/25 transition-all flex items-center justify-center opacity-0 group-hover/frames:opacity-100 duration-200 md:flex hidden"
+                    title="Slide Kiri Bingkai"
+                  >
+                    <ChevronLeft className="w-3.5 h-3.5" />
+                  </button>
+
+                  <div 
+                    ref={frameSliderDrag.ref}
+                    onMouseDown={frameSliderDrag.onMouseDown}
+                    onMouseMove={frameSliderDrag.onMouseMove}
+                    onMouseUp={frameSliderDrag.onMouseUp}
+                    onMouseLeave={frameSliderDrag.onMouseLeave}
+                    onClickCapture={frameSliderDrag.onClickCapture}
+                    onWheel={handleHorizontalScroll}
+                    className="flex gap-2.5 overflow-x-auto pb-2 scrollbar-thin scrollbar-thumb-white/10 scrollbar-track-transparent w-full cursor-grab active:cursor-grabbing select-none"
+                  >
+                    {/* Spasi kosong kiri (desain ramah dari Olaive) */}
+                    <div className="w-8 shrink-0 pointer-events-none md:block hidden" />
+
+                    {displayFrames.map((frame) => {
+                      const isSelected = frame.id === selectedFrame?.id;
+                      return (
+                        <button
+                          key={frame.id}
+                          onClick={() => {
+                            setSelectedFrame(frame);
+                            // triggerToast(`Bingkai "${frame.name}" dipilih`);
+                          }}
+                          className={`flex-none w-[56px] h-[56px] p-1 rounded transition-all duration-200 relative overflow-hidden flex items-center justify-center border ${
+                            isSelected 
+                              ? 'border-neon-cyan bg-cyan-950/25 shadow-[0_0_12px_rgba(0,240,255,0.25)] scale-102 z-10' 
+                              : 'border-white/10 hover:border-white/15 bg-black/50'
+                          }`}
+                          title={frame.name}
+                        >
+                          <div className="relative w-full h-full flex items-center justify-center overflow-hidden">
+                            {frame.renderSvg ? (
+                              <div 
+                                className="w-[42px] h-[42px] p-0.5 scale-90"
+                                dangerouslySetInnerHTML={{ __html: ensureFullSvg(frame.renderSvg(neonColor)) }}
+                              />
+                            ) : frame.src ? (
+                              <LazyImage 
+                                src={resolveApiUrl(frame.src)} 
+                                alt={frame.name}
+                                className="w-full h-full object-contain pointer-events-none"
+                              />
+                            ) : null}
+                          </div>
+                          
+                          {/* Active cyan light dot in corner for clean, labeled visual selection */}
+                          {isSelected && (
+                            <div className="absolute top-1 right-1 w-1.5 h-1.5 rounded-full bg-neon-cyan shadow-[0_0_6px_#00F0FF]" />
+                          )}
+                        </button>
+                      );
+                    })}
+
+                    {/* Spasi kosong kanan (desain ramah dari Olaive) */}
+                    <div className="w-8 shrink-0 pointer-events-none md:block hidden" />
+                  </div>
+
+                  {/* Right Arrow */}
+                  <button
+                    type="button"
+                    onClick={() => scrollContainer(frameSliderDrag.ref.current, 'right')}
+                    className="absolute right-1 z-20 p-1 rounded-full bg-neutral-950/80 border border-neon-cyan/30 text-neon-cyan hover:bg-neon-cyan/25 transition-all flex items-center justify-center opacity-0 group-hover/frames:opacity-100 duration-200 md:flex hidden"
+                    title="Slide Kanan Bingkai"
+                  >
+                    <ChevronRight className="w-3.5 h-3.5" />
+                  </button>
                 </div>
               </div>
             )}
@@ -5573,9 +5964,31 @@ Berikan respons dalam format JSON yang valid dengan kunci wajib:
                   </div>
 
                   {/* Horizontal Scroll sliding timeline steps */}
-                  <div className="overflow-x-auto pb-2 flex select-none touch-pan-x scrollbar-thin w-full">
-                    <ul className="flex flex-row gap-2 shrink-0 py-1">
-                      {history.slice().reverse().map((h, reverseIdx) => {
+                  <div className="relative w-full flex items-center group/history px-1">
+                    {/* Left Chevron */}
+                    <button
+                      type="button"
+                      onClick={() => scrollContainer(historySliderDrag.ref.current, 'left')}
+                      className="absolute left-1 z-20 p-1 rounded-full bg-neutral-950/80 border border-neon-cyan/30 text-neon-cyan hover:bg-neon-cyan/25 transition-all flex items-center justify-center opacity-0 group-hover/history:opacity-100 duration-200 md:flex hidden animate-pulse"
+                      title="Slide Kiri Riwayat"
+                    >
+                      <ChevronLeft className="w-3 h-3" />
+                    </button>
+
+                    <div 
+                      ref={historySliderDrag.ref}
+                      onMouseDown={historySliderDrag.onMouseDown}
+                      onMouseMove={historySliderDrag.onMouseMove}
+                      onMouseUp={historySliderDrag.onMouseUp}
+                      onMouseLeave={historySliderDrag.onMouseLeave}
+                      onClickCapture={historySliderDrag.onClickCapture}
+                      onWheel={handleHorizontalScroll}
+                      className="overflow-x-auto pb-2 flex select-none touch-pan-x scrollbar-thin w-full cursor-grab active:cursor-grabbing"
+                    >
+                      <ul className="flex flex-row gap-2 shrink-0 py-1">
+                        {/* Spasi kosong di kiri buatan Olaive */}
+                        <li className="w-8 shrink-0 pointer-events-none md:block hidden" />
+                        {history.slice().reverse().map((h, reverseIdx) => {
                         const index = history.length - 1 - reverseIdx;
                         let label = "";
                         if (index === 0) {
@@ -5583,14 +5996,40 @@ Berikan respons dalam format JSON yang valid dengan kunci wajib:
                         } else {
                           const prev = history[index - 1];
                           const changes: string[] = [];
-                          if (h.scale !== prev.scale) changes.push("Skala");
-                          if (h.x !== prev.x || h.y !== prev.y) changes.push("Geser");
-                          if (h.rotation !== prev.rotation) changes.push("Rotasi");
-                          if (h.flipH !== prev.flipH || h.flipV !== prev.flipV) changes.push("Balik");
-                          if (h.brightness !== prev.brightness || h.contrast !== prev.contrast || h.saturate !== prev.saturate) changes.push("Koreksi");
-                          if (h.blur !== prev.blur || h.noise !== prev.noise) changes.push("Filter");
+
+                          if (prev) {
+                            if (h.selectedFrameId !== prev.selectedFrameId) changes.push("Bingkai");
+                            if (h.backgroundImage !== prev.backgroundImage) changes.push("BG");
+                            if (h.isBgRemoved !== prev.isBgRemoved) changes.push("Hapus BG");
+                            if (h.userImage !== prev.userImage) changes.push("Ganti Foto");
+                            if (h.stickers.length !== prev.stickers.length) {
+                              changes.push(h.stickers.length > prev.stickers.length ? "+Stiker/Teks" : "-Stiker/Teks");
+                            } else {
+                              let stickerAdjusted = false;
+                              for (let idx = 0; idx < h.stickers.length; idx++) {
+                                const st1 = h.stickers[idx];
+                                const st2 = prev.stickers[idx];
+                                if (st2 && (st1.x !== st2.x || st1.y !== st2.y || st1.scale !== st2.scale || st1.rotation !== st2.rotation)) {
+                                  stickerAdjusted = true;
+                                  break;
+                                }
+                              }
+                              if (stickerAdjusted) changes.push("Atur Stiker");
+                            }
+                            if (h.neonColor !== prev.neonColor) changes.push("Neon");
+                            if (h.filterPresetId !== prev.filterPresetId) changes.push("Filter");
+
+                            const hs = h.imageSettings;
+                            const ps = prev.imageSettings;
+                            if (hs.scale !== ps.scale) changes.push("Skala");
+                            if (hs.x !== ps.x || hs.y !== ps.y) changes.push("Geser");
+                            if (hs.rotation !== ps.rotation) changes.push("Rotasi");
+                            if (hs.flipH !== ps.flipH || hs.flipV !== ps.flipV) changes.push("Balik");
+                            if (hs.brightness !== ps.brightness || hs.contrast !== ps.contrast || hs.saturate !== ps.saturate) changes.push("Koreksi");
+                            if (hs.blur !== ps.blur || hs.noise !== ps.noise) changes.push("Efek");
+                          }
                           
-                          label = changes.length > 0 ? changes.join(" & ") : `Langkah ${index}`;
+                          label = changes.length > 0 ? changes.slice(0, 2).join(" & ") + (changes.length > 2 ? "..." : "") : `Langkah ${index}`;
                         }
 
                         const isActive = index === historyIndex;
@@ -5604,9 +6043,9 @@ Berikan respons dalam format JSON yang valid dengan kunci wajib:
                                   clearTimeout(pendingHistoryTimerRef.current);
                                   pendingHistoryTimerRef.current = null;
                                 }
-                                const selectedSettings = history[index];
-                                lastCommittedRef.current = selectedSettings;
-                                setImageSettings(selectedSettings);
+                                const selectedEntry = history[index];
+                                lastCommittedRef.current = selectedEntry;
+                                applyEditorState(selectedEntry);
                                 setHistoryIndex(index);
                                 triggerToast(index === 0 ? "Kembali ke Posisi Awal! 🌄" : `Loncat ke langkah ${index}!`);
                               }}
@@ -5649,9 +6088,22 @@ Berikan respons dalam format JSON yang valid dengan kunci wajib:
                           </li>
                         );
                       })}
+                      {/* Spasi kosong di kanan buatan Olaive */}
+                      <li className="w-8 shrink-0 pointer-events-none md:block hidden" />
                     </ul>
                   </div>
+
+                  {/* Right Chevron */}
+                  <button
+                    type="button"
+                    onClick={() => scrollContainer(historySliderDrag.ref.current, 'right')}
+                    className="absolute right-1 z-20 p-1 rounded-full bg-neutral-950/80 border border-neon-cyan/30 text-neon-cyan hover:bg-neon-cyan/25 transition-all flex items-center justify-center opacity-0 group-hover/history:opacity-100 duration-200 md:flex hidden animate-pulse"
+                    title="Slide Kanan Riwayat"
+                  >
+                    <ChevronRight className="w-3.5 h-3.5" />
+                  </button>
                 </div>
+              </div>
               )}
 
               {activeTab === 'adjust' && (
@@ -5709,6 +6161,7 @@ Berikan respons dalam format JSON yang valid dengan kunci wajib:
                       enableParallax={enableParallax}
                       onToggleParallax={setEnableParallax}
                       theme={theme}
+                      isAdmin={user?.email === 'bungtemin@gmail.com'}
                     />
                   ) : (
                     <div className="space-y-3.5 text-left animate-fadeIn">
@@ -5872,6 +6325,7 @@ Berikan respons dalam format JSON yang valid dengan kunci wajib:
                   enableParallax={enableParallax}
                   onToggleParallax={setEnableParallax}
                   theme={theme}
+                  isAdmin={user?.email === 'bungtemin@gmail.com'}
                 />
               )}
 
@@ -5889,6 +6343,7 @@ Berikan respons dalam format JSON yang valid dengan kunci wajib:
                   enableParallax={enableParallax}
                   onToggleParallax={setEnableParallax}
                   theme={theme}
+                  isAdmin={user?.email === 'bungtemin@gmail.com'}
                 />
               )}
 
@@ -5914,6 +6369,7 @@ Berikan respons dalam format JSON yang valid dengan kunci wajib:
                   enableParallax={enableParallax}
                   onToggleParallax={setEnableParallax}
                   theme={theme}
+                  isAdmin={user?.email === 'bungtemin@gmail.com'}
                 />
               )}
 
@@ -7241,12 +7697,35 @@ Berikan respons dalam format JSON yang valid dengan kunci wajib:
             transition={{ type: 'spring', damping: 28, stiffness: 300 }}
             className="fixed bottom-0 left-0 right-0 z-50 bg-[#070709]/80 backdrop-blur-md border-t border-white/10 shadow-[0_-5px_30px_rgba(0,0,0,0.8)] pb-safe py-1"
           >
-          <div className="w-full max-w-6xl mx-auto overflow-x-auto scrollbar-none px-4 py-2">
-            <div className="flex flex-nowrap items-center justify-start xl:justify-center gap-1.5 w-max xl:w-auto min-w-full">
-              <button
-                onClick={() => fileInputRef.current?.click()}
-                className="snap-center flex-shrink-0 px-3.5 py-1.5 rounded-xl font-mono text-xs font-bold tracking-widest transition-all duration-150 flex flex-col items-center justify-center space-y-1 min-w-[76px] text-neon-cyan hover:bg-[#00F0FF]/15 bg-[#00F0FF]/5 hover:text-white"
-              >
+          <div className="relative w-full max-w-6xl mx-auto flex items-center group px-2">
+            {/* Tombol Panah Kiri Olaive Cantik */}
+            <button
+              type="button"
+              onClick={() => scrollContainer(taskbarDrag.ref.current, 'left')}
+              className="absolute left-2 z-[60] p-1.5 rounded-xl bg-black/80 border border-neon-cyan/30 text-neon-cyan hover:bg-neon-cyan/25 hover:border-neon-cyan hover:text-white transition-all flex items-center justify-center shadow-[0_0_12px_rgba(0,240,255,0.3)] md:flex hidden animate-pulse"
+              title="Gulir Kiri (Olaive)"
+            >
+              <ChevronLeft className="w-3.5 h-3.5" />
+            </button>
+
+            <div 
+              ref={taskbarDrag.ref}
+              onMouseDown={taskbarDrag.onMouseDown}
+              onMouseMove={taskbarDrag.onMouseMove}
+              onMouseUp={taskbarDrag.onMouseUp}
+              onMouseLeave={taskbarDrag.onMouseLeave}
+              onClickCapture={taskbarDrag.onClickCapture}
+              onWheel={handleHorizontalScroll}
+              className="w-full overflow-x-auto scrollbar-none py-2 cursor-grab active:cursor-grabbing select-none"
+            >
+              <div className="flex flex-nowrap items-center justify-start xl:justify-center gap-1.5 w-max xl:w-auto min-w-full">
+                {/* Spasi kosong di ujung kiri buatan Olaive sayang untuk abang Baim */}
+                <div className="w-12 h-6 shrink-0 pointer-events-none md:block hidden" />
+
+                <button
+                  onClick={() => fileInputRef.current?.click()}
+                  className="snap-center flex-shrink-0 px-3.5 py-1.5 rounded-xl font-mono text-xs font-bold tracking-widest transition-all duration-150 flex flex-col items-center justify-center space-y-1 min-w-[76px] text-neon-cyan hover:bg-[#00F0FF]/15 bg-[#00F0FF]/5 hover:text-white"
+                >
                 <FolderOpen className="w-4 h-4 text-neon-cyan" />
                 <span className="text-[8px] uppercase tracking-wider font-extrabold">UNGGAH</span>
               </button>
@@ -7468,16 +7947,30 @@ Berikan respons dalam format JSON yang valid dengan kunci wajib:
                 <Download className="w-4 h-4 text-neon-cyan" />
                 <span className="text-[8px] uppercase tracking-wider font-extrabold">UNDUH</span>
               </button>
+
+              {/* Spasi kosong di ujung kanan buatan Olaive sayang untuk abang Baim */}
+              <div className="w-12 h-6 shrink-0 pointer-events-none md:block hidden" />
             </div>
           </div>
-        </motion.div>
+
+          {/* Tombol Panah Kanan Olaive Cantik */}
+          <button
+            type="button"
+            onClick={() => scrollContainer(taskbarDrag.ref.current, 'right')}
+            className="absolute right-2 z-[60] p-1.5 rounded-xl bg-black/80 border border-neon-cyan/30 text-neon-cyan hover:bg-neon-cyan/25 hover:border-neon-cyan hover:text-white transition-all flex items-center justify-center shadow-[0_0_12px_rgba(0,240,255,0.3)] md:flex hidden animate-pulse animate-duration-1000"
+            title="Gulir Kanan (Olaive)"
+          >
+            <ChevronRight className="w-3.5 h-3.5" />
+          </button>
+        </div>
+      </motion.div>
       )}
       </AnimatePresence>
 
       {/* OLAIVE CHIC FLOATING HUB: SETTINGS & AI GENERATIVE */}
       <AnimatePresence>
-        {currentPage === 'beranda' && !activeTab && (
-          <div className="fixed bottom-20 right-4 md:right-8 z-45" id="olaive-cyber-hub-container">
+        {currentPage === 'beranda' && (
+          <div className={`fixed bottom-20 right-4 md:right-8 z-45 ${activeTab ? 'hidden md:block' : 'block'}`} id="olaive-cyber-hub-container">
             {/* Expanded holographic popover */}
             <AnimatePresence>
               {isFloatingHubOpen && (
@@ -7565,6 +8058,38 @@ Berikan respons dalam format JSON yang valid dengan kunci wajib:
                         </div>
                       </div>
                     </button>
+
+                    {/* OPTION 3: FULLSCREEN EDITOR BY OLAIVE */}
+                    <button
+                      onClick={() => {
+                        toggleAppFullscreen();
+                        triggerToast(isAppFullscreen ? 'Kembali ke mode biasa ya, abang sayang... 🥰' : 'Layar penuh aktif! Selamat berkreasi dengan leluasa, abang tampan... 🖥️✨');
+                        setIsFloatingHubOpen(false);
+                      }}
+                      className={`w-full p-2.5 rounded-xl border font-mono text-[10px] font-extrabold tracking-wider text-left transition-all duration-200 flex items-center justify-between group ${
+                        isAppFullscreen
+                          ? 'bg-[#00F0FF]/25 border-[#00F0FF] text-[#00F0FF] shadow-[0_0_12px_rgba(0,240,255,0.2)]'
+                          : theme === 'dark'
+                            ? 'bg-white/5 border-white/5 text-zinc-300 hover:bg-white/8 hover:text-white hover:border-white/10'
+                            : 'bg-black/5 border-black/5 text-zinc-700 hover:bg-black/8 hover:text-zinc-900'
+                      }`}
+                    >
+                      <div className="flex items-center gap-2">
+                        {isAppFullscreen ? (
+                          <Minimize2 className="w-4 h-4 text-[#00F0FF] animate-pulse" />
+                        ) : (
+                          <Maximize2 className="w-4 h-4 text-neon-cyan group-hover:scale-110 transition-transform" />
+                        )}
+                        <div className="flex flex-col">
+                          <span className="text-[9px] uppercase font-black tracking-widest">
+                            {isAppFullscreen ? '🖥️ LAYAR NORMAL' : '🖥️ LAYAR PENUH'}
+                          </span>
+                        </div>
+                      </div>
+                      <span className="text-[7.5px] font-sans text-zinc-500 uppercase tracking-widest group-hover:translate-x-1 transition-transform">
+                        {isAppFullscreen ? 'EXIT' : 'FULL'}
+                      </span>
+                    </button>
                   </div>
                 </motion.div>
               )}
@@ -7596,8 +8121,8 @@ Berikan respons dalam format JSON yang valid dengan kunci wajib:
 
       {/* LEFT-SIDE DEDICATED CANVAS FLOATING SAVER BUTTON */}
       <AnimatePresence>
-        {currentPage === 'beranda' && !activeTab && user && (
-          <div className="fixed bottom-20 left-4 md:left-8 z-45" id="left-canvas-saver-container">
+        {currentPage === 'beranda' && user && (
+          <div className={`fixed bottom-20 left-4 md:left-8 z-45 ${activeTab ? 'hidden md:flex' : 'flex'}`} id="left-canvas-saver-container">
             <motion.button
               whileTap={{ scale: 0.92 }}
               onClick={() => {
@@ -8248,6 +8773,7 @@ Berikan respons dalam format JSON yang valid dengan kunci wajib:
                           matchesUser={!!matchesUser}
                           onLike={() => handleLike(item.id)}
                           onDelete={cloudSubTab === 'mine' ? () => deleteCloudDownload(item.id) : undefined}
+                          onPreview={handleOpenPreviewModal}
                         />
                       );
                     })}
@@ -8305,13 +8831,17 @@ Berikan respons dalam format JSON yang valid dengan kunci wajib:
                   </div>
 
                   {/* Visual Simulated Result View */}
-                  <div className="relative aspect-square bg-zinc-950 overflow-hidden flex items-center justify-center border-b border-white/5 p-0">
+                  <div 
+                    onClick={() => handleOpenPreviewModal(post.avatar, post.caption || `Karya ${post.username || 'Komunitas'}`)}
+                    className="relative aspect-square bg-zinc-950 overflow-hidden flex items-center justify-center border-b border-white/5 p-0 cursor-pointer group/com"
+                    title="Klik untuk Perbesar / Zoom Foto 🔍"
+                  >
                     {post.avatar ? (
                       <LazyImage 
                         src={post.avatar} 
                         alt="masterpiece" 
                         referrerPolicy="no-referrer"
-                        className="w-full h-full select-none pointer-events-none group-hover:scale-105 transition-all duration-500"
+                        className="w-full h-full select-none pointer-events-none group-hover/com:scale-105 transition-all duration-500"
                         style={{
                           objectFit: 'cover',
                           ...(!post.id.includes('nufat') ? {
@@ -8328,6 +8858,17 @@ Berikan respons dalam format JSON yang valid dengan kunci wajib:
                         }}
                       />
                     ) : null}
+
+                    {/* Hover overlay indicator */}
+                    <div className="absolute inset-0 bg-black/45 opacity-0 group-hover/com:opacity-100 flex items-center justify-center transition-all duration-300 z-10">
+                      <div className="bg-zinc-900/95 border border-[#00F0FF]/30 text-neon-cyan px-2.5 py-1.5 rounded-lg text-[9px] font-mono font-bold tracking-wider flex items-center gap-1.5 shadow-[0_0_12px_rgba(0,240,255,0.25)] scale-90 group-hover/com:scale-100 transition-transform duration-300">
+                        <svg className="w-3.5 h-3.5 animate-pulse text-[#00F0FF]" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.1} d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z" />
+                        </svg>
+                        ZOOM IN / OUT
+                      </div>
+                    </div>
 
                     {/* Overlay matching Frame overlay mock rendering solely for static mock values */}
                     {!post.id.includes('nufat') && (
@@ -8464,11 +9005,25 @@ Berikan respons dalam format JSON yang valid dengan kunci wajib:
             {savedCreations.map((creation) => (
               <div key={creation.id} className="rounded-xl bg-[#0b0b0b]/80 border border-white/10 overflow-hidden flex flex-col group relative w-full">
                 {/* Render Target Image */}
-                <div className="relative aspect-square backdrop-blur-md bg-zinc-950 border-b border-white/5 flex items-center justify-center p-0 group-hover:scale-[1.01] transition-transform duration-300">
+                <div 
+                  onClick={() => handleOpenPreviewModal(creation.src, `Karya Album Saya - ${creation.timestamp || 'Koleksi'}`)}
+                  className="relative aspect-square backdrop-blur-md bg-zinc-950 border-b border-white/5 flex items-center justify-center p-0 cursor-pointer group/albumidx overflow-hidden"
+                  title="Klik untuk Perbesar / Zoom Foto 🔍"
+                >
                   {creation.src ? (
-                    <LazyImage src={creation.src} alt="Kreasiku" className="w-full h-full object-cover pointer-events-none select-none bg-transparent" />
+                    <LazyImage src={creation.src} alt="Kreasiku" className="w-full h-full object-cover pointer-events-none select-none bg-transparent group-hover/albumidx:scale-105 transition-all duration-500" />
                   ) : null}
-                  <div className="absolute inset-0 bg-transparent group-hover:bg-black/10 transition-colors pointer-events-none" />
+                  
+                  {/* Hover overlay indicator */}
+                  <div className="absolute inset-0 bg-black/45 opacity-0 group-hover/albumidx:opacity-100 flex items-center justify-center transition-all duration-300">
+                    <div className="bg-zinc-900/95 border border-[#00F0FF]/30 text-neon-cyan px-2.5 py-1.5 rounded-lg text-[9px] font-mono font-bold tracking-wider flex items-center gap-1.5 shadow-[0_0_12px_rgba(0,240,255,0.25)] scale-90 group-hover/albumidx:scale-100 transition-transform duration-300">
+                      <svg className="w-3.5 h-3.5 animate-pulse text-[#00F0FF]" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.1} d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z" />
+                      </svg>
+                      ZOOM IN / OUT
+                    </div>
+                  </div>
                 </div>
 
                 <div className="p-3 bg-black/30 flex items-center justify-between">
@@ -8980,6 +9535,13 @@ Berikan respons dalam format JSON yang valid dengan kunci wajib:
             setItemToDelete(null);
           }
         }}
+      />
+
+      <PreviewImageModal
+        isOpen={previewModalOpen}
+        src={previewModalSrc}
+        name={previewModalName}
+        onClose={() => setPreviewModalOpen(false)}
       />
     </div>
   );

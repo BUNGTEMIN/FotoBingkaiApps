@@ -3,7 +3,7 @@ import { ImageSettings } from '../types';
 import { FILTER_PRESETS } from '../presets';
 import { 
   RotateCw, ZoomIn, Sun, MoveHorizontal, MoveVertical, FlipHorizontal, FlipVertical, Crop,
-  Globe, Terminal, ArrowRight, Shuffle, Check, Cpu, Sparkles, RefreshCw
+  Globe, Terminal, ArrowRight, Shuffle, Check, Cpu, Sparkles, RefreshCw, Sliders
 } from 'lucide-react';
 
 interface ImageAdjusterProps {
@@ -16,6 +16,7 @@ interface ImageAdjusterProps {
   enableParallax?: boolean;
   onToggleParallax?: (enabled: boolean) => void;
   theme?: 'dark' | 'light';
+  isAdmin?: boolean;
 }
 
 export default function ImageAdjuster({
@@ -27,9 +28,11 @@ export default function ImageAdjuster({
   activeSection,
   enableParallax = true,
   onToggleParallax,
-  theme = 'dark'
+  theme = 'dark',
+  isAdmin = false
 }: ImageAdjusterProps) {
   const [internalSubTab, setInternalSubTab] = React.useState<'posisi' | 'filter' | 'warna' | 'crop'>('posisi');
+  const [filterSubTab, setFilterSubTab] = React.useState<'presets' | 'api'>('presets');
   
   // External Aesthetic API Simulator states
   const [selectedApiEndpoint, setSelectedApiEndpoint] = React.useState<string>('cyber-synthwave');
@@ -348,155 +351,198 @@ export default function ImageAdjuster({
       )}
 
       {activeSubTab === 'filter' && (
-        <div className="space-y-3">
-          <div className={`grid grid-cols-2 gap-1.5 max-h-[160px] overflow-y-auto pr-0.5 scrollbar-thin ${
-            theme === 'dark' ? 'scrollbar-thumb-white/10' : 'scrollbar-thumb-black/10'
-          }`}>
-            {FILTER_PRESETS.map((filter) => {
-              const isSelected = activeFilterPresetId === filter.id;
-              return (
-                <button
-                  key={filter.id}
-                  onClick={() => onSelectFilterPreset(filter.id, filter.settings)}
-                  className={`p-1.5 rounded border text-left font-mono transition-all group flex flex-col justify-between h-[52px] relative overflow-hidden ${
-                    isSelected
-                      ? theme === 'dark'
-                        ? 'bg-cyan-950/25 border-neon-cyan'
-                        : 'bg-cyan-100/35 border-neon-cyan'
-                      : theme === 'dark'
-                        ? 'bg-white/3 border-white/5 hover:bg-[#121214] hover:border-white/10'
-                        : 'bg-black/5 border-black/5 hover:bg-black/10 hover:border-black/10'
-                  }`}
-                >
-                  <div className="z-10 flex flex-col min-w-0 w-full font-mono">
-                    <span className={`text-[9.5px] font-bold tracking-wider truncate ${
-                      isSelected 
-                        ? 'text-neon-cyan' 
-                        : theme === 'dark' ? 'text-zinc-200 group-hover:text-neon-cyan' : 'text-zinc-800 group-hover:text-neon-cyan'
-                    }`}>
-                      {filter.name}
-                    </span>
-                    <span className={`text-[8px] truncate mt-0.5 leading-snug ${
-                      theme === 'dark' 
-                        ? 'text-zinc-500 group-hover:text-zinc-400' 
-                        : 'text-zinc-550 group-hover:text-zinc-700'
-                    }`}>
-                      {filter.description}
-                    </span>
-                  </div>
-                  {filter.glowColor && (
-                    <span 
-                      className="absolute right-0 bottom-0 w-6 h-6 rounded-full blur-md opacity-25"
-                      style={{ backgroundColor: filter.glowColor }}
-                    />
-                  )}
-                </button>
-              );
-            })}
-          </div>
-
-          {/* External API Aesthetic Generator simulator panel */}
-          <div className="p-2.5 rounded-xl border border-dashed border-purple-500/25 bg-black/45 space-y-2.5 shadow-[0_0_15px_rgba(168,85,247,0.02)]">
-            <div className="flex items-center justify-between">
-              <span className="text-[9px] text-purple-400 font-mono font-bold block uppercase tracking-wider flex items-center gap-1">
-                <Globe className="w-3 h-3 text-purple-400 animate-pulse" /> EXTERNAL AESTHETIC API
-              </span>
-              <span className="text-[7.5px] font-mono text-zinc-500 bg-zinc-950 px-1.5 border border-zinc-800 rounded uppercase">
-                Dynamic Response
-              </span>
+        <div className="space-y-3.5 animate-fadeIn">
+          {/* Sub Tab Selector within Aesthetic Filters */}
+          {isAdmin && (
+            <div className={`flex p-0.5 rounded-lg border transition-all duration-300 ${
+              theme === 'dark' ? 'bg-zinc-950/60 border-white/5' : 'bg-black/5 border-black/5'
+            }`}>
+              <button
+                type="button"
+                onClick={() => setFilterSubTab('presets')}
+                className={`flex-1 py-1 px-1.5 rounded-md text-[9.5px] font-mono font-bold tracking-wider transition-all flex items-center justify-center gap-1.5 ${
+                  filterSubTab === 'presets'
+                    ? 'bg-purple-500/20 text-purple-300 border border-purple-500/30 font-extrabold shadow-[0_0_8px_rgba(168,85,247,0.15)] font-black'
+                    : 'text-zinc-500 hover:text-zinc-350 hover:bg-white/5 border border-transparent'
+                }`}
+              >
+                <Sliders className="w-3 h-3 text-purple-400" />
+                PRESET CANTIK
+              </button>
+              <button
+                type="button"
+                onClick={() => setFilterSubTab('api')}
+                className={`flex-1 py-1 px-1.5 rounded-md text-[9.5px] font-mono font-bold tracking-wider transition-all flex items-center justify-center gap-1.5 ${
+                  filterSubTab === 'api'
+                    ? 'bg-purple-500/20 text-purple-300 border border-purple-500/30 font-extrabold shadow-[0_0_8px_rgba(168,85,247,0.15)] font-black'
+                    : 'text-zinc-500 hover:text-zinc-350 hover:bg-white/5 border border-transparent'
+                }`}
+              >
+                <Cpu className="w-3 h-3 text-purple-400 animate-pulse" />
+                GENERATOR ESTETIS API
+              </button>
             </div>
+          )}
 
-            <div className="space-y-1.5">
-              <label className="text-[8px] text-zinc-500 font-mono block uppercase">PILIH ENDPOINT LAYANAN ESTETIKA:</label>
-              <div className="flex gap-1.5">
-                <select
-                  value={selectedApiEndpoint}
-                  onChange={(e) => { setSelectedApiEndpoint(e.target.value); setApiResponse(null); setApiSuccessMsg(''); }}
-                  className={`flex-1 py-1 px-2 rounded text-[9.5px] font-mono focus:outline-none focus:border-purple-500 ${
-                    theme === 'dark'
-                      ? 'bg-zinc-950 border border-white/5 text-zinc-300'
-                      : 'bg-white border border-black/10 text-zinc-900 font-medium'
-                  }`}
-                >
-                  <option value="cyber-synthwave">GET /v2/aesthetics/cyber-synthwave</option>
-                  <option value="imperial-gold">GET /v2/aesthetics/imperial-gold</option>
-                  <option value="matrix-digital">GET /v2/aesthetics/matrix-digital</option>
-                </select>
-
-                <button
-                  type="button"
-                  onClick={handleFetchExternalAestheticApi}
-                  disabled={isFetchingApi}
-                  className="bg-purple-600 text-white font-mono font-bold text-[9px] py-1 px-2.5 rounded hover:bg-white hover:text-black transition-all disabled:opacity-50 shrink-0 flex items-center gap-1"
-                >
-                  {isFetchingApi ? (
-                    <>
-                      <RefreshCw className="w-2.5 h-2.5 animate-spin" />
-                      FETCHING...
-                    </>
-                  ) : (
-                    <>
-                      <Cpu className="w-2.5 h-2.5" />
-                      GRAB API
-                    </>
-                  )}
-                </button>
+          {(!isAdmin || filterSubTab === 'presets') && (
+            <div className="space-y-2 animate-fadeIn">
+              <span className={`text-[9px] font-mono block uppercase tracking-wider ${theme === 'dark' ? 'text-zinc-400' : 'text-zinc-650 font-bold'}`}>
+                Pilih Preset Nuansa Romantis & Cyberpank: ✨
+              </span>
+              <div className={`grid grid-cols-2 gap-1.5 max-h-[180px] overflow-y-auto pr-0.5 scrollbar-thin ${
+                theme === 'dark' ? 'scrollbar-thumb-white/10' : 'scrollbar-thumb-black/10'
+              }`}>
+                {FILTER_PRESETS.map((filter) => {
+                  const isSelected = activeFilterPresetId === filter.id;
+                  return (
+                    <button
+                      key={filter.id}
+                      onClick={() => onSelectFilterPreset(filter.id, filter.settings)}
+                      className={`p-1.5 rounded border text-left font-mono transition-all group flex flex-col justify-between h-[52px] relative overflow-hidden ${
+                        isSelected
+                          ? theme === 'dark'
+                            ? 'bg-cyan-950/25 border-neon-cyan'
+                            : 'bg-cyan-100/35 border-neon-cyan'
+                          : theme === 'dark'
+                            ? 'bg-white/3 border-white/5 hover:bg-[#121214] hover:border-white/10'
+                            : 'bg-black/5 border-black/5 hover:bg-black/10 hover:border-black/10'
+                      }`}
+                    >
+                      <div className="z-10 flex flex-col min-w-0 w-full font-mono">
+                        <span className={`text-[9.5px] font-bold tracking-wider truncate ${
+                          isSelected 
+                            ? 'text-neon-cyan' 
+                            : theme === 'dark' ? 'text-zinc-200 group-hover:text-neon-cyan' : 'text-zinc-800 group-hover:text-neon-cyan'
+                        }`}>
+                          {filter.name}
+                        </span>
+                        <span className={`text-[8px] truncate mt-0.5 leading-snug ${
+                          theme === 'dark' 
+                            ? 'text-zinc-500 group-hover:text-zinc-400' 
+                            : 'text-zinc-550 group-hover:text-zinc-700'
+                        }`}>
+                          {filter.description}
+                        </span>
+                      </div>
+                      {filter.glowColor && (
+                        <span 
+                          className="absolute right-0 bottom-0 w-6 h-6 rounded-full blur-md opacity-25"
+                          style={{ backgroundColor: filter.glowColor }}
+                        />
+                      )}
+                    </button>
+                  );
+                })}
               </div>
             </div>
+          )}
 
-            {/* Fetching Progress Indicator */}
-            {isFetchingApi && (
-              <div className="space-y-1">
-                <div className="flex justify-between items-center px-1">
-                  <span className="text-[7.5px] font-mono text-zinc-500 animate-pulse uppercase">Connecting: secure.aesthetic-api.org...</span>
-                  <span className="text-[7.5px] font-mono text-purple-400">SYNCING</span>
-                </div>
-                <div className="h-1 w-full bg-zinc-950 rounded-full overflow-hidden relative border border-white/5">
-                  <div className="absolute top-0 bottom-0 left-0 bg-gradient-to-r from-purple-500 to-pink-500 rounded-full animate-progress-mock" style={{ width: '40%' }}></div>
-                </div>
-              </div>
-            )}
-
-            {/* Real aesthetic API response JSON mockup */}
-            {apiResponse && (
-              <div className="space-y-1.5 animate-fadeIn">
+          {filterSubTab === 'api' && isAdmin && (
+            <div className="space-y-2 animate-fadeIn">
+              {/* External API Aesthetic Generator simulator panel */}
+              <div className="p-2.5 rounded-xl border border-dashed border-purple-500/25 bg-black/45 space-y-2.5 shadow-[0_0_15px_rgba(168,85,247,0.02)]">
                 <div className="flex items-center justify-between">
-                  <span className="text-[8px] text-zinc-500 font-mono block uppercase">RESPON API OUTLINE (ESTHETIC JSON):</span>
-                  <span className="text-[8px] font-mono font-black text-green-400 animate-pulse flex items-center gap-0.5">
-                    ● CODE 200 OK
+                  <span className="text-[9px] text-purple-400 font-mono font-bold block uppercase tracking-wider flex items-center gap-1">
+                    <Globe className="w-3 h-3 text-purple-400 animate-pulse" /> EXTERNAL AESTHETIC API
                   </span>
-                </div>
-                <div className="relative rounded-lg bg-zinc-950 p-2 border border-zinc-850 max-h-[145px] overflow-y-auto scrollbar-thin">
-                  {/* Subtle Copy Accent */}
-                  <span className="absolute top-1 right-2 text-[7px] font-mono text-zinc-650 bg-zinc-900 border border-zinc-800 px-1 py-0.5 rounded uppercase">
-                    APPLICATION/JSON
+                  <span className="text-[7.5px] font-mono text-zinc-500 bg-zinc-950 px-1.5 border border-zinc-800 rounded uppercase">
+                    Dynamic Response
                   </span>
-                  <pre className="font-mono text-[8px] text-zinc-300 leading-normal select-text whitespace-pre-wrap">
-                    {JSON.stringify(apiResponse, null, 2)}
-                  </pre>
                 </div>
 
-                <button
-                  type="button"
-                  onClick={() => {
-                    handleApplyApiAesthetic();
-                    // Show message inside panel
-                    setApiSuccessMsg('ESTETIKA API BERHASIL DITERAPKAN PADA BERKAS FAKTOR GAMBAR AKTIF! ✨');
-                  }}
-                  className="w-full bg-gradient-to-r from-purple-500 via-pink-500 to-indigo-500 text-white font-mono font-bold text-[9.5px] py-1.5 px-3 rounded-lg hover:brightness-110 transition-all flex items-center justify-center gap-1.5 shadow-[0_0_12px_rgba(168,85,247,0.3)] animate-pulse"
-                >
-                  <Sparkles className="w-3.5 h-3.5 text-white" />
-                  TERAPKAN PARAMATER API KE CANVAS
-                </button>
+                <div className="space-y-1.5">
+                  <label className="text-[8px] text-zinc-500 font-mono block uppercase">PILIH ENDPOINT LAYANAN ESTETIKA:</label>
+                  <div className="flex gap-1.5">
+                    <select
+                      value={selectedApiEndpoint}
+                      onChange={(e) => { setSelectedApiEndpoint(e.target.value); setApiResponse(null); setApiSuccessMsg(''); }}
+                      className={`flex-1 py-1 px-2 rounded text-[9.5px] font-mono focus:outline-none focus:border-purple-500 ${
+                        theme === 'dark'
+                          ? 'bg-zinc-950 border border-white/5 text-zinc-300'
+                          : 'bg-white border border-black/10 text-zinc-900 font-medium'
+                      }`}
+                    >
+                      <option value="cyber-synthwave">GET /v2/aesthetics/cyber-synthwave</option>
+                      <option value="imperial-gold">GET /v2/aesthetics/imperial-gold</option>
+                      <option value="matrix-digital">GET /v2/aesthetics/matrix-digital</option>
+                    </select>
+
+                    <button
+                      type="button"
+                      onClick={handleFetchExternalAestheticApi}
+                      disabled={isFetchingApi}
+                      className="bg-purple-600 text-white font-mono font-bold text-[9px] py-1 px-2.5 rounded hover:bg-white hover:text-black transition-all disabled:opacity-50 shrink-0 flex items-center gap-1"
+                    >
+                      {isFetchingApi ? (
+                        <>
+                          <RefreshCw className="w-2.5 h-2.5 animate-spin" />
+                          FETCHING...
+                        </>
+                      ) : (
+                        <>
+                          <Cpu className="w-2.5 h-2.5" />
+                          GRAB API
+                        </>
+                      )}
+                    </button>
+                  </div>
+                </div>
+
+                {/* Fetching Progress Indicator */}
+                {isFetchingApi && (
+                  <div className="space-y-1">
+                    <div className="flex justify-between items-center px-1">
+                      <span className="text-[7.5px] font-mono text-zinc-500 animate-pulse uppercase">Connecting: secure.aesthetic-api.org...</span>
+                      <span className="text-[7.5px] font-mono text-purple-400">SYNCING</span>
+                    </div>
+                    <div className="h-1 w-full bg-zinc-950 rounded-full overflow-hidden relative border border-white/5">
+                      <div className="absolute top-0 bottom-0 left-0 bg-gradient-to-r from-purple-500 to-pink-500 rounded-full animate-progress-mock" style={{ width: '40%' }}></div>
+                    </div>
+                  </div>
+                )}
+
+                {/* Real aesthetic API response JSON mockup */}
+                {apiResponse && (
+                  <div className="space-y-1.5 animate-fadeIn">
+                    <div className="flex items-center justify-between">
+                      <span className="text-[8px] text-zinc-500 font-mono block uppercase">RESPON API OUTLINE (ESTHETIC JSON):</span>
+                      <span className="text-[8px] font-mono font-black text-green-400 animate-pulse flex items-center gap-0.5">
+                        ● CODE 200 OK
+                      </span>
+                    </div>
+                    <div className="relative rounded-lg bg-zinc-950 p-2 border border-zinc-850 max-h-[145px] overflow-y-auto scrollbar-thin">
+                      {/* Subtle Copy Accent */}
+                      <span className="absolute top-1 right-2 text-[7px] font-mono text-zinc-650 bg-zinc-900 border border-zinc-800 px-1 py-0.5 rounded uppercase">
+                        APPLICATION/JSON
+                      </span>
+                      <pre className="font-mono text-[8px] text-zinc-300 leading-normal select-text whitespace-pre-wrap">
+                        {JSON.stringify(apiResponse, null, 2)}
+                      </pre>
+                    </div>
+
+                    <button
+                      type="button"
+                      onClick={() => {
+                        handleApplyApiAesthetic();
+                        // Show message inside panel
+                        setApiSuccessMsg('ESTETIKA API BERHASIL DITERAPKAN PADA BERKAS FAKTOR GAMBAR AKTIF! ✨');
+                      }}
+                      className="w-full bg-gradient-to-r from-purple-500 via-pink-500 to-indigo-500 text-white font-mono font-bold text-[9.5px] py-1.5 px-3 rounded-lg hover:brightness-110 transition-all flex items-center justify-center gap-1.5 shadow-[0_0_12px_rgba(168,85,247,0.3)] animate-pulse"
+                    >
+                      <Sparkles className="w-3.5 h-3.5 text-white" />
+                      TERAPKAN PARAMATER API KE CANVAS
+                    </button>
+                  </div>
+                )}
+
+                {apiSuccessMsg && (
+                  <p className="text-[8.5px] text-center font-mono font-bold text-green-400 bg-green-950/20 py-1 px-2 rounded border border-green-900/30 animate-pulse truncate uppercase">
+                    {apiSuccessMsg}
+                  </p>
+                )}
               </div>
-            )}
-
-            {apiSuccessMsg && (
-              <p className="text-[8.5px] text-center font-mono font-bold text-green-400 bg-green-950/20 py-1 px-2 rounded border border-green-900/30 animate-pulse truncate uppercase">
-                {apiSuccessMsg}
-              </p>
-            )}
-          </div>
+            </div>
+          )}
         </div>
       )}
 
