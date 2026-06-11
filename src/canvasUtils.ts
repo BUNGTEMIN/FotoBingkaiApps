@@ -1003,6 +1003,82 @@ export const renderToCanvas = async (
             ctx.restore();
           }
           ctx.restore();
+        } else if (style === 'robotic') {
+          ctx.save();
+          const textWidth = ctx.measureText(item.text).width;
+          const bgPaddingH = 10 * pxScale;
+          const bgPaddingV = 6 * pxScale;
+          const rectWidth = textWidth + bgPaddingH * 2;
+          const rectHeight = sSize + bgPaddingV * 2;
+
+          // Draw dark background rectangle
+          ctx.fillStyle = 'rgba(0,0,0,0.85)';
+          ctx.beginPath();
+          if (typeof (ctx as any).roundRect === 'function') {
+            (ctx as any).roundRect(-rectWidth/2, -rectHeight/2, rectWidth, rectHeight, 4 * pxScale);
+          } else {
+            ctx.rect(-rectWidth/2, -rectHeight/2, rectWidth, rectHeight);
+          }
+          ctx.fill();
+
+          // Draw high-tech green border outline
+          ctx.strokeStyle = '#39ff14';
+          ctx.lineWidth = 1 * pxScale;
+          ctx.stroke();
+
+          // Draw high-tech text with shadow glow
+          ctx.shadowColor = '#39ff14';
+          ctx.shadowBlur = 8 * pxScale;
+          ctx.fillStyle = '#39ff14';
+          ctx.fillText(item.text, 0, 0);
+
+          ctx.restore();
+        } else if (style === 'retro') {
+          ctx.save();
+          ctx.shadowBlur = 0;
+
+          // Cyan offset
+          ctx.fillStyle = '#00f2fe';
+          ctx.fillText(item.text, 2 * pxScale, 2 * pxScale);
+
+          // Purple intermediate layer
+          ctx.fillStyle = '#9d4edd';
+          ctx.fillText(item.text, 4 * pxScale, 4 * pxScale);
+
+          // Foreground pink text
+          ctx.fillStyle = '#ff2a74';
+          ctx.fillText(item.text, 0, 0);
+
+          ctx.restore();
+        } else if (style === 'comic') {
+          ctx.save();
+          ctx.shadowBlur = 0;
+
+          // Black comic offset border for pop art effect
+          ctx.strokeStyle = '#000000';
+          ctx.lineWidth = 4 * pxScale;
+          ctx.lineJoin = 'round';
+          ctx.strokeText(item.text, 2 * pxScale, 2 * pxScale);
+          ctx.strokeText(item.text, 0, 0);
+
+          // Yellow comic foreground fill
+          ctx.fillStyle = '#ffcc00';
+          ctx.fillText(item.text, 0, 0);
+
+          ctx.restore();
+        } else if (style === 'cartoon') {
+          ctx.save();
+          ctx.shadowBlur = 0;
+
+          // Block offset shadow
+          ctx.fillStyle = '#ab005b';
+          ctx.fillText(item.text, 0, 3 * pxScale);
+
+          // Foreground pink
+          ctx.fillStyle = '#ff66b2';
+          ctx.fillText(item.text, 0, 0);
+
+          ctx.restore();
         } else {
           // Default Plain text with exact backing shadow and thin colored underline
           ctx.save();

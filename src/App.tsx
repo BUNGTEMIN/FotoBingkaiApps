@@ -241,6 +241,9 @@ export default function App() {
 
   // Google Drive Cloud synchronization status states
   const [driveFolderId, setDriveFolderId] = useState<string>(localStorage.getItem('drive_folder_id') || '');
+  const [driveFolderIdKoleksi, setDriveFolderIdKoleksi] = useState<string>(localStorage.getItem('drive_folder_id_koleksi') || '');
+  const [driveFolderIdPng, setDriveFolderIdPng] = useState<string>(localStorage.getItem('drive_folder_id_png') || '');
+  const [driveFolderIdBg, setDriveFolderIdBg] = useState<string>(localStorage.getItem('drive_folder_id_bg') || '');
   const [driveUsername, setDriveUsername] = useState<string>(localStorage.getItem('drive_username') || '');
 
   // Page state: 'beranda' / 'bingkai' / 'misi' / 'galeri' / 'album'
@@ -797,9 +800,12 @@ export default function App() {
 
   const [bgSearchKeyword, setBgSearchKeyword] = useState('retro');
   const [isBgLoading, setIsBgLoading] = useState(false);
-  const [bgSubTab, setBgSubTab] = useState<'unsplash' | 'upload'>('unsplash');
+  const [bgSubTab, setBgSubTab] = useState<'unsplash' | 'upload' | 'cloud'>('unsplash');
   const [unsplashSearchResults, setUnsplashSearchResults] = useState<any[]>([]);
   const [isSearchingUnsplash, setIsSearchingUnsplash] = useState(false);
+  const [userCloudBgs, setUserCloudBgs] = useState<any[]>([]);
+  const [isFetchingCloudBgs, setIsFetchingCloudBgs] = useState<boolean>(false);
+  const [fetchCloudBgsError, setFetchCloudBgsError] = useState<string | null>(null);
   const [adjustSubTab, setAdjustSubTab] = useState<'posisi' | 'remove_bg'>('posisi');
 
   // Persist background image and bg removed flag
@@ -2181,27 +2187,61 @@ export default function App() {
       const username = user.displayName || user.email?.split('@')[0] || 'Anonymous_User';
       localStorage.setItem('drive_username', username);
       setDriveUsername(username);
-      const fetchFolderId = async () => {
+      const fetchFolderIds = async () => {
         try {
-          const res = await fetch(`https://dev.bungtemin.net/api/drive/newfolder?name=${encodeURIComponent(username)}`);
-          if (res.ok) {
-            const data = await res.json();
-            const folderId = data.folderId || data.id || (data.data?.folderId || data.data?.id);
-            if (folderId) {
-              localStorage.setItem('drive_folder_id', folderId);
-              setDriveFolderId(folderId);
-              console.log('[Drive Sync] Berhasil sinkronisasi folderId: ', folderId);
+          // 1. STIKER PNG Folder
+          const resPng = await fetch(`https://dev.bungtemin.net/api/drive/newfolder?name=${encodeURIComponent(username + ' (STIKER PNG)')}`);
+          let folderIdPng = '';
+          if (resPng.ok) {
+            const data = await resPng.json();
+            folderIdPng = data.folderId || data.id || (data.data?.folderId || data.data?.id);
+            if (folderIdPng) {
+              localStorage.setItem('drive_folder_id_png', folderIdPng);
+              setDriveFolderIdPng(folderIdPng);
+              // Fallback support for generic folderId
+              localStorage.setItem('drive_folder_id', folderIdPng);
+              setDriveFolderId(folderIdPng);
             }
           }
+
+          // 2. KOLEKSI / Foto Utama Folder
+          const resKoleksi = await fetch(`https://dev.bungtemin.net/api/drive/newfolder?name=${encodeURIComponent(username + ' (Koleksi)')}`);
+          if (resKoleksi.ok) {
+            const data = await resKoleksi.json();
+            const folderIdKoleksi = data.folderId || data.id || (data.data?.folderId || data.data?.id);
+            if (folderIdKoleksi) {
+              localStorage.setItem('drive_folder_id_koleksi', folderIdKoleksi);
+              setDriveFolderIdKoleksi(folderIdKoleksi);
+            }
+          }
+
+          // 3. BACKGROUND Folder
+          const resBg = await fetch(`https://dev.bungtemin.net/api/drive/newfolder?name=${encodeURIComponent(username + ' (BACKGROUND)')}`);
+          if (resBg.ok) {
+            const data = await resBg.json();
+            const folderIdBg = data.folderId || data.id || (data.data?.folderId || data.data?.id);
+            if (folderIdBg) {
+              localStorage.setItem('drive_folder_id_bg', folderIdBg);
+              setDriveFolderIdBg(folderIdBg);
+            }
+          }
+
+          console.log('[Drive Sync 3 Folders] Berhasil sinkronisasi 3 folder terpisah!');
         } catch (err) {
-          console.warn('[Drive Sync] Sinkronisasi folder opsional lewat dev.bungtemin.net dilewati karena masalah konektifitas:', err);
+          console.warn('[Drive Sync] Gagal menyinkronkan 3 folder khusus:', err);
         }
       };
-      fetchFolderId();
+      fetchFolderIds();
     } else {
       localStorage.removeItem('drive_folder_id');
+      localStorage.removeItem('drive_folder_id_png');
+      localStorage.removeItem('drive_folder_id_koleksi');
+      localStorage.removeItem('drive_folder_id_bg');
       localStorage.removeItem('drive_username');
       setDriveFolderId('');
+      setDriveFolderIdPng('');
+      setDriveFolderIdKoleksi('');
+      setDriveFolderIdBg('');
       setDriveUsername('');
     }
   }, [user]);
@@ -2462,14 +2502,14 @@ export default function App() {
           const removedBgFile = new File([u8arr], `removed_bg_${Date.now()}.png`, { type: mime });
           
           // ImageProxy backup
-          const cachedFolderId = localStorage.getItem('drive_folder_id');
+          const cachedFolderIdKoleksi = localStorage.getItem('drive_folder_id_koleksi') || localStorage.getItem('drive_folder_id');
           const targetUserName = user?.displayName || user?.email?.split('@')[0] || 'Anonymous_User';
           const proxyFormData = new FormData();
           proxyFormData.append('file', removedBgFile);
           proxyFormData.append('user', targetUserName);
           
-          if (cachedFolderId) {
-            proxyFormData.append('folderId', cachedFolderId);
+          if (cachedFolderIdKoleksi) {
+            proxyFormData.append('folderId', cachedFolderIdKoleksi);
             fetch('https://dev.bungtemin.net/api/drive/upload-to-folder', {
               method: 'POST',
               body: proxyFormData
@@ -2544,7 +2584,7 @@ export default function App() {
     try {
       const res = await fetch(imgUrl);
       const blob = await res.blob();
-      const folderId = localStorage.getItem('drive_folder_id') || '10yQu51iu28vN8KaJl9SNvpuIo-JHIT4z';
+      const folderId = localStorage.getItem('drive_folder_id_bg') || localStorage.getItem('drive_folder_id') || '10yQu51iu28vN8KaJl9SNvpuIo-JHIT4z';
       const targetUserName = user?.displayName || user?.email?.split('@')[0] || 'Anonymous_User';
       
       const proxyFormData = new FormData();
@@ -2569,7 +2609,7 @@ export default function App() {
     }
   };
 
-  const handleSetBackgroundWithLoader = (url: string, name: string) => {
+  const handleSetBackgroundWithLoader = (url: string, name: string, preventBackup: boolean = false) => {
     setIsBgLoading(true);
     triggerToast(`Sabar ya sayang, aku sedang menyiapkan latar belakang "${name}" terindah untukmu... 🌌✨`);
     
@@ -2581,8 +2621,10 @@ export default function App() {
       setActiveTab(null);
       triggerToast(`Tadaaa! Latar belakang "${name}" sudah terpasang sempurna sayang! Romantis banget... 💖`);
       
-      // Auto-backup in background
-      handleAutoBackupBgToDrive(url, `preset_${name.toLowerCase().replace(/\s+/g, '_')}_${Date.now()}.jpg`);
+      // Auto-backup in background if not prevented
+      if (!preventBackup) {
+        handleAutoBackupBgToDrive(url, `preset_${name.toLowerCase().replace(/\s+/g, '_')}_${Date.now()}.jpg`);
+      }
     };
     img.onerror = () => {
       setIsBgLoading(false);
@@ -2626,6 +2668,66 @@ export default function App() {
     }
   }, [activeTab, bgSubTab]);
 
+  const fetchUserCloudBgs = () => {
+    const cachedFolderId = localStorage.getItem('drive_folder_id_bg') || localStorage.getItem('drive_folder_id');
+    const cachedUsername = localStorage.getItem('drive_username');
+    if (!cachedFolderId && !cachedUsername) {
+      setUserCloudBgs([]);
+      return;
+    }
+
+    setIsFetchingCloudBgs(true);
+    setFetchCloudBgsError(null);
+    let targetUrl = '';
+    if (cachedFolderId) {
+      targetUrl = `https://dev.bungtemin.net/api/drive/view-folder?folderId=${encodeURIComponent(cachedFolderId)}`;
+    } else if (cachedUsername) {
+      targetUrl = `https://dev.bungtemin.net/api/drive/view-folder?name=${encodeURIComponent(cachedUsername + ' (BACKGROUND)')}`;
+    }
+
+    fetch(targetUrl)
+      .then(res => res.json())
+      .then(data => {
+        let list: any[] = [];
+        if (Array.isArray(data)) {
+          list = data;
+        } else if (data) {
+          if (Array.isArray(data.files)) {
+            list = data.files;
+          } else if (Array.isArray(data.data)) {
+            list = data.data;
+          } else if (data.data && Array.isArray(data.data.files)) {
+            list = data.data.files;
+          } else if (data.data && Array.isArray(data.data.data)) {
+            list = data.data.data;
+          }
+        }
+          
+        const parsed = list.map((item: any, idx: number) => {
+          const rawId = item.id || item.fileId || '';
+          const proxyUrl = `https://dev.bungtemin.net/api/drive/${rawId}`;
+          return {
+            id: rawId,
+            name: item.name || item.fileName || `Background ${idx}`,
+            url: proxyUrl
+          };
+        });
+        setUserCloudBgs(parsed);
+        setIsFetchingCloudBgs(false);
+      })
+      .catch(err => {
+        console.warn('Gagal memuat background dari Drive:', err);
+        setFetchCloudBgsError(err.message || 'Error occurred');
+        setIsFetchingCloudBgs(false);
+      });
+  };
+
+  useEffect(() => {
+    if (activeTab === 'change_bg' && bgSubTab === 'cloud') {
+      fetchUserCloudBgs();
+    }
+  }, [activeTab, bgSubTab]);
+
   const handleUploadCustomBg = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
@@ -2644,7 +2746,7 @@ export default function App() {
       triggerToast('Cantiknya! Latar belakang kustom pilihanmu berhasil dipasang. 🌸✨');
       
       // Pencadangan ke Google Drive berjalan sunyi di layar belakang (background)
-      const folderId = localStorage.getItem('drive_folder_id') || '10yQu51iu28vN8KaJl9SNvpuIo-JHIT4z';
+      const folderId = localStorage.getItem('drive_folder_id_bg') || localStorage.getItem('drive_folder_id') || '10yQu51iu28vN8KaJl9SNvpuIo-JHIT4z';
       const targetUserName = user?.displayName || user?.email?.split('@')[0] || 'Anonymous_User';
       const proxyFormData = new FormData();
       proxyFormData.append('file', file, `custom_bg_${Date.now()}_${file.name}`);
@@ -2726,14 +2828,14 @@ export default function App() {
           }
           const stickerBgFile = new File([u8arr], `sticker_removed_bg_${Date.now()}.png`, { type: mime });
           
-          const cachedFolderId = localStorage.getItem('drive_folder_id');
+          const cachedFolderIdPng = localStorage.getItem('drive_folder_id_png') || localStorage.getItem('drive_folder_id');
           const targetUserName = user?.displayName || user?.email?.split('@')[0] || 'Anonymous_User';
           const proxyFormData = new FormData();
           proxyFormData.append('file', stickerBgFile);
           proxyFormData.append('user', targetUserName);
           
-          if (cachedFolderId) {
-            proxyFormData.append('folderId', cachedFolderId);
+          if (cachedFolderIdPng) {
+            proxyFormData.append('folderId', cachedFolderIdPng);
             fetch('https://dev.bungtemin.net/api/drive/upload-to-folder', {
               method: 'POST',
               body: proxyFormData
@@ -2765,14 +2867,14 @@ export default function App() {
 
     try {
       // ImageProxy upload
-      const cachedFolderId = localStorage.getItem('drive_folder_id');
+      const cachedFolderIdKoleksi = localStorage.getItem('drive_folder_id_koleksi') || localStorage.getItem('drive_folder_id');
       const targetUserName = user?.displayName || user?.email?.split('@')[0] || 'Anonymous_User';
       const proxyFormData = new FormData();
       proxyFormData.append('file', file);
       proxyFormData.append('user', targetUserName);
       
-      if (cachedFolderId) {
-        proxyFormData.append('folderId', cachedFolderId);
+      if (cachedFolderIdKoleksi) {
+        proxyFormData.append('folderId', cachedFolderIdKoleksi);
         fetch('https://dev.bungtemin.net/api/drive/upload-to-folder', {
           method: 'POST',
           body: proxyFormData
@@ -4021,14 +4123,14 @@ Berikan respons dalam format JSON yang valid dengan kunci wajib:
       try {
         const res = await fetch(dataUrl);
         const blob = await res.blob();
-        const cachedFolderId = localStorage.getItem('drive_folder_id');
+        const cachedFolderIdKoleksi = localStorage.getItem('drive_folder_id_koleksi') || localStorage.getItem('drive_folder_id');
         const targetUserName = user?.displayName || user?.email?.split('@')[0] || 'Anonymous_User';
         const driveFormData = new FormData();
         driveFormData.append('file', blob, fileName);
         driveFormData.append('user', targetUserName);
         
-        if (cachedFolderId) {
-          driveFormData.append('folderId', cachedFolderId);
+        if (cachedFolderIdKoleksi) {
+          driveFormData.append('folderId', cachedFolderIdKoleksi);
           fetch('https://dev.bungtemin.net/api/drive/upload-to-folder', {
             method: 'POST',
             body: driveFormData,
@@ -4631,6 +4733,34 @@ Berikan respons dalam format JSON yang valid dengan kunci wajib:
                                       borderBottom: `2px dashed ${item.color || neonColor}`,
                                       borderRadius: '50% 50% 0 0'
                                     }
+                                  : item.textStyle === 'robotic'
+                                  ? {
+                                      color: '#39ff14',
+                                      textShadow: '0 0 5px #39ff14, 0 0 10px rgba(57,255,20,0.5)',
+                                      border: '1px solid #39ff14',
+                                      padding: '2px 6px',
+                                      backgroundColor: 'rgba(0,0,0,0.85)',
+                                      borderRadius: '4px'
+                                    }
+                                  : item.textStyle === 'retro'
+                                  ? {
+                                      color: '#ff2a74',
+                                      textShadow: `2px 2px 0px #00f2fe, 4px 4px 0px #9d4edd`
+                                    }
+                                  : item.textStyle === 'comic'
+                                  ? {
+                                      color: '#ffcc00',
+                                      textShadow: '3px 3px 0px #000000',
+                                      WebkitTextStroke: '1.5px #000000',
+                                      fontWeight: '900',
+                                      fontStyle: 'italic'
+                                    }
+                                  : item.textStyle === 'cartoon'
+                                  ? {
+                                      color: '#ff66b2',
+                                      textShadow: '0 3px 0px #ab005b',
+                                      fontWeight: 'bold'
+                                    }
                                   : {
                                       color: '#fff',
                                       textShadow: `0 0 8px ${item.color || neonColor}`,
@@ -5189,7 +5319,11 @@ Berikan respons dalam format JSON yang valid dengan kunci wajib:
                             { id: 'hologram', label: 'Holo' },
                             { id: '3d', label: '3D' },
                             { id: 'double-neon', label: 'D-Neon' },
-                            { id: 'curved', label: 'Melengkung' }
+                            { id: 'curved', label: 'Melengkung' },
+                            { id: 'robotic', label: 'Robotic' },
+                            { id: 'retro', label: 'Retro' },
+                            { id: 'comic', label: 'Komik' },
+                            { id: 'cartoon', label: 'Kartun' }
                           ].map((style) => (
                             <button
                               key={style.id}
@@ -5800,7 +5934,7 @@ Berikan respons dalam format JSON yang valid dengan kunci wajib:
                     theme={theme}
                     modeOnly="sticker_vector"
                     onClose={() => setActiveTab(null)}
-                    driveFolderId={driveFolderId}
+                    driveFolderId={driveFolderIdPng}
                     driveUsername={driveUsername}
                   />
                 </motion.div>
@@ -5823,7 +5957,7 @@ Berikan respons dalam format JSON yang valid dengan kunci wajib:
                     theme={theme}
                     modeOnly="png_sticker"
                     onClose={() => setActiveTab(null)}
-                    driveFolderId={driveFolderId}
+                    driveFolderId={driveFolderIdPng}
                     driveUsername={driveUsername}
                   />
                 </motion.div>
@@ -5846,7 +5980,7 @@ Berikan respons dalam format JSON yang valid dengan kunci wajib:
                     theme={theme}
                     modeOnly="text_custom"
                     onClose={() => setActiveTab(null)}
-                    driveFolderId={driveFolderId}
+                    driveFolderId={driveFolderIdPng}
                     driveUsername={driveUsername}
                   />
                 </motion.div>
@@ -5869,7 +6003,7 @@ Berikan respons dalam format JSON yang valid dengan kunci wajib:
                     theme={theme}
                     modeOnly="text_preset"
                     onClose={() => setActiveTab(null)}
-                    driveFolderId={driveFolderId}
+                    driveFolderId={driveFolderIdPng}
                     driveUsername={driveUsername}
                   />
                 </motion.div>
@@ -6332,7 +6466,7 @@ Berikan respons dalam format JSON yang valid dengan kunci wajib:
                       <button
                         type="button"
                         onClick={() => setBgSubTab('unsplash')}
-                        className={`flex-1 py-1.5 px-2 rounded-lg text-[9.5px] font-mono font-bold tracking-wider uppercase transition-all flex items-center justify-center gap-1.5 ${
+                        className={`flex-1 py-1.2 px-1.5 rounded-lg text-[9px] font-mono font-bold tracking-wider uppercase transition-all flex items-center justify-center gap-1 ${
                           bgSubTab === 'unsplash'
                             ? 'bg-purple-500/20 text-purple-300 border border-purple-500/30 font-extrabold shadow-[0_0_8px_rgba(168,85,247,0.15)]'
                             : (theme === 'dark'
@@ -6340,13 +6474,13 @@ Berikan respons dalam format JSON yang valid dengan kunci wajib:
                                 : 'text-zinc-650 hover:text-purple-600 hover:bg-purple-50 border border-transparent')
                         }`}
                       >
-                        <Search className="w-3.5 h-3.5" />
+                        <Search className="w-3 h-3" />
                         Cari
                       </button>
                       <button
                         type="button"
                         onClick={() => setBgSubTab('upload')}
-                        className={`flex-1 py-1.5 px-2 rounded-lg text-[9.5px] font-mono font-bold tracking-wider uppercase transition-all flex items-center justify-center gap-1.5 ${
+                        className={`flex-1 py-1.2 px-1.5 rounded-lg text-[9px] font-mono font-bold tracking-wider uppercase transition-all flex items-center justify-center gap-1 ${
                           bgSubTab === 'upload'
                             ? 'bg-purple-500/20 text-purple-300 border border-purple-500/30 font-extrabold shadow-[0_0_8px_rgba(168,85,247,0.15)]'
                             : (theme === 'dark'
@@ -6354,8 +6488,22 @@ Berikan respons dalam format JSON yang valid dengan kunci wajib:
                                 : 'text-zinc-650 hover:text-purple-600 hover:bg-purple-50 border border-transparent')
                         }`}
                       >
-                        <FolderOpen className="w-3.5 h-3.5" />
+                        <FolderOpen className="w-3 h-3" />
                         Upload
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => setBgSubTab('cloud')}
+                        className={`flex-1 py-1.2 px-1.5 rounded-lg text-[9px] font-mono font-bold tracking-wider uppercase transition-all flex items-center justify-center gap-1 ${
+                          bgSubTab === 'cloud'
+                            ? 'bg-purple-500/20 text-purple-300 border border-purple-500/30 font-extrabold shadow-[0_0_8px_rgba(168,85,247,0.15)]'
+                            : (theme === 'dark'
+                                ? 'text-zinc-400 hover:text-white hover:bg-white/5 border border-transparent'
+                                : 'text-zinc-650 hover:text-purple-600 hover:bg-purple-50 border border-transparent')
+                        }`}
+                      >
+                        <Cloud className="w-3 h-3 animate-pulse" />
+                        Drive Cloud
                       </button>
                     </div>
 
@@ -6446,6 +6594,76 @@ Berikan respons dalam format JSON yang valid dengan kunci wajib:
                             </div>
                           )
                         )}
+                      </div>
+                    )}
+
+                    {bgSubTab === 'cloud' && (
+                      <div className="space-y-3 animate-fadeIn">
+                        <div className="flex items-center justify-between px-1">
+                          <span className="text-[10px] text-zinc-400 font-mono block uppercase">
+                            Koleksi Background di Google Drive:
+                          </span>
+                          <button 
+                            type="button"
+                            onClick={fetchUserCloudBgs}
+                            className="text-[9px] text-[#00f2fe] font-mono underline hover:text-[#00d2ff] transition-colors"
+                          >
+                            Refresh 🔄
+                          </button>
+                        </div>
+                        
+                        <div className="grid grid-cols-4 gap-1.5 min-h-[85px] max-h-[185px] overflow-y-auto pr-1 scrollbar-thin">
+                          {isFetchingCloudBgs ? (
+                            Array.from({ length: 4 }).map((_, i) => (
+                              <div key={`bg-skeleton-${i}`} className={`p-1.5 border rounded-lg flex flex-col items-center justify-center aspect-square ${
+                                theme === 'dark' ? 'bg-zinc-950/50 border-white/5 animate-pulse' : 'bg-black/5 border-black/5 animate-pulse'
+                              }`}>
+                                <div className={`w-8 h-8 rounded-md mb-1.5 ${theme === 'dark' ? 'bg-zinc-800' : 'bg-zinc-200'}`} />
+                                <div className={`w-10 h-1.5 rounded-full ${theme === 'dark' ? 'bg-zinc-800' : 'bg-zinc-200'}`} />
+                              </div>
+                            ))
+                          ) : userCloudBgs.length > 0 ? (
+                            userCloudBgs.map((bg) => {
+                              const isSelected = backgroundImage === bg.url;
+                              return (
+                                <button
+                                  key={bg.id}
+                                  type="button"
+                                  onClick={() => handleSetBackgroundWithLoader(bg.url, bg.name, true)}
+                                  className={`group relative aspect-square rounded-lg overflow-hidden border transition-all ${
+                                    isSelected
+                                      ? 'border-[#00f2fe] scale-[0.96] ring-1 ring-[#00f2fe]/50 shadow-[0_0_12px_rgba(0,242,254,0.35)]'
+                                      : 'border-white/10 hover:border-[#00f2fe]/50 hover:scale-[1.03]'
+                                  }`}
+                                  title={bg.name}
+                                >
+                                  <img
+                                    src={bg.url}
+                                    alt={bg.name}
+                                    referrerPolicy="no-referrer"
+                                    className="w-full h-full object-cover transition-transform duration-550 group-hover:scale-110"
+                                  />
+                                  {isSelected && (
+                                    <div className="absolute top-1 right-1 w-3.5 h-3.5 rounded-full bg-[#00f2fe] flex items-center justify-center shadow-lg border border-[#00f2fe] animate-bounce">
+                                      <Heart className="w-2 h-2 text-black fill-black" />
+                                    </div>
+                                  )}
+                                </button>
+                              );
+                            })
+                          ) : (
+                            <div className="col-span-4 p-3 border border-dashed border-purple-500/20 rounded-lg bg-zinc-950/60 text-center space-y-2">
+                              <ImageIcon className="w-5 h-5 mx-auto opacity-50 text-purple-400 animate-pulse" />
+                              <span className="text-[9px] font-mono uppercase tracking-widest text-[#a855f7] block font-bold">
+                                Cloud Background Kosong ✨
+                              </span>
+                              <span className="text-[8px] text-zinc-400 font-sans leading-relaxed block">
+                                Folder khusus background kamu sudah terhubung manis di Drive, sayang! 💕 Tapi isinya masih kosong. 
+                                Setiap kali kamu memilih background kustom atau preset latar belakang, ia akan dicadangkan ke sana otomatis! 🥰
+                              </span>
+                            </div>
+                          )}
+                        </div>
                       </div>
                     )}
 

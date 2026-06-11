@@ -14,7 +14,7 @@ export interface PlacedSticker {
   type: 'sticker' | 'text';
   text?: string;
   fontFamily?: string; // e.g. 'Orbitron', 'Space Grotesk'
-  textStyle?: 'neon' | 'chrome' | 'glitch' | 'hologram' | 'plain' | '3d' | 'double-neon' | 'curved' | 'glassmorphism' | 'futuristic' | 'claymorphism' | 'funny' | 'brutalist' | 'sunset' | 'cosmic' | 'neo-mint' | 'terracotta' | 'nordic';
+  textStyle?: 'neon' | 'chrome' | 'glitch' | 'hologram' | 'plain' | '3d' | 'double-neon' | 'curved' | 'glassmorphism' | 'futuristic' | 'claymorphism' | 'funny' | 'brutalist' | 'sunset' | 'cosmic' | 'neo-mint' | 'terracotta' | 'nordic' | 'robotic' | 'retro' | 'comic' | 'cartoon';
   letterSpacing?: number; // Added letter spacing property
   stickerId?: string; // id from preset stickers
   imageUrl?: string; // custom upload or external URL for image-based PNG stickers

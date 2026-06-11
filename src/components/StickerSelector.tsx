@@ -63,6 +63,10 @@ export const TEXT_PRESETS = [
   { id: 'sunset', name: 'Sunset Dream', text: 'LATE', style: 'sunset', fontFamily: 'Playfair Display', color: '#ffa500' },
   { id: 'nordic', name: 'Nordic Luxury', text: 'QUIET', style: 'nordic', fontFamily: 'Raleway', color: '#888888' },
   { id: 'cosmic', name: 'Cosmic Eclipse', text: 'ECLIPSE', style: 'cosmic', fontFamily: 'Inter', color: '#000000' },
+  { id: 'robotic-tech', name: 'Robotic Tech', text: 'ROBOT_01', style: 'robotic', fontFamily: 'Share Tech Mono', color: '#39ff14' },
+  { id: 'retro-arcade', name: 'Retro Arcade', text: 'PLAY_90S', style: 'retro', fontFamily: 'Press Start 2P', color: '#ff2a74' },
+  { id: 'comic-bubble', name: 'Comic Boom', text: 'BOOM!', style: 'comic', fontFamily: 'Impact', color: '#ffcc00' },
+  { id: 'cartoon-pop', name: 'Cartoon Fun', text: 'CUTE', style: 'cartoon', fontFamily: 'Fredoka One', color: '#ff66b2' },
 ] as const;
 
 // Removed INITIAL_PRESET_PNG_STICKERS
@@ -147,7 +151,7 @@ export default function StickerSelector({
   const [inputText, setInputText] = useState('');
   const [textColor, setTextColor] = useState('#00f2fe');
   const [selectedFont, setSelectedFont] = useState('Orbitron');
-  const [selectedStyle, setSelectedStyle] = useState<'neon' | 'chrome' | 'glitch' | 'hologram' | 'plain' | '3d' | 'double-neon' | 'curved' | 'glassmorphism' | 'futuristic' | 'claymorphism' | 'funny' | 'brutalist' | 'sunset' | 'cosmic' | 'neo-mint' | 'terracotta' | 'nordic'>('neon');
+  const [selectedStyle, setSelectedStyle] = useState<'neon' | 'chrome' | 'glitch' | 'hologram' | 'plain' | '3d' | 'double-neon' | 'curved' | 'glassmorphism' | 'futuristic' | 'claymorphism' | 'funny' | 'brutalist' | 'sunset' | 'cosmic' | 'neo-mint' | 'terracotta' | 'nordic' | 'robotic' | 'retro' | 'comic' | 'cartoon'>('neon');
   const [selectedBlendMode, setSelectedBlendMode] = useState<'normal' | 'multiply' | 'screen' | 'overlay' | 'darken' | 'lighten' | 'color-dodge' | 'color-burn' | 'hard-light' | 'soft-light' | 'difference' | 'exclusion' | 'hue' | 'saturation' | 'color' | 'luminosity'>('normal');
   const [letterSpacing, setLetterSpacing] = useState(0);
 
@@ -160,7 +164,7 @@ export default function StickerSelector({
   const [userCloudStickers, setUserCloudStickers] = useState<any[]>([]);
 
   const [manualUsernameInput, setManualUsernameInput] = useState(driveUsername || localStorage.getItem('drive_username') || '');
-  const [manualFolderIdInput, setManualFolderIdInput] = useState(driveFolderId || localStorage.getItem('drive_folder_id') || '');
+  const [manualFolderIdInput, setManualFolderIdInput] = useState(driveFolderId || localStorage.getItem('drive_folder_id_png') || localStorage.getItem('drive_folder_id') || '');
   const [textPresets, setTextPresets] = useState<any[]>(() => [...TEXT_PRESETS]);
   const [isFetchingTextPresets, setIsFetchingTextPresets] = useState(false);
   const [fetchTextPresetsError, setFetchTextPresetsError] = useState<string | null>(null);
@@ -240,7 +244,7 @@ export default function StickerSelector({
   };
 
   const fetchUserCloudStickers = () => {
-    const cachedFolderId = driveFolderId || localStorage.getItem('drive_folder_id');
+    const cachedFolderId = driveFolderId || localStorage.getItem('drive_folder_id_png') || localStorage.getItem('drive_folder_id');
     const cachedUsername = driveUsername || localStorage.getItem('drive_username');
     if (!cachedFolderId && !cachedUsername) {
       setUserCloudStickers([]);
@@ -346,7 +350,7 @@ export default function StickerSelector({
   useEffect(() => {
     if (pngSelectorTab === 'cloud') {
       const liveUser = driveUsername || localStorage.getItem('drive_username') || '';
-      const liveFolder = driveFolderId || localStorage.getItem('drive_folder_id') || '';
+      const liveFolder = driveFolderId || localStorage.getItem('drive_folder_id_png') || localStorage.getItem('drive_folder_id') || '';
       setManualUsernameInput(liveUser);
       setManualFolderIdInput(liveFolder);
       fetchUserCloudStickers();
@@ -408,7 +412,7 @@ export default function StickerSelector({
 
     // BACKGROUND UPLOAD KE SERVER UNTUK PENYIMPANAN CLOUD & MENGGANTI URL (MENGHEMAT LOCALSTORAGE)
     try {
-      const cachedFolderId = localStorage.getItem('drive_folder_id');
+      const cachedFolderId = localStorage.getItem('drive_folder_id_png') || localStorage.getItem('drive_folder_id');
       const cachedUsername = localStorage.getItem('drive_username') || 'Anonymous_User';
       
       const formData = new FormData();
@@ -636,6 +640,45 @@ export default function StickerSelector({
           color: color,
           textShadow: '0 1px 0 rgba(0,0,0,0.1)',
         };
+      case 'robotic':
+        return {
+          fontFamily: preset.fontFamily || 'Share Tech Mono',
+          color: '#39ff14',
+          textShadow: '0 0 5px #39ff14, 0 0 10px rgba(57,255,20,0.5)',
+          letterSpacing: '0.15em',
+          border: '1px solid #39ff14',
+          padding: '2px 6px',
+          backgroundColor: 'rgba(0,0,0,0.85)',
+          borderRadius: '4px',
+          textTransform: 'uppercase'
+        };
+      case 'retro':
+        return {
+          fontFamily: preset.fontFamily || 'Press Start 2P',
+          color: '#ff2a74',
+          textShadow: '2px 2px 0px #00f2fe, 4px 4px 0px #9d4edd',
+          letterSpacing: '0.05em',
+          textTransform: 'uppercase'
+        };
+      case 'comic':
+        return {
+          fontFamily: preset.fontFamily || 'Impact',
+          color: '#ffcc00',
+          textShadow: '3px 3px 0px #000000',
+          WebkitTextStroke: '1.5px #000000',
+          letterSpacing: '0.05em',
+          textTransform: 'uppercase',
+          fontWeight: '900',
+          fontStyle: 'italic',
+        };
+      case 'cartoon':
+        return {
+          fontFamily: preset.fontFamily || 'Fredoka One',
+          color: '#ff66b2',
+          textShadow: '0 3px 0px #ab005b',
+          letterSpacing: '0.02em',
+          fontWeight: 'bold',
+        };
       default:
         return {
           fontFamily: (preset as any).fontFamily,
@@ -843,45 +886,61 @@ export default function StickerSelector({
                       </button>
                     ))
                   ) : (
-                    <div className="col-span-4 p-3 border border-dashed border-cyan-500/20 rounded-lg bg-zinc-950/60 text-center space-y-3.5">
-                      <div className="space-y-1">
+                    (driveUsername || localStorage.getItem('drive_username') || driveFolderId || localStorage.getItem('drive_folder_id_png') || localStorage.getItem('drive_folder_id')) ? (
+                      <div className="col-span-4 p-3 border border-dashed border-cyan-500/20 rounded-lg bg-zinc-950/60 text-center space-y-2">
                         <ImageIcon className="w-5 h-5 mx-auto opacity-50 text-cyan-400 animate-pulse" />
-                        <span className="text-[9px] font-mono uppercase tracking-widest text-zinc-300 block font-bold">
-                          Koleksi Cloud Masih Kosong
+                        <span className="text-[9px] font-mono uppercase tracking-widest text-[#00f2fe] block font-bold">
+                          Koleksi Cloud Masih Kosong ✨
                         </span>
-                        <span className="text-[7.5px] text-zinc-500 font-sans leading-relaxed block">
-                          Ingin mengambil stiker khusus dari Google Drive Anda? Silakan masukkan username di bawah ini.
+                        <span className="text-[8px] text-zinc-400 font-sans leading-relaxed block">
+                          Folder khusus stiker PNG kamu sudah terhubung manis di Drive, sayang! 💕 Tapi isinya masih kosong. 
+                          Ayo hapus latar belakang fotomu lalu simpan sebagai stiker untuk melihatnya tampil di sini! 🥰
                         </span>
-                      </div>
-                      
-                      {/* Manual Credentials Setup Form */}
-                      <div className="space-y-2 text-left p-2.5 rounded-lg bg-black/50 border border-white/5 shadow-inner">
-                        <span className="text-[8px] font-mono text-zinc-400 block uppercase font-black tracking-wider">
-                          🔗 Sambungkan Google Drive
-                        </span>
-                        <div className="flex gap-1">
-                          <input 
-                            type="text" 
-                            placeholder="Username Anda (misal: bungtemin)..."
-                            value={manualUsernameInput}
-                            onChange={(e) => setManualUsernameInput(e.target.value)}
-                            className="bg-zinc-900 border border-white/10 rounded px-2 py-1 text-[9px] font-mono text-white flex-1 focus:outline-none focus:border-cyan-400 placeholder-zinc-600"
-                          />
-                          <button 
-                            type="button"
-                            onClick={handleManualSave}
-                            className="bg-[#00f2fe]/20 border border-[#00f2fe]/30 text-[#00f2fe] hover:bg-[#00f2fe] hover:text-black font-mono text-[8px] px-2.5 py-1 rounded font-black uppercase transition-all duration-300"
-                          >
-                            Setel
-                          </button>
+                        <div className="text-[7.5px] font-mono text-zinc-500 bg-black/40 p-1 rounded border border-white/5 truncate max-w-full">
+                          Folder ID: {driveFolderId || localStorage.getItem('drive_folder_id_png') || localStorage.getItem('drive_folder_id') || 'Terdeteksi'}
                         </div>
-                        {manualFolderIdInput && (
-                          <div className="text-[7px] font-mono text-zinc-500 leading-none truncate bg-black/30 p-1 rounded border border-white/3">
-                            ID Folder: {manualFolderIdInput}
-                          </div>
-                        )}
                       </div>
-                    </div>
+                    ) : (
+                      <div className="col-span-4 p-3 border border-dashed border-cyan-500/20 rounded-lg bg-zinc-950/60 text-center space-y-3.5">
+                        <div className="space-y-1">
+                          <ImageIcon className="w-5 h-5 mx-auto opacity-50 text-cyan-400 animate-pulse" />
+                          <span className="text-[9px] font-mono uppercase tracking-widest text-zinc-300 block font-bold">
+                            Koleksi Cloud Masih Kosong
+                          </span>
+                          <span className="text-[7.5px] text-zinc-500 font-sans leading-relaxed block">
+                            Ingin mengambil stiker khusus dari Google Drive Anda? Silakan masukkan username di bawah ini.
+                          </span>
+                        </div>
+                        
+                        {/* Manual Credentials Setup Form */}
+                        <div className="space-y-2 text-left p-2.5 rounded-lg bg-black/50 border border-white/5 shadow-inner">
+                          <span className="text-[8px] font-mono text-zinc-400 block uppercase font-black tracking-wider">
+                            🔗 Sambungkan Google Drive
+                          </span>
+                          <div className="flex gap-1">
+                            <input 
+                              type="text" 
+                              placeholder="Username Anda (misal: bungtemin)..."
+                              value={manualUsernameInput}
+                              onChange={(e) => setManualUsernameInput(e.target.value)}
+                              className="bg-zinc-900 border border-white/10 rounded px-2 py-1 text-[9px] font-mono text-white flex-1 focus:outline-none focus:border-cyan-400 placeholder-zinc-600"
+                            />
+                            <button 
+                              type="button"
+                              onClick={handleManualSave}
+                              className="bg-[#00f2fe]/20 border border-[#00f2fe]/30 text-[#00f2fe] hover:bg-[#00f2fe] hover:text-black font-mono text-[8px] px-2.5 py-1 rounded font-black uppercase transition-all duration-300"
+                            >
+                              Setel
+                            </button>
+                          </div>
+                          {manualFolderIdInput && (
+                            <div className="text-[7px] font-mono text-zinc-500 leading-none truncate bg-black/30 p-1 rounded border border-white/3">
+                              ID Folder: {manualFolderIdInput}
+                            </div>
+                          )}
+                        </div>
+                      </div>
+                    )
                   )}
                 </div>
               </div>
@@ -976,7 +1035,11 @@ export default function StickerSelector({
                 { id: 'cosmic', label: 'Cosmic' },
                 { id: 'neo-mint', label: 'Mint' },
                 { id: 'terracotta', label: 'Terra' },
-                { id: 'nordic', label: 'Nordic' }
+                { id: 'nordic', label: 'Nordic' },
+                { id: 'robotic', label: 'Robotic' },
+                { id: 'retro', label: 'Retro' },
+                { id: 'comic', label: 'Komik' },
+                { id: 'cartoon', label: 'Kartun' }
               ].map((style) => (
                 <button
                   key={style.id}
