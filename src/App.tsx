@@ -49,6 +49,7 @@ import { FRAMES, FILTER_PRESETS, PRESET_STICKERS } from './presets';
 import { renderToCanvas, resolveApiUrl, compressImage, ensureFullSvg } from './canvasUtils';
 import { storage, BUCKET_ID, databases, DATABASE_ID, COLLECTION_ID, Query, ID, ensureAppwriteBucketExists } from './appwrite';
 import { getCache, setCache, deleteCache } from './indexedDb';
+import { fcm } from './lib/fcmService';
 
 // Use direct API endpoints instead of proxy helpers since they support CORS natively
 const getWabotApiUrl = () => 'https://wabot.nufat.id/imagelist_nufat/api';
@@ -830,10 +831,28 @@ export default function App() {
 
               if (matchesMyPhoto) {
                 triggerToast(`Sayang! Ada komentar baru dari "${item.userName || 'Seseorang'}" di fotomu "${item.targetName || 'Karya'}"! 💕: "${item.comment.substring(0, 40)}${item.comment.length > 40 ? '...' : ''}"`);
+                fcm.triggerLocalNotification(
+                  `Komentar Baru untuk Abang Baim! 💕`,
+                  `"${item.userName || 'Seseorang'}" berkomentar di foto "${item.targetName || 'Karya'}": "${item.comment}"`,
+                  item.photoImageUrl,
+                  item.targetId
+                );
               } else if (isParticipantOfThread) {
                 triggerToast(`Sayang! "${item.userName || 'Seseorang'}" juga ikut berkomentar di diskusi foto "${item.targetName || 'Karya'}": "${item.comment.substring(0, 40)}${item.comment.length > 40 ? '...' : ''}" 💬`);
+                fcm.triggerLocalNotification(
+                  `Diskusi Foto Baru! 💬`,
+                  `"${item.userName || 'Seseorang'}" juga ikut komentar pada "${item.targetName || 'Karya'}": "${item.comment}"`,
+                  item.photoImageUrl,
+                  item.targetId
+                );
               } else {
                 triggerToast(`Komentar baru di galeri oleh "${item.userName || 'Seseorang'}" pada "${item.targetName || 'Karya'}": "${item.comment.substring(0, 40)}${item.comment.length > 40 ? '...' : ''}" 💬`);
+                fcm.triggerLocalNotification(
+                  `Galeri Foto QCC 💬`,
+                  `"${item.userName || 'Seseorang'}" mengomentari "${item.targetName || 'Karya'}" pada galeri`,
+                  item.photoImageUrl,
+                  item.targetId
+                );
               }
             }
           }
@@ -2769,6 +2788,10 @@ export default function App() {
       setIsAuthLoading(false);
       if (currentUser) {
         console.log(`[Firebase Auth] Auto-masuk sukses: ${currentUser.displayName || currentUser.email}`);
+        // Minta izin push notification FCM oleh Olaive sayang 💕
+        fcm.requestPermissionAndGetToken(currentUser.uid).catch((err) => {
+          console.warn("[Olaive FCM] Izin ditolak atau gagal diinisialisasi:", err);
+        });
       }
     });
     return () => unsubscribe();
@@ -5078,6 +5101,18 @@ Berikan respons dalam format JSON yang valid dengan kunci wajib:
       runLookup();
     }
   };
+
+  // Listen to custom desktop notification click events to view photo by Olaive 💕
+  useEffect(() => {
+    const handleSelectNotif = (e: Event) => {
+      const customEvent = e as CustomEvent;
+      if (customEvent.detail && customEvent.detail.id) {
+        handleSelectPhotoNotification(customEvent.detail.id);
+      }
+    };
+    window.addEventListener('select_photo_notif', handleSelectNotif);
+    return () => window.removeEventListener('select_photo_notif', handleSelectNotif);
+  }, [cloudDownloads]);
 
   // Combine hover tilt and page scroll tilt for 3D parallax
   const combinedTiltX = enableParallax ? (tilt.x + scrollTilt.x * 0.4) : 0;

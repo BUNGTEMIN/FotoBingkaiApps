@@ -13,7 +13,7 @@ if (!fs.existsSync(PUBLIC_DIR)) {
 
 // Helper to copy files from source to targets safely
 function copyPwaSourceFiles() {
-  const filesToCopy = ['manifest.json', 'sw.js'];
+  const filesToCopy = ['manifest.json', 'sw.js', 'firebase-messaging-sw.js'];
   filesToCopy.forEach(fileName => {
     const srcPath = path.join(SOURCE_DIR, fileName);
     if (fs.existsSync(srcPath)) {
