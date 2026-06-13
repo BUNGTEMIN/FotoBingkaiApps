@@ -35,7 +35,7 @@ messaging.onBackgroundMessage((payload) => {
   self.registration.showNotification(notificationTitle, notificationOptions);
 });
 
-// Menangani klik notifikasi oleh Olaive sayang 💕
+// Menangani klik notifikasi
 self.addEventListener('notificationclick', (event) => {
   event.notification.close();
 
@@ -48,17 +48,20 @@ self.addEventListener('notificationclick', (event) => {
 
   event.waitUntil(
     clients.matchAll({ type: 'window', includeUncontrolled: true }).then((windowClients) => {
-      // Jika tab sudah terbuka di browser Abang, fokuskan dan langsung kabari lewat postMessage
+      // Jika tab sudah terbuka di browser, arahkan ke URL target dan fokuskan
       for (let i = 0; i < windowClients.length; i++) {
         const client = windowClients[i];
         if (client.url.startsWith(self.location.origin) && 'focus' in client) {
           if (targetId) {
             client.postMessage({ type: 'SELECT_PHOTO', photoId: targetId });
+            if ('navigate' in client) {
+              client.navigate(urlToOpen);
+            }
           }
           return client.focus();
         }
       }
-      // Jika tab aplikasinya belum kebuka sama sekali, kita jalankan jendela baru menuju URL berpaut foto
+      // Jika tab aplikasinya belum kebuka sama sekali, jalankan jendela baru menuju URL berpaut foto
       if (clients.openWindow) {
         return clients.openWindow(urlToOpen);
       }

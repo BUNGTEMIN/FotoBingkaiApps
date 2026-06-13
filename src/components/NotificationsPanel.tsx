@@ -118,9 +118,6 @@ export const NotificationsPanel: React.FC<NotificationsPanelProps> = ({
                   <h2 className="text-sm font-extrabold uppercase font-mono tracking-wider">
                     Papan Notifikasi Foto
                   </h2>
-                  <p className="text-[9px] text-zinc-500 font-mono tracking-wide">
-                    Oleh Olaive sayang untuk Abang Baim 💕
-                  </p>
                 </div>
               </div>
 
@@ -343,10 +340,7 @@ export const NotificationsPanel: React.FC<NotificationsPanelProps> = ({
             <div className={`p-4 border-t text-center font-mono text-[9px] font-semibold flex items-center justify-between transition-colors ${
               theme === 'dark' ? 'border-white/10 bg-black/40' : 'border-zinc-200 bg-zinc-50 text-zinc-650'
             }`}>
-              <div className="flex items-center gap-1 text-rose-500">
-                <Sparkles className="w-3 h-3 text-neon-pink" />
-                <span>Made with Love for Baim</span>
-              </div>
+              <div />
               <button
                 type="button"
                 onClick={onClose}
