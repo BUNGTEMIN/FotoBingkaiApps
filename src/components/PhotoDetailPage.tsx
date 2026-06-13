@@ -1,6 +1,6 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
-import { ArrowLeft, Heart, MessageCircle, Trash2, LogIn, Send, Share2, Check } from 'lucide-react';
+import { ArrowLeft, Heart, MessageCircle, Trash2, LogIn, Send, Share2, Check, Smile } from 'lucide-react';
 import { 
   db,
   auth,
@@ -15,7 +15,7 @@ import {
   serverTimestamp 
 } from '../firebase';
 import { DeleteConfirmationModal } from './DeleteConfirmationModal';
-import { filterInappropriateText, hasInappropriateWords } from '../textFilter';
+import { filterInappropriateText, hasInappropriateWords, sanitizeInputText } from '../textFilter';
 
 interface PhotoDetailPageProps {
   onBack: () => void;
@@ -46,6 +46,60 @@ export const PhotoDetailPage: React.FC<PhotoDetailPageProps> = ({
   const [hearts, setHearts] = useState<{ id: number }[]>([]);
   const [commentToDelete, setCommentToDelete] = useState<string | null>(null);
   const [copied, setCopied] = useState(false);
+  const textareaRef = useRef<HTMLTextAreaElement>(null);
+
+  const EMOJI_CATEGORIES = {
+    smileys: {
+      label: '😃 Ekspresi',
+      emojis: ['😊', '❤️', '💖', '✨', '😍', '🔥', '😂', '👍', '😭', '👏', '😘', '🤪', '🤔', '😴', '🥰', '💔', '🤣', '🥳', '😎', '🤩', '🥺', '💩', '👀', '🤡', '🙏']
+    },
+    animals: {
+      label: '🐱 Alam',
+      emojis: ['🐶', '🐱', '🦁', '🐼', '🐨', '🦊', '🌸', '🌹', '🍀', '🍁', '🌈', '⚡', '🦦', '🦄', '🐝', '🍒', '🍓', '🌴', '🌞', '🌙', '🌊', '🌲', '🌻', '🍎', '🍇']
+    },
+    food: {
+      label: '🍕 Kuliner',
+      emojis: ['🍕', '🍔', '🍟', '🥤', '🍿', '🍩', '🍫', '🍇', '🍉', '🍋', '🍺', '☕', '🎂', '🥞', '🍣', '🍦', '🍪', '🍍', '🌮', '🍜', '🍱', '🍡', '🍙', '🍎', '🥑']
+    },
+    activities: {
+      label: '🎈 Kegiatan',
+      emojis: ['🎮', '⚽', '🏀', '🎨', '🎤', '🎧', '📸', '✈️', '🚗', '🎈', '🎉', '🎁', '🏆', '🎟️', '🎬', '🎪', '👾', '🧩', '🎸', '🚲', '🛹', '🎳', '🎯', '🎰', '🎻']
+    },
+    symbols: {
+      label: '💯 Simbol',
+      emojis: ['💯', '🌟', '✨', '💫', '💬', '📢', '🔮', '🔒', '🎵', '💤', '🌀', '💌', '✔️', '❌', '⚠️', '💎', '💡', '🔔', '🚩', '💘', '⭕', '💤', '⭐', '🎈', '🎉']
+    }
+  };
+
+  const POPULAR_EMOJIS = [
+    '😊', '❤️', '💖', '✨', '😍', '🔥', '😂', '👍', '😭', '👏', 
+    '🌸', '😘', '🎉', '📸', '🧸', '💫', '🙌', '😎', '💯', '🤩',
+    '🌟', '👀', '🤣', '🥳', '💌', '🍀', '💡', '🌈', '🎈', '😻'
+  ];
+
+  const [showEmojiPicker, setShowEmojiPicker] = useState(false);
+  const [activeEmojiCategory, setActiveEmojiCategory] = useState<keyof typeof EMOJI_CATEGORIES>('smileys');
+
+  const handleInsertEmoji = (emoji: string) => {
+    if (!textareaRef.current) {
+      setNewComment(prev => prev + emoji);
+      return;
+    }
+    const start = textareaRef.current.selectionStart;
+    const end = textareaRef.current.selectionEnd;
+    const text = newComment;
+    const before = text.substring(0, start);
+    const after = text.substring(end, text.length);
+    setNewComment(before + emoji + after);
+    
+    // Put focus back to textarea and restore / move the cursor
+    setTimeout(() => {
+      if (textareaRef.current) {
+        textareaRef.current.focus();
+        textareaRef.current.selectionStart = textareaRef.current.selectionEnd = start + emoji.length;
+      }
+    }, 0);
+  };
 
   const handleShareClick = () => {
     const shareUrl = `${window.location.origin}/?select_photo=${item.id}`;
@@ -122,11 +176,15 @@ export const PhotoDetailPage: React.FC<PhotoDetailPageProps> = ({
       triggerToast("Silakan masuk menggunakan akun Google Anda terlebih dahulu. 🔐");
       return;
     }
-    const trimmedInput = newComment.trim();
-    if (!trimmedInput) return;
+    const rawInput = newComment;
+    const sanitizedInput = sanitizeInputText(rawInput);
+    if (!sanitizedInput) {
+      triggerToast("Komentar tidak boleh kosong atau hanya berisi karakter ilegal ya sayang! ✨");
+      return;
+    }
 
-    const containsBadWords = hasInappropriateWords(trimmedInput);
-    const filteredComment = filterInappropriateText(trimmedInput);
+    const containsBadWords = hasInappropriateWords(sanitizedInput);
+    const filteredComment = filterInappropriateText(sanitizedInput);
 
     setIsSubmitting(true);
     try {
@@ -143,6 +201,7 @@ export const PhotoDetailPage: React.FC<PhotoDetailPageProps> = ({
         createdAt: serverTimestamp()
       });
       setNewComment('');
+      setShowEmojiPicker(false); // Tutup picker setelah berhasil kirim
       
       if (containsBadWords) {
         triggerToast("Komentarmu telah disaring demi menjaga kesopanan komersial ya sayang! Terima kasih sudah bijak bersosial media ✨💕");
@@ -377,12 +436,114 @@ export const PhotoDetailPage: React.FC<PhotoDetailPageProps> = ({
             {/* 5. Clean Custom Comment Input Form at the Footer */}
             <div className="w-full">
               {user ? (
-                <form onSubmit={handleSubmitComment} className="flex flex-col gap-2 relative">
+                <form onSubmit={handleSubmitComment} className="flex flex-col gap-2.5 relative">
+                  {/* Sistem Picker Emoji Berbasis Kategori - Buatan Olaive Cantik 💕 */}
+                  <div className={`p-2.5 rounded-2xl flex flex-col gap-2 transition-all ${
+                    theme === 'dark' ? 'bg-zinc-900/60 border border-white/5' : 'bg-zinc-100/90 border border-zinc-200'
+                  }`}>
+                    {/* Header Picker: Toggle & Tab Kategori */}
+                    <div className="flex items-center justify-between gap-1 overflow-x-auto scrollbar-none pb-1.5 border-b border-rose-500/10">
+                      <div className="flex items-center gap-1.5 shrink-0 text-rose-500 select-none">
+                        <Smile className="w-4 h-4 text-rose-500 animate-pulse" />
+                        <span className="text-[9px] font-mono uppercase font-bold tracking-wider">Emoji Picker</span>
+                      </div>
+                      
+                      <div className="flex items-center gap-1 overflow-x-auto scrollbar-none">
+                        {Object.keys(EMOJI_CATEGORIES).map((key) => {
+                          const cat = EMOJI_CATEGORIES[key as keyof typeof EMOJI_CATEGORIES];
+                          const isActive = activeEmojiCategory === key;
+                          return (
+                            <button
+                              key={key}
+                              type="button"
+                              onClick={() => {
+                                setActiveEmojiCategory(key as keyof typeof EMOJI_CATEGORIES);
+                                setShowEmojiPicker(true);
+                              }}
+                              className={`px-2 py-1 rounded-lg text-[9px] font-sans font-bold transition-all whitespace-nowrap cursor-pointer ${
+                                isActive && showEmojiPicker
+                                  ? 'bg-rose-500 text-white shadow-sm shadow-rose-950/30' 
+                                  : 'text-zinc-400 hover:text-zinc-200 hover:bg-white/5'
+                              }`}
+                            >
+                              {cat.label}
+                            </button>
+                          );
+                        })}
+                        <button
+                          type="button"
+                          onClick={() => setShowEmojiPicker(!showEmojiPicker)}
+                          className={`px-2.5 py-1 rounded-lg text-[9px] font-mono font-extrabold transition-all border whitespace-nowrap cursor-pointer ${
+                            showEmojiPicker 
+                              ? 'border-rose-500 bg-rose-500/10 text-rose-400' 
+                              : 'border-zinc-700 text-zinc-400 hover:bg-white/5'
+                          }`}
+                        >
+                          {showEmojiPicker ? '▲ Tutup' : '▼ Semua'}
+                        </button>
+                      </div>
+                    </div>
+
+                    {/* Container Popover/Grid Emojis dengan Animasi Lembut */}
+                    <AnimatePresence initial={false}>
+                      {showEmojiPicker && (
+                        <motion.div
+                          initial={{ opacity: 0, height: 0 }}
+                          animate={{ opacity: 1, height: 'auto' }}
+                          exit={{ opacity: 0, height: 0 }}
+                          transition={{ duration: 0.2, ease: "easeInOut" }}
+                          className="overflow-hidden"
+                        >
+                          <div className={`grid grid-cols-7 sm:grid-cols-10 gap-1.5 p-1.5 rounded-xl max-h-[110px] overflow-y-auto scrollbar-thin ${
+                            theme === 'dark' ? 'bg-black/35' : 'bg-black/5'
+                          }`}>
+                            {EMOJI_CATEGORIES[activeEmojiCategory].emojis.map((emoji, idx) => (
+                              <button
+                                key={idx}
+                                type="button"
+                                onClick={() => handleInsertEmoji(emoji)}
+                                className="h-8 flex items-center justify-center rounded-lg hover:bg-rose-500/20 active:scale-90 transition-all text-base cursor-pointer bg-black/10 text-center"
+                                title="Klik untuk menyisipkan ke tulisan"
+                              >
+                                {emoji}
+                              </button>
+                            ))}
+                          </div>
+                        </motion.div>
+                      )}
+                    </AnimatePresence>
+
+                    {/* Alternatif Quick Row (saat picker tertutup agar tetap praktis) */}
+                    {!showEmojiPicker && (
+                      <div className="flex items-center gap-1 overflow-x-auto scrollbar-none py-0.5">
+                        {POPULAR_EMOJIS.slice(0, 15).map((emoji, idx) => (
+                          <button
+                            key={idx}
+                            type="button"
+                            onClick={() => handleInsertEmoji(emoji)}
+                            className="w-6 h-6 flex items-center justify-center rounded-lg hover:bg-rose-500/10 active:scale-90 transition-all text-sm cursor-pointer shrink-0"
+                            title="Sisipkan cepat"
+                          >
+                            {emoji}
+                          </button>
+                        ))}
+                        <button
+                          type="button"
+                          onClick={() => setShowEmojiPicker(true)}
+                          className="px-2 py-0.5 text-[8px] font-mono uppercase bg-rose-500/10 hover:bg-rose-500/20 text-rose-400 rounded-md transition-all font-bold shrink-0 cursor-pointer"
+                        >
+                          + Kategori
+                        </button>
+                      </div>
+                    )}
+                  </div>
+
                   <div className="relative flex items-center">
                     <textarea
+                      ref={textareaRef}
                       value={newComment}
                       onChange={(e) => setNewComment(e.target.value)}
-                      placeholder="Tuliskan komentar di sini..."
+                      placeholder="Tuliskan komentar indahmu di sini..."
                       maxLength={250}
                       rows={2}
                       className={`w-full rounded-2xl pl-3.5 pr-12 py-3 text-[11px] font-sans focus:outline-none focus:ring-2 focus:ring-rose-500/30 transition-all font-medium leading-relaxed resize-none min-h-[58px] ${

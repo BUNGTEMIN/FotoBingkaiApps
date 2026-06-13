@@ -185,44 +185,54 @@ export const InstagramComments: React.FC<InstagramCommentsProps> = ({
                     Belum ada komentar.
                   </div>
                 ) : (
-                  comments.map((c) => (
-                    <div key={c.id} className="flex items-start gap-2.5 group/comment p-2 rounded-xl hover:bg-white/5 transition-all duration-200">
-                      <img
-                        src={c.userPhoto || 'https://images.unsplash.com/photo-1535713875002-d1d0cf377fde?auto=format&fit=crop&w=80&q=80'}
-                        alt={c.userName}
-                        className="w-7 h-7 rounded-full border border-rose-500/20 object-cover shrink-0 mt-0.5"
-                        referrerPolicy="no-referrer"
-                      />
-                      <div className="flex-1 min-w-0">
-                        <div className="flex items-baseline flex-wrap gap-x-1.5">
-                          <span className="font-extrabold text-[11.5px] text-zinc-250 hover:text-rose-450 transition-colors">
-                            {c.userName}
-                          </span>
-                          <span className="text-[8px] font-mono text-zinc-550 uppercase">
-                            {c.createdAt?.seconds 
-                              ? new Date(c.createdAt.seconds * 1000).toLocaleDateString('id-ID', {day: 'numeric', month: 'short'})
-                              : 'baru'}
-                          </span>
+                  <AnimatePresence mode="popLayout">
+                    {comments.map((c) => (
+                      <motion.div
+                        key={c.id}
+                        layout
+                        initial={{ opacity: 0, scale: 0.92, y: 12 }}
+                        animate={{ opacity: 1, scale: 1, y: 0 }}
+                        exit={{ opacity: 0, scale: 0.95, y: -10 }}
+                        transition={{ type: 'spring', stiffness: 420, damping: 28 }}
+                        className="flex items-start gap-2.5 group/comment p-2 rounded-xl hover:bg-white/5 transition-all duration-200"
+                      >
+                        <img
+                          src={c.userPhoto || 'https://images.unsplash.com/photo-1535713875002-d1d0cf377fde?auto=format&fit=crop&w=80&q=80'}
+                          alt={c.userName}
+                          className="w-7 h-7 rounded-full border border-rose-500/20 object-cover shrink-0 mt-0.5"
+                          referrerPolicy="no-referrer"
+                        />
+                        <div className="flex-1 min-w-0">
+                          <div className="flex items-baseline flex-wrap gap-x-1.5">
+                            <span className="font-extrabold text-[11.5px] text-zinc-250 hover:text-rose-450 transition-colors">
+                              {c.userName}
+                            </span>
+                            <span className="text-[8px] font-mono text-zinc-550 uppercase">
+                              {c.createdAt?.seconds 
+                                ? new Date(c.createdAt.seconds * 1000).toLocaleDateString('id-ID', {day: 'numeric', month: 'short'})
+                                : 'baru'}
+                            </span>
+                          </div>
+                          <p className={`text-[11.5px] font-sans mt-0.5 break-words select-text font-medium leading-relaxed ${
+                            theme === 'dark' ? 'text-zinc-300' : 'text-zinc-700'
+                          }`}>
+                            {c.comment}
+                          </p>
                         </div>
-                        <p className={`text-[11.5px] font-sans mt-0.5 break-words select-text font-medium leading-relaxed ${
-                          theme === 'dark' ? 'text-zinc-300' : 'text-zinc-700'
-                        }`}>
-                          {c.comment}
-                        </p>
-                      </div>
 
-                      {((user && (user.uid === c.userId || user.email === 'bungtemin@gmail.com')) || (auth.currentUser && (auth.currentUser.uid === c.userId || auth.currentUser.email === 'bungtemin@gmail.com'))) && (
-                        <button
-                          type="button"
-                          onClick={() => handleDelete(c.id)}
-                          className="text-red-500 hover:text-red-400 p-1.5 rounded-lg bg-red-500/10 hover:bg-red-500/20 transition-all shrink-0 cursor-pointer"
-                          title="Hapus Komentar"
-                        >
-                          <Trash2 className="w-3.5 h-3.5" />
-                        </button>
-                      )}
-                    </div>
-                  ))
+                        {((user && (user.uid === c.userId || user.email === 'bungtemin@gmail.com')) || (auth.currentUser && (auth.currentUser.uid === c.userId || auth.currentUser.email === 'bungtemin@gmail.com'))) && (
+                          <button
+                            type="button"
+                            onClick={() => handleDelete(c.id)}
+                            className="text-red-500 hover:text-red-400 p-1.5 rounded-lg bg-red-500/10 hover:bg-red-500/20 transition-all shrink-0 cursor-pointer"
+                            title="Hapus Komentar"
+                          >
+                            <Trash2 className="w-3.5 h-3.5" />
+                          </button>
+                        )}
+                      </motion.div>
+                    ))}
+                  </AnimatePresence>
                 )}
                 <div ref={commentsEndRef} />
               </div>

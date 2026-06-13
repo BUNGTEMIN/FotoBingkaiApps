@@ -62,3 +62,24 @@ export const hasInappropriateWords = (text: string): boolean => {
     return regex.test(lowerText);
   });
 };
+
+/**
+ * Mensanitasi teks input agar aman dari tag HTML/skrip berbahaya,
+ * namun tetap melestarikan karakter emoji Unicode natif/unik secara utuh.
+ */
+export const sanitizeInputText = (text: string): string => {
+  if (!text) return '';
+  let cleaned = text;
+
+  // 1. Bersihkan null byte berbahaya
+  cleaned = cleaned.replace(/\0/g, '');
+
+  // 2. Hilangkan tag HTML untuk mencegah injeksi XSS dasar
+  cleaned = cleaned.replace(/<\/?[^>]+(>|$)/g, "");
+
+  // 3. Trim spasi tidak berguna di awal/akhir
+  cleaned = cleaned.trim();
+
+  return cleaned;
+};
+
