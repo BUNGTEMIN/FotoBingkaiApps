@@ -15,6 +15,7 @@ import {
   serverTimestamp 
 } from '../firebase';
 import { DeleteConfirmationModal } from './DeleteConfirmationModal';
+import { filterInappropriateText, hasInappropriateWords } from '../textFilter';
 
 interface PhotoDetailPageProps {
   onBack: () => void;
@@ -121,7 +122,11 @@ export const PhotoDetailPage: React.FC<PhotoDetailPageProps> = ({
       triggerToast("Silakan masuk menggunakan akun Google Anda terlebih dahulu. 🔐");
       return;
     }
-    if (!newComment.trim()) return;
+    const trimmedInput = newComment.trim();
+    if (!trimmedInput) return;
+
+    const containsBadWords = hasInappropriateWords(trimmedInput);
+    const filteredComment = filterInappropriateText(trimmedInput);
 
     setIsSubmitting(true);
     try {
@@ -132,12 +137,16 @@ export const PhotoDetailPage: React.FC<PhotoDetailPageProps> = ({
         userId: user.uid,
         userName: user.displayName || 'Pengguna QCC',
         userPhoto: user.photoURL || 'https://images.unsplash.com/photo-1535713875002-d1d0cf377fde?auto=format&fit=crop&w=80&q=80',
-        comment: newComment.trim(),
+        comment: filteredComment,
         photoOwnerId: item.userId || '',
         photoImageUrl: item.imageUrl || item.src || '',
         createdAt: serverTimestamp()
       });
       setNewComment('');
+      
+      if (containsBadWords) {
+        triggerToast("Komentarmu telah disaring demi menjaga kesopanan komersial ya sayang! Terima kasih sudah bijak bersosial media ✨💕");
+      }
     } catch (err) {
       console.error("Gagal mengirim komentar:", err);
       triggerToast("Gagal mengirimkan komentar. Silakan coba kembali.");
@@ -331,7 +340,7 @@ export const PhotoDetailPage: React.FC<PhotoDetailPageProps> = ({
                     </p>
                   </div>
 
-                  {((user && (user.uid === c.userId || user.email === 'bungtemin@gmail.com')) || (auth.currentUser && (auth.currentUser.uid === c.userId || auth.currentUser.email === 'bungtemin@gmail.com'))) && (
+                  {((user && (user.uid === c.userId || matchesUser || c.photoOwnerId === user.uid || user.email === 'bungtemin@gmail.com')) || (auth.currentUser && (auth.currentUser.uid === c.userId || matchesUser || c.photoOwnerId === auth.currentUser.uid || auth.currentUser.email === 'bungtemin@gmail.com'))) && (
                     <button
                       type="button"
                       onClick={() => handleDeleteComment(c.id)}
