@@ -4,7 +4,7 @@ import {
   FolderOpen, Camera, Laptop, Cpu, Layers, Settings2, Activity, Info, CheckCircle, MoveHorizontal,
   Undo, Redo, Type, ArrowUp, ArrowDown, ChevronsUp, ChevronsDown, Trash2, RotateCw, Move, Baseline,
   Lock, Unlock, Image as ImageIcon, Maximize, X, Crop, Menu, FlipHorizontal, FlipVertical, Ban, Save, Copy,
-  Cloud, Database, Scissors, Eraser, Heart, Share2, Search, ChevronLeft, ChevronRight
+  Cloud, Database, Scissors, Eraser, Heart, Share2, Search, ChevronLeft, ChevronRight, MessageCircle
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import axios from 'axios';
@@ -25,7 +25,8 @@ import {
   serverTimestamp as fsServerTimestamp,
   deleteDoc as fsDeleteDoc,
   doc as fsDoc,
-  where as fsWhere
+  where as fsWhere,
+  getDoc as fsGetDoc
 } from 'firebase/firestore';
 
 // Custom components
@@ -37,6 +38,8 @@ import { LazyImage } from './components/LazyImage';
 import { CloudItem } from './components/CloudItem';
 import { InstagramComments } from './components/InstagramComments';
 import { PhotoDetailPage } from './components/PhotoDetailPage';
+import { FrameDetailPage } from './components/FrameDetailPage';
+import { NotificationsPanel } from './components/NotificationsPanel';
 import { DeleteConfirmationModal } from './components/DeleteConfirmationModal';
 import PreviewImageModal from './components/PreviewImageModal';
 
@@ -390,8 +393,9 @@ export default function App() {
   const [driveFolderIdBg, setDriveFolderIdBg] = useState<string>(localStorage.getItem('drive_folder_id_bg') || '');
   const [driveUsername, setDriveUsername] = useState<string>(localStorage.getItem('drive_username') || '');
 
-  // Page state: 'beranda' / 'bingkai' / 'misi' / 'galeri' / 'album'
-  const [currentPage, setCurrentPage] = useState<'beranda' | 'bingkai' | 'misi' | 'galeri' | 'album'>('beranda');
+  // Page state: 'beranda' / 'bingkai' / 'galeri' / 'album' / 'frame-detail'
+  const [currentPage, setCurrentPage] = useState<'beranda' | 'bingkai' | 'galeri' | 'album' | 'frame-detail'>('beranda');
+  const [selectedFrameDetail, setSelectedFrameDetail] = useState<any | null>(null);
   // Removed local savedCreations storage
   const [savedCreations, setSavedCreations] = useState<{ id: string; src: string; timestamp: string, userId: string }[]>([]);
   const [isLoadingGallery, setIsLoadingGallery] = useState(false);
@@ -401,6 +405,14 @@ export default function App() {
   const [isLoadingCloudDownloads, setIsLoadingCloudDownloads] = useState(false);
   const [isDeleteModalOpen, setIsDeleteModalOpen] = useState(false);
   const [itemToDelete, setItemToDelete] = useState<string | null>(null);
+
+  // Photo comment notifications system
+  const [isNotificationsOpen, setIsNotificationsOpen] = useState(false);
+  const [photoComments, setPhotoComments] = useState<any[]>([]);
+  const [lastReadNotifTime, setLastReadNotifTime] = useState<number>(() => {
+    const saved = localStorage.getItem('bt_last_read_notif_time');
+    return saved ? parseInt(saved, 10) : 0;
+  });
   
   // User My Gallery
   const fetchMyGallery = async (forceRefresh = false) => {
@@ -752,6 +764,84 @@ export default function App() {
   useEffect(() => {
     fetchComGalleryItems();
   }, []);
+
+  // Real-time Photo Comments Notification listener by Olaive
+  useEffect(() => {
+    let active = true;
+    const listenerStartTime = Date.now();
+    const knownCommentIds = new Set<string>();
+    let isInitial = true;
+
+    const q = query(
+      collection(db, 'qcc_comments'),
+      where('targetType', '==', 'photo')
+    );
+
+    const unsubscribe = onSnapshot(q, (snapshot) => {
+      if (!active) return;
+      const fetched: any[] = [];
+      snapshot.forEach((docSnap) => {
+        fetched.push({ id: docSnap.id, ...docSnap.data() });
+      });
+
+      // Sort client-side by createdAt descending to avoid composite index error
+      const sorted = fetched.sort((a, b) => {
+        const secondsA = a.createdAt?.seconds || 0;
+        const secondsB = b.createdAt?.seconds || 0;
+        if (secondsA !== secondsB) {
+          return secondsB - secondsA;
+        }
+        const msA = a.createdAt?.nanoseconds ? a.createdAt.nanoseconds / 1000000 : 0;
+        const msB = b.createdAt?.nanoseconds ? b.createdAt.nanoseconds / 1000000 : 0;
+        return msB - msA;
+      });
+
+      setPhotoComments(sorted);
+
+      // Detect newly added comments for live toasts
+      const currentUserUid = auth.currentUser?.uid || user?.uid;
+
+      for (const item of sorted) {
+        if (!knownCommentIds.has(item.id)) {
+          if (!isInitial) {
+            const isNotMyComment = currentUserUid ? item.userId !== currentUserUid : true;
+
+            // Prevent old historical comments from playing toasts upon initial page load
+            const commentTime = item.createdAt?.seconds 
+              ? item.createdAt.seconds * 1000 
+              : (item.createdAt ? new Date(item.createdAt).getTime() : Date.now());
+
+            const isRecent = (Date.now() - commentTime) < 30000; // within 30 seconds
+            const isPostInit = (Date.now() - listenerStartTime) > 5000; // active after 5 seconds of subscription
+
+            if (isNotMyComment && isRecent && isPostInit) {
+              // Determine if it is a personal comment (for user's photo) or global photo comment
+              const matchesMyPhoto = currentUserUid && (
+                item.photoOwnerId === currentUserUid || 
+                cloudDownloads.some(d => d.id === item.targetId && d.userId === currentUserUid)
+              );
+
+              if (matchesMyPhoto) {
+                triggerToast(`Sayang! Ada komentar baru dari "${item.userName || 'Seseorang'}" di fotomu "${item.targetName || 'Karya'}"! 💕: "${item.comment.substring(0, 40)}${item.comment.length > 40 ? '...' : ''}"`);
+              } else {
+                triggerToast(`Komentar baru di galeri oleh "${item.userName || 'Seseorang'}" pada "${item.targetName || 'Karya'}": "${item.comment.substring(0, 40)}${item.comment.length > 40 ? '...' : ''}" 💬`);
+              }
+            }
+          }
+          knownCommentIds.add(item.id);
+        }
+      }
+
+      isInitial = false;
+    }, (err) => {
+      console.warn("Gagal mendeteksi komentar foto secara real-time:", err);
+    });
+
+    return () => {
+      active = false;
+      unsubscribe();
+    };
+  }, [user, cloudDownloads]);
 
   // Scroll to top reset when page changes (e.g. from Bingkai catalog back to Beranda editor)
   useEffect(() => {
@@ -4908,6 +4998,78 @@ Berikan respons dalam format JSON yang valid dengan kunci wajib:
 
   const questPercent = Math.round((completedCount / totalQuests) * 100);
 
+  // Photo Comment Notifications Helpers by Olaive
+  const unreadNotificationsCount = useMemo(() => {
+    const currentUid = auth.currentUser?.uid || user?.uid;
+    const externalComments = photoComments.filter(c => !currentUid || c.userId !== currentUid);
+
+    const personalComments = externalComments.filter(c => {
+      if (!currentUid) return false;
+      if (c.photoOwnerId && c.photoOwnerId === currentUid) return true;
+      return cloudDownloads.some(d => d.id === c.targetId && d.userId === currentUid);
+    });
+
+    const relevantComments = currentUid ? personalComments : externalComments;
+
+    return relevantComments.filter(c => {
+      if (!c.createdAt) return true;
+      const commentTime = c.createdAt.seconds 
+        ? c.createdAt.seconds * 1000 
+        : new Date(c.createdAt).getTime();
+      return commentTime > lastReadNotifTime;
+    }).length;
+  }, [photoComments, user, lastReadNotifTime, cloudDownloads]);
+
+  const handleOpenNotifications = () => {
+    setIsNotificationsOpen(true);
+    const now = Date.now();
+    setLastReadNotifTime(now);
+    localStorage.setItem('bt_last_read_notif_time', String(now));
+  };
+
+  const handleSelectPhotoNotification = (photoId: string) => {
+    // Look up the photo inside existing cloudDownloads
+    const foundPhoto = cloudDownloads.find(d => d.id === photoId);
+    if (foundPhoto) {
+      setSelectedCloudItemDetail(foundPhoto);
+      setCurrentPage('photo-detail');
+      setIsNotificationsOpen(false);
+      triggerToast(`Sayang, ayo kita lihat komentar menarik di fotomu! 💕`);
+    } else {
+      triggerToast(`Membuka karya fotomu... 💌`);
+      const runLookup = async () => {
+        try {
+          const docSnap = await fsGetDoc(fsDoc(db, 'downloads', photoId));
+          if (docSnap.exists()) {
+            const data = docSnap.data();
+            const loaded = {
+              id: docSnap.id,
+              fileName: data.fileName,
+              imageUrl: data.imageUrl,
+              format: data.format,
+              size: data.size,
+              downloadedAt: data.downloadedAt?.toDate ? data.downloadedAt.toDate().toLocaleString() : new Date().toLocaleString(),
+              userId: data.userId || '',
+              userName: data.userName || 'Tamu',
+              userEmail: data.userEmail || '',
+              userAvatar: data.userAvatar || '',
+              likes: data.likes || 0
+            };
+            setSelectedCloudItemDetail(loaded);
+            setCurrentPage('photo-detail');
+            setIsNotificationsOpen(false);
+          } else {
+            triggerToast("Aduh sayang, fotonya sepertinya sudah dihapus oleh pemiliknya ya. 💔");
+          }
+        } catch (e) {
+          console.warn("Gagal lookup downloads item:", e);
+          triggerToast("Gagal memuat detail foto. Silakan coba galeri utama.");
+        }
+      };
+      runLookup();
+    }
+  };
+
   // Combine hover tilt and page scroll tilt for 3D parallax
   const combinedTiltX = enableParallax ? (tilt.x + scrollTilt.x * 0.4) : 0;
   const combinedTiltY = enableParallax ? (tilt.y + scrollTilt.y * 1.2) : 0;
@@ -4926,8 +5088,8 @@ Berikan respons dalam format JSON yang valid dengan kunci wajib:
         isAuthLoading={isAuthLoading}
         onGoogleLogin={handleGoogleLogin}
         onLogout={handleLogout}
-        completedQuests={user?.email === 'bungtemin@gmail.com' ? completedCount : undefined}
-        totalQuests={user?.email === 'bungtemin@gmail.com' ? totalQuests : undefined}
+        unreadNotificationsCount={unreadNotificationsCount}
+        onOpenNotifications={handleOpenNotifications}
       />
 
       {/* Main Workspace Layout */}
@@ -8358,7 +8520,7 @@ Berikan respons dalam format JSON yang valid dengan kunci wajib:
       </AnimatePresence>
 
        {/* CREATIVE QUESTS PAGE TAB */}
-      {currentPage === 'misi' && user?.email === 'bungtemin@gmail.com' && (
+      {false && (
         <div className="flex-1 max-w-4xl w-full mx-auto p-4 sm:p-6 lg:p-8 space-y-8">
           <div className="text-center max-w-xl mx-auto space-y-2">
             <div className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded bg-neon-pink/10 text-neon-pink border border-neon-pink/25 font-mono text-[9px] tracking-widest uppercase mb-1">
@@ -8917,16 +9079,19 @@ Berikan respons dalam format JSON yang valid dengan kunci wajib:
                   )}
                 </div>
 
-                {/* Real-time Instagram Comments for Frame */}
-                <InstagramComments 
-                  targetId={frame.id}
-                  targetType="frame"
-                  user={user}
-                  theme={theme}
-                  handleGoogleLogin={handleGoogleLogin}
-                  triggerToast={triggerToast}
-                  targetName={frame.name}
-                />
+                {/* Real-time Comments Redirection Button for Frame */}
+                <button
+                  type="button"
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    setSelectedFrameDetail(frame);
+                    setCurrentPage('frame-detail');
+                  }}
+                  className="w-full py-2.5 rounded-xl bg-rose-950/20 border border-rose-500/25 text-rose-450 hover:bg-rose-500 hover:text-white font-mono text-[9px] font-bold tracking-widest transition-all uppercase flex items-center justify-center gap-1.5 cursor-pointer mt-1"
+                >
+                  <MessageCircle className="w-3.5 h-3.5" />
+                  <span>ULASAN & KOMENTAR</span>
+                </button>
               </div>
             );
           })}
@@ -9029,6 +9194,35 @@ Berikan respons dalam format JSON yang valid dengan kunci wajib:
           onLike={() => handleLike(activeItem.id)}
           matchesUser={auth.currentUser?.uid ? activeItem.userId === auth.currentUser.uid : user?.uid ? activeItem.userId === user.uid : false}
           onDelete={activeItem.userId === (auth.currentUser?.uid || user?.uid) ? () => deleteCloudDownload(activeItem.id) : undefined}
+        />
+      );
+    })()}
+
+    {currentPage === 'frame-detail' && selectedFrameDetail && (() => {
+      const isCustom = customFrames.some(cf => cf.id === selectedFrameDetail.id);
+      return (
+        <FrameDetailPage
+          onBack={() => {
+            setSelectedFrameDetail(null);
+            setCurrentPage('bingkai');
+          }}
+          frame={selectedFrameDetail}
+          user={user}
+          theme={theme}
+          handleGoogleLogin={handleGoogleLogin}
+          triggerToast={triggerToast}
+          isLiked={!!userLikedFrames[selectedFrameDetail.id]}
+          likesCount={frameLikes[selectedFrameDetail.id] || 0}
+          usagesCount={frameUsages[selectedFrameDetail.id] || 0}
+          handleToggleLike={handleToggleLikeFrame}
+          onUseFrame={() => {
+            setSelectedFrame(selectedFrameDetail);
+            setCurrentPage('beranda');
+            triggerToast(`SISTEM: Bingkai "${selectedFrameDetail.name}" diaktifkan! 🎨`);
+          }}
+          isCustom={isCustom}
+          onDeleteCustomFrame={isCustom ? () => handleDeleteCustomFrame(selectedFrameDetail.id) : undefined}
+          neonColor={neonColor}
         />
       );
     })()}
@@ -9790,6 +9984,17 @@ Berikan respons dalam format JSON yang valid dengan kunci wajib:
         src={previewModalSrc}
         name={previewModalName}
         onClose={() => setPreviewModalOpen(false)}
+      />
+
+      <NotificationsPanel
+        isOpen={isNotificationsOpen}
+        onClose={() => setIsNotificationsOpen(false)}
+        user={user}
+        theme={theme}
+        comments={photoComments}
+        cloudDownloads={cloudDownloads}
+        onSelectPhoto={handleSelectPhotoNotification}
+        lastReadTime={lastReadNotifTime}
       />
     </div>
   );

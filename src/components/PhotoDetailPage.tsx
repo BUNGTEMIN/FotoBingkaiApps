@@ -14,6 +14,7 @@ import {
   doc, 
   serverTimestamp 
 } from '../firebase';
+import { DeleteConfirmationModal } from './DeleteConfirmationModal';
 
 interface PhotoDetailPageProps {
   onBack: () => void;
@@ -42,6 +43,7 @@ export const PhotoDetailPage: React.FC<PhotoDetailPageProps> = ({
   const [newComment, setNewComment] = useState('');
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [hearts, setHearts] = useState<{ id: number }[]>([]);
+  const [commentToDelete, setCommentToDelete] = useState<string | null>(null);
 
   // Real-time Firestore snapshot for this specific photo ID
   useEffect(() => {
@@ -100,6 +102,8 @@ export const PhotoDetailPage: React.FC<PhotoDetailPageProps> = ({
         userName: user.displayName || 'Pengguna QCC',
         userPhoto: user.photoURL || 'https://images.unsplash.com/photo-1535713875002-d1d0cf377fde?auto=format&fit=crop&w=80&q=80',
         comment: newComment.trim(),
+        photoOwnerId: item.userId || '',
+        photoImageUrl: item.imageUrl || item.src || '',
         createdAt: serverTimestamp()
       });
       setNewComment('');
@@ -111,16 +115,21 @@ export const PhotoDetailPage: React.FC<PhotoDetailPageProps> = ({
     }
   };
 
-  const handleDeleteComment = async (commentId: string) => {
+  const handleDeleteComment = (commentId: string) => {
     if (!user) return;
-    if (confirm("Hapus komentar ini? 🥺")) {
-      try {
-        await deleteDoc(doc(db, 'qcc_comments', commentId));
-        triggerToast("Komentar terhapus dari cloud database! 🗑️");
-      } catch (err) {
-        console.error("Gagal menghapus komentar:", err);
-        triggerToast("Gagal menghapus komentar.");
-      }
+    setCommentToDelete(commentId);
+  };
+
+  const confirmDeleteComment = async () => {
+    if (!commentToDelete) return;
+    try {
+      await deleteDoc(doc(db, 'qcc_comments', commentToDelete));
+      triggerToast("Komentar terhapus dari cloud database! 🗑️");
+    } catch (err) {
+      console.error("Gagal menghapus komentar:", err);
+      triggerToast("Gagal menghapus komentar.");
+    } finally {
+      setCommentToDelete(null);
     }
   };
 
@@ -360,6 +369,14 @@ export const PhotoDetailPage: React.FC<PhotoDetailPageProps> = ({
           </div>
         </div>
       </div>
+
+      <DeleteConfirmationModal 
+        isOpen={commentToDelete !== null}
+        onClose={() => setCommentToDelete(null)}
+        onConfirm={confirmDeleteComment}
+        title="Hapus Komentar 💬?"
+        message="Sayang, yakin ingin menghapus komentar ini? Tindakan ini tidak bisa dibatalkan ya. 💕"
+      />
     </div>
   );
 };

@@ -1,18 +1,18 @@
 import React, { useState, useRef, useEffect } from 'react';
-import { Menu, X, ShieldAlert, Sparkles, Laptop, Disc, Cpu, Award, Sun, Moon, LogOut, LogIn, RefreshCw } from 'lucide-react';
+import { Menu, X, ShieldAlert, Sparkles, Laptop, Disc, Cpu, Award, Sun, Moon, LogOut, LogIn, RefreshCw, Bell } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 
 interface BungteminHeaderProps {
-  currentPage: 'beranda' | 'bingkai' | 'misi' | 'galeri' | 'album';
-  onNavigate: (page: 'beranda' | 'bingkai' | 'misi' | 'galeri' | 'album') => void;
+  currentPage: 'beranda' | 'bingkai' | 'galeri' | 'album';
+  onNavigate: (page: 'beranda' | 'bingkai' | 'galeri' | 'album') => void;
   theme: 'dark' | 'light';
   onToggleTheme: () => void;
   user: any;
   isAuthLoading: boolean;
   onGoogleLogin: () => void;
   onLogout: () => void;
-  completedQuests?: number;
-  totalQuests?: number;
+  unreadNotificationsCount?: number;
+  onOpenNotifications?: () => void;
 }
 
 export default function BungteminHeader({ 
@@ -24,8 +24,8 @@ export default function BungteminHeader({
   isAuthLoading,
   onGoogleLogin,
   onLogout,
-  completedQuests = 0,
-  totalQuests = 6
+  unreadNotificationsCount = 0,
+  onOpenNotifications = () => {}
 }: BungteminHeaderProps) {
   const [isOpen, setIsOpen] = useState(false);
   const headerRef = useRef<HTMLElement>(null);
@@ -99,22 +99,6 @@ export default function BungteminHeader({
               GALERI SAYA
               <span className={`absolute bottom-0 left-0 w-full h-0.5 bg-neon-cyan origin-left transition-transform duration-300 ${currentPage === 'album' ? 'scale-x-100' : 'scale-x-0 group-hover:scale-x-100'}`} />
             </button>
-            {user?.email === 'bungtemin@gmail.com' && (
-              <button 
-                onClick={() => onNavigate('misi')}
-                className={`${currentPage === 'misi' ? 'text-neon-pink font-extrabold' : (theme === 'dark' ? 'text-zinc-400 hover:text-neon-pink' : 'text-zinc-600 hover:text-neon-pink')} transition-colors relative py-1 group flex items-center gap-1`}
-              >
-                🚀 MISI KREATIF
-                <span className={`px-1 py-0.5 text-[7px] font-mono rounded ${
-                  completedQuests === totalQuests 
-                    ? 'bg-emerald-500/20 text-emerald-400 border border-emerald-500/30' 
-                    : 'bg-neon-pink/15 text-neon-pink border border-neon-pink/30 animate-pulse'
-                }`}>
-                  {completedQuests}/{totalQuests}
-                </span>
-                <span className={`absolute bottom-0 left-0 w-full h-0.5 bg-neon-pink origin-left transition-transform duration-300 ${currentPage === 'misi' ? 'scale-x-100' : 'scale-x-0 group-hover:scale-x-100'}`} />
-              </button>
-            )}
           </nav>
 
           {/* Collapsible Info Button, Dark/Light Toggle & Mobile Hamburger */}
@@ -152,6 +136,25 @@ export default function BungteminHeader({
                 <span className="hidden sm:inline">MASUK</span>
               </button>
             )}
+
+            {/* Notification Bell Button by Olaive */}
+            <button
+              onClick={onOpenNotifications}
+              className={`p-1.5 transition-all duration-200 focus:outline-none rounded border relative cursor-pointer ${
+                theme === 'dark' 
+                  ? 'bg-zinc-900 border-zinc-800 text-rose-400 hover:text-[#00F0FF] hover:bg-zinc-850' 
+                  : 'bg-zinc-100 border-zinc-200 text-rose-600 hover:text-rose-500 hover:bg-zinc-200 shadow-sm'
+              }`}
+              title="Papan Notifikasi Komentar"
+              id="notif_bell_btn"
+            >
+              <Bell className={`w-3.5 h-3.5 ${unreadNotificationsCount > 0 ? 'animate-bounce text-rose-500' : ''}`} />
+              {unreadNotificationsCount > 0 && (
+                <span className="absolute -top-1 -right-1 flex h-3.5 min-w-[14px] items-center justify-center rounded-full bg-rose-500 px-0.5 text-[7px] font-black text-white ring-1 ring-white dark:ring-zinc-950">
+                  {unreadNotificationsCount}
+                </span>
+              )}
+            </button>
 
             <button
               onClick={onToggleTheme}

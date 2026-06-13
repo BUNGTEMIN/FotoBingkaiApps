@@ -98,6 +98,12 @@ export class FirestoreCompatQuerySnapshot {
   forEach(callback: (doc: FirestoreCompatDocSnap) => void) {
     this.docs.forEach(callback);
   }
+  docChanges() {
+    return this.docs.map(doc => ({
+      type: 'added' as const,
+      doc: doc
+    }));
+  }
 }
 
 export class FirestoreCompatIncrement {

@@ -14,6 +14,7 @@ import {
   doc, 
   serverTimestamp 
 } from '../firebase';
+import { DeleteConfirmationModal } from './DeleteConfirmationModal';
 
 interface InstagramCommentsProps {
   targetId: string;
@@ -38,6 +39,7 @@ export const InstagramComments: React.FC<InstagramCommentsProps> = ({
   const [comments, setComments] = useState<any[]>([]);
   const [newComment, setNewComment] = useState('');
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [commentToDelete, setCommentToDelete] = useState<string | null>(null);
   const commentsEndRef = useRef<HTMLDivElement>(null);
 
   // Real-time Firestore snapshot for this specific targetId (frame or photo)
@@ -126,16 +128,21 @@ export const InstagramComments: React.FC<InstagramCommentsProps> = ({
     }
   };
 
-  const handleDelete = async (commentId: string) => {
+  const handleDelete = (commentId: string) => {
     if (!user) return;
-    if (confirm("Hapus komentar Anda ini? 🥺")) {
-      try {
-        await deleteDoc(doc(db, 'qcc_comments', commentId));
-        triggerToast("Komentar terhapus dari awan Firestore! 🗑️");
-      } catch (err) {
-        console.error("Gagal menghapus komentar:", err);
-        triggerToast("Gagal menghapus komentar.");
-      }
+    setCommentToDelete(commentId);
+  };
+
+  const confirmDeleteComment = async () => {
+    if (!commentToDelete) return;
+    try {
+      await deleteDoc(doc(db, 'qcc_comments', commentToDelete));
+      triggerToast("Komentar terhapus dari awan Firestore! 🗑️");
+    } catch (err) {
+      console.error("Gagal menghapus komentar:", err);
+      triggerToast("Gagal menghapus komentar.");
+    } finally {
+      setCommentToDelete(null);
     }
   };
 
@@ -147,11 +154,11 @@ export const InstagramComments: React.FC<InstagramCommentsProps> = ({
         onClick={() => setIsOpen(!isOpen)}
         className={`flex items-center gap-1.5 px-2 py-1 rounded-lg text-[10px] font-bold tracking-wider font-mono transition-all uppercase ${
           isOpen 
-            ? 'text-neon-cyan bg-cyan-950/20' 
+            ? 'text-rose-450 bg-rose-950/20 border border-rose-500/25' 
             : 'text-zinc-400 hover:text-white hover:bg-white/5'
         }`}
       >
-        <MessageCircle className={`w-3.5 h-3.5 ${isOpen ? 'animate-bounce text-neon-cyan' : ''}`} />
+        <MessageCircle className={`w-3.5 h-3.5 ${isOpen ? 'animate-bounce text-rose-500' : ''}`} />
         <span>{commentCount === 0 ? 'Tulis Komentar' : `${commentCount} Komentar`}</span>
       </button>
 
@@ -172,32 +179,34 @@ export const InstagramComments: React.FC<InstagramCommentsProps> = ({
                 : 'bg-zinc-50 border-zinc-200'
             }`}>
               {/* Messages Lists */}
-              <div className="max-h-40 overflow-y-auto pr-1 space-y-2.5 scrollbar-thin text-[10.5px]">
+              <div className="max-h-52 overflow-y-auto pr-1 space-y-2.5 scrollbar-thin text-[10.5px]">
                 {comments.length === 0 ? (
-                  <div className="py-4 text-center text-zinc-550 font-mono text-[9px] uppercase tracking-wider">
-                    Belum ada ulasan komentar. ✍️
+                  <div className="py-6 text-center text-zinc-500 font-sans text-[11px] select-text">
+                    Belum ada komentar.
                   </div>
                 ) : (
                   comments.map((c) => (
-                    <div key={c.id} className="flex items-start gap-2 group/comitem">
+                    <div key={c.id} className="flex items-start gap-2.5 group/comment p-2 rounded-xl hover:bg-white/5 transition-all duration-200">
                       <img
-                        src={c.userPhoto || 'https://images.unsplash.com/photo-1535713875002-d1d0cf377fde?auto=format&fit=crop&w=40&q=40'}
+                        src={c.userPhoto || 'https://images.unsplash.com/photo-1535713875002-d1d0cf377fde?auto=format&fit=crop&w=80&q=80'}
                         alt={c.userName}
-                        className="w-5 h-5 rounded-full border border-white/10 shrink-0 object-cover"
+                        className="w-7 h-7 rounded-full border border-rose-500/20 object-cover shrink-0 mt-0.5"
                         referrerPolicy="no-referrer"
                       />
                       <div className="flex-1 min-w-0">
                         <div className="flex items-baseline flex-wrap gap-x-1.5">
-                          <span className="font-extrabold text-zinc-200 text-[10px]">
+                          <span className="font-extrabold text-[11.5px] text-zinc-250 hover:text-rose-450 transition-colors">
                             {c.userName}
                           </span>
-                          <span className="text-[7.5px] font-mono text-zinc-550 uppercase">
+                          <span className="text-[8px] font-mono text-zinc-550 uppercase">
                             {c.createdAt?.seconds 
                               ? new Date(c.createdAt.seconds * 1000).toLocaleDateString('id-ID', {day: 'numeric', month: 'short'})
                               : 'baru'}
                           </span>
                         </div>
-                        <p className="text-zinc-400 font-sans mt-0.5 break-words select-text">
+                        <p className={`text-[11.5px] font-sans mt-0.5 break-words select-text font-medium leading-relaxed ${
+                          theme === 'dark' ? 'text-zinc-300' : 'text-zinc-700'
+                        }`}>
                           {c.comment}
                         </p>
                       </div>
@@ -206,10 +215,10 @@ export const InstagramComments: React.FC<InstagramCommentsProps> = ({
                         <button
                           type="button"
                           onClick={() => handleDelete(c.id)}
-                          className="text-red-500 hover:text-red-400 p-1 rounded-lg bg-red-500/10 hover:bg-red-500/20 transition-all shrink-0 cursor-pointer"
+                          className="text-red-500 hover:text-red-400 p-1.5 rounded-lg bg-red-500/10 hover:bg-red-500/20 transition-all shrink-0 cursor-pointer"
                           title="Hapus Komentar"
                         >
-                          <Trash2 className="w-3 h-3" />
+                          <Trash2 className="w-3.5 h-3.5" />
                         </button>
                       )}
                     </div>
@@ -219,36 +228,51 @@ export const InstagramComments: React.FC<InstagramCommentsProps> = ({
               </div>
 
               {/* Submit Form */}
-              <div className="border-t border-white/5 pt-2">
+              <div className="border-t border-white/5 pt-3">
                 {user ? (
-                  <form onSubmit={handleSubmit} className="flex gap-2">
-                    <textarea
-                      value={newComment}
-                      onChange={(e) => setNewComment(e.target.value)}
-                      placeholder="Bagikan komentar Anda di sini..."
-                      maxLength={250}
-                      rows={2}
-                      className="flex-1 bg-zinc-950/80 border border-white/10 rounded-lg px-2.5 py-1.5 text-[10.5px] text-zinc-100 placeholder-zinc-500 focus:outline-none focus:border-neon-cyan focus:ring-1 focus:ring-neon-cyan/20 transition-all font-sans resize-none min-h-[50px] leading-relaxed"
-                    />
-                    <button
-                      type="submit"
-                      disabled={isSubmitting || !newComment.trim()}
-                      className="p-2 rounded-lg bg-neon-cyan hover:bg-neon-cyan/80 text-black transition-all active:scale-95 disabled:opacity-30 disabled:pointer-events-none cursor-pointer shrink-0 self-end flex items-center justify-center"
-                    >
-                      <Send className="w-3.5 h-3.5" />
-                    </button>
+                  <form onSubmit={handleSubmit} className="flex flex-col gap-2 relative">
+                    <div className="relative flex items-center">
+                      <textarea
+                        value={newComment}
+                        onChange={(e) => setNewComment(e.target.value)}
+                        placeholder="Tuliskan komentar di sini..."
+                        maxLength={250}
+                        rows={2}
+                        className={`w-full rounded-2xl pl-3.5 pr-12 py-3 text-[11px] font-sans focus:outline-none focus:ring-2 focus:ring-rose-500/30 transition-all font-medium leading-relaxed resize-none min-h-[58px] ${
+                          theme === 'dark' 
+                            ? 'bg-zinc-950 border border-white/10 text-zinc-100 placeholder-zinc-500 focus:border-rose-500 focus:bg-black' 
+                            : 'bg-white border border-zinc-300 text-zinc-900 placeholder-zinc-400 focus:border-rose-500'
+                        }`}
+                      />
+                      <button
+                        type="submit"
+                        disabled={isSubmitting || !newComment.trim()}
+                        className="absolute right-2 px-3 py-2 rounded-xl bg-gradient-to-r from-rose-500 to-pink-600 hover:to-pink-500 text-white transition-all active:scale-95 disabled:opacity-20 disabled:pointer-events-none cursor-pointer flex items-center justify-center shadow-lg shadow-rose-950/30"
+                        title="Kirim Komentar"
+                      >
+                        <Send className="w-3.5 h-3.5" />
+                      </button>
+                    </div>
+                    <div className="flex justify-between items-center px-1">
+                      <span className="text-[8px] text-zinc-500 font-mono tracking-wider uppercase font-medium">
+                        SEBAGAI: <span className="text-rose-450 font-bold">{user.displayName}</span>
+                      </span>
+                      <span className="text-[8px] font-mono text-zinc-500 font-medium">
+                        {newComment.length} / 250
+                      </span>
+                    </div>
                   </form>
                 ) : (
-                  <div className="py-1.5 text-center flex flex-col items-center justify-center gap-1.5">
-                    <p className="text-[9.5px] text-zinc-500 font-sans">
-                      Masuk menggunakan akun Google diperbolehkan untuk meninggalkan komentar. 🔐
+                  <div className="py-2.5 text-center flex flex-col items-center justify-center gap-2 rounded-2xl bg-black/10 border border-white/5 p-3">
+                    <p className="text-[10px] text-zinc-400 font-sans leading-relaxed">
+                      Silakan masuk menggunakan akun Google terlebih dahulu untuk mengirim komentar ya. 💕
                     </p>
                     <button
                       type="button"
                       onClick={handleGoogleLogin}
-                      className="px-3 py-1 rounded bg-[#4285F4] hover:bg-[#357ae8] text-white font-black font-mono text-[8px] tracking-widest uppercase transition-all flex items-center gap-1"
+                      className="px-4 py-2 rounded-xl bg-[#4285F4] hover:bg-[#357ae8] text-white font-extrabold font-mono text-[9px] tracking-widest uppercase transition-all flex items-center gap-1.5 shadow"
                     >
-                      <LogIn className="w-2.5 h-2.5" /> LOGIN GOOGLE
+                      <LogIn className="w-3.5 h-3.5" /> LOGIN GOOGLE
                     </button>
                   </div>
                 )}
@@ -257,6 +281,14 @@ export const InstagramComments: React.FC<InstagramCommentsProps> = ({
           </motion.div>
         )}
       </AnimatePresence>
+
+      <DeleteConfirmationModal 
+        isOpen={commentToDelete !== null}
+        onClose={() => setCommentToDelete(null)}
+        onConfirm={confirmDeleteComment}
+        title="Hapus Komentar 💬?"
+        message="Sayang, yakin ingin menghapus komentar ini? Tindakan ini tidak bisa dibatalkan ya. 💕"
+      />
     </div>
   );
 };
