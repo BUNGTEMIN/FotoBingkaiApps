@@ -15,7 +15,7 @@ import {
   serverTimestamp 
 } from '../firebase';
 import { DeleteConfirmationModal } from './DeleteConfirmationModal';
-import { ensureFullSvg, resolveApiUrl } from '../canvasUtils';
+import { ensureFullSvg, resolveApiUrl, cleanFrameName, cleanFrameCategory } from '../canvasUtils';
 import { LazyImage } from './LazyImage';
 
 interface FrameDetailPageProps {
@@ -119,7 +119,7 @@ export const FrameDetailPage: React.FC<FrameDetailPageProps> = ({
       await addDoc(collection(db, 'qcc_comments'), {
         targetId: frame.id,
         targetType: 'frame',
-        targetName: frame.name || 'Bingkai Keren',
+        targetName: cleanFrameName(frame.name),
         comment: newComment.trim(),
         userId: user.uid,
         userName: user.displayName || 'Baim Gg',
@@ -235,7 +235,7 @@ export const FrameDetailPage: React.FC<FrameDetailPageProps> = ({
                 ) : frame.src ? (
                   <LazyImage
                     src={resolveApiUrl(frame.src)}
-                    alt={frame.name}
+                    alt={cleanFrameName(frame.name)}
                     className="w-full h-full object-contain filter brightness-95 bg-transparent"
                   />
                 ) : null}
@@ -326,10 +326,10 @@ export const FrameDetailPage: React.FC<FrameDetailPageProps> = ({
               </div>
               <div className="min-w-0">
                 <h3 className="font-extrabold text-[12.5px] tracking-tight uppercase truncate">
-                  {frame.name}
+                  {cleanFrameName(frame.name)}
                 </h3>
                 <p className="text-[9px] font-mono text-zinc-500 uppercase tracking-widest">
-                  KATEGORI: {frame.category || 'KUSTOM'}
+                  KATEGORI: {cleanFrameCategory(frame.category)}
                 </p>
               </div>
             </div>

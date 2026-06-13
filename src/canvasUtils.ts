@@ -1103,3 +1103,39 @@ export const renderToCanvas = async (
     }
   }
 };
+
+// Helper to clean frame name by removing file extensions, Appwrite references, hyphens/underscores
+export const cleanFrameName = (name: string): string => {
+  if (!name) return 'Bingkai';
+  
+  // 1. Remove file extensions
+  let cleaned = name.replace(/\.(png|jpe?g|svg|webp|gif)$/i, '');
+  
+  // 2. Remove references to "appwrite" 
+  cleaned = cleaned.replace(/appwrite/gi, '');
+  
+  // 3. Replace underscores or hyphens with space
+  cleaned = cleaned.replace(/[_-]+/g, ' ');
+  
+  // 4. Shrink multiple spaces
+  cleaned = cleaned.replace(/\s+/g, ' ');
+  
+  cleaned = cleaned.trim();
+  
+  if (!cleaned) return 'Bingkai Kustom';
+  
+  return cleaned;
+};
+
+// Helper to clean frame category by removing Appwrite references
+export const cleanFrameCategory = (category: string): string => {
+  if (!category) return 'Kustom';
+  
+  let cleaned = category.replace(/appwrite/gi, '');
+  cleaned = cleaned.replace(/[_-]+/g, ' ');
+  cleaned = cleaned.trim();
+  
+  if (!cleaned || cleaned.toLowerCase() === 'custom') return 'Kustom';
+  return cleaned;
+};
+

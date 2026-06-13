@@ -2,7 +2,7 @@ import React from 'react';
 import { Frame } from '../types';
 import { FRAMES } from '../presets';
 import { LazyImage } from './LazyImage';
-import { resolveApiUrl } from '../canvasUtils';
+import { resolveApiUrl, cleanFrameName } from '../canvasUtils';
 
 interface FrameSelectorProps {
   selectedFrame: Frame;
@@ -42,7 +42,7 @@ export default function FrameSelector({
                 {frame.src ? (
                   <LazyImage 
                     src={resolveApiUrl(frame.src)}
-                    alt={frame.name}
+                    alt={cleanFrameName(frame.name)}
                     referrerPolicy="no-referrer"
                     className="w-full h-full object-cover bg-transparent"
                   />
@@ -53,7 +53,7 @@ export default function FrameSelector({
                 )}
               </div>
               <span className="text-[10px] font-bold mt-2 text-zinc-300 group-hover:text-neon-cyan transition-colors truncate w-full">
-                {frame.name}
+                {cleanFrameName(frame.name)}
               </span>
             </button>
           );

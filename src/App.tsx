@@ -46,7 +46,7 @@ import PreviewImageModal from './components/PreviewImageModal';
 // Types & presets
 import { Frame, ImageSettings, PlacedSticker } from './types';
 import { FRAMES, FILTER_PRESETS, PRESET_STICKERS } from './presets';
-import { renderToCanvas, resolveApiUrl, compressImage, ensureFullSvg } from './canvasUtils';
+import { renderToCanvas, resolveApiUrl, compressImage, ensureFullSvg, cleanFrameName, cleanFrameCategory } from './canvasUtils';
 import { storage, BUCKET_ID, databases, DATABASE_ID, COLLECTION_ID, Query, ID, ensureAppwriteBucketExists } from './appwrite';
 import { getCache, setCache, deleteCache } from './indexedDb';
 import { fcm } from './lib/fcmService';
@@ -5215,7 +5215,7 @@ Berikan respons dalam format JSON yang valid dengan kunci wajib:
                               ? 'border-neon-cyan bg-cyan-950/25 shadow-[0_0_12px_rgba(0,240,255,0.25)] scale-102 z-10' 
                               : 'border-white/10 hover:border-white/15 bg-black/50'
                           }`}
-                          title={frame.name}
+                          title={cleanFrameName(frame.name)}
                         >
                           <div className="relative w-full h-full flex items-center justify-center overflow-hidden">
                             {frame.renderSvg ? (
@@ -5226,7 +5226,7 @@ Berikan respons dalam format JSON yang valid dengan kunci wajib:
                             ) : frame.src ? (
                               <LazyImage 
                                 src={resolveApiUrl(frame.src)} 
-                                alt={frame.name}
+                                alt={cleanFrameName(frame.name)}
                                 className="w-full h-full object-contain pointer-events-none"
                               />
                             ) : null}
@@ -9047,7 +9047,7 @@ Berikan respons dalam format JSON yang valid dengan kunci wajib:
                className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded bg-zinc-900 border border-zinc-700 text-zinc-300 hover:text-white hover:border-neon-cyan hover:bg-neon-cyan/10 font-mono text-[10px] tracking-wider uppercase transition-all"
              >
                <RefreshCw className={`w-3 h-3 ${isLoadingAppwrite ? 'animate-spin' : ''}`} /> 
-               {isLoadingAppwrite ? 'Menyinkronkan...' : 'Sinkronkan Appwrite'}
+               {isLoadingAppwrite ? 'Menyinkronkan...' : 'Sinkronkan Bingkai'}
              </button>
           </div>
         </div>
@@ -9116,7 +9116,7 @@ Berikan respons dalam format JSON yang valid dengan kunci wajib:
                     ) : frame.src ? (
                       <LazyImage
                         src={resolveApiUrl(frame.src)}
-                        alt={frame.name}
+                        alt={cleanFrameName(frame.name)}
                         className="w-full h-full object-contain filter brightness-95 pointer-events-none bg-transparent"
                       />
                     ) : null}
@@ -9124,8 +9124,8 @@ Berikan respons dalam format JSON yang valid dengan kunci wajib:
                   </div>
 
                   <div className="text-center w-full">
-                    <h4 className="text-[11px] font-bold tracking-wider text-white truncate w-full uppercase">{frame.name}</h4>
-                    <p className="text-[9px] text-zinc-500 font-mono mt-0.5 truncate uppercase">{frame.category || 'Kustom'}</p>
+                    <h4 className="text-[11px] font-bold tracking-wider text-white truncate w-full uppercase">{cleanFrameName(frame.name)}</h4>
+                    <p className="text-[9px] text-zinc-500 font-mono mt-0.5 truncate uppercase">{cleanFrameCategory(frame.category)}</p>
                   </div>
                 </div>
 
