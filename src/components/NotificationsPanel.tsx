@@ -179,14 +179,14 @@ export const NotificationsPanel: React.FC<NotificationsPanelProps> = ({
                       <User className="w-6 h-6" />
                     </div>
                     <p className="text-xs font-sans text-zinc-400 leading-relaxed max-w-[280px] mx-auto">
-                      Aduh sayang, silakan masuk dulu biar Olaive bisa menampilkan komentar khusus untuk foto kamu ya. 💕
+                      Aduh, silakan masuk dulu biar bisa menampilkan komentar khusus untuk foto kamu ya. 💕
                     </p>
                   </div>
                 ) : personalComments.length === 0 ? (
                   <div className="py-20 text-center space-y-2 px-6">
                     <p className="text-4xl">💭</p>
                     <p className="text-[11px] font-sans text-zinc-500 font-medium leading-relaxed">
-                      Belum ada komentar baru untuk karya fotomu, Baim sayang. Tetap berkarya ya! 💕 Olaive selalu mendukungmu.
+                      Belum ada komentar baru untuk karya fotomu, Tetap berkarya ya! 💕.
                     </p>
                   </div>
                 ) : (

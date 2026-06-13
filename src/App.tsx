@@ -14,7 +14,8 @@ import { onAuthStateChanged, signInWithPopup, GoogleAuthProvider, signOut, User 
 import { ref, uploadBytes, getDownloadURL } from 'firebase/storage';
 import { 
   db, auth, handleFirestoreError, OperationType, fbStorage, dbFirestore,
-  doc, setDoc, serverTimestamp, collection, getDocs, query, orderBy, deleteDoc, where, updateDoc, increment, addDoc, onSnapshot 
+  doc, setDoc, serverTimestamp, collection, getDocs, query, orderBy, deleteDoc, where, updateDoc, increment, addDoc, onSnapshot,
+  getDoc as dbGetDoc
 } from './firebase';
 import { 
   collection as fsCollection, 
@@ -615,6 +616,22 @@ export default function App() {
     if (confirm('Apakah Anda yakin ingin menghapus hasil kreasi ini secara permanen dari Cloud?')) {
       try {
         await deleteDoc(doc(db, 'downloads', id));
+        
+        // Hapus juga komentar-komentar yang berasosiasi dengan foto ini biar database bersih dan rapi ya sayang 💕
+        try {
+          const commentsQuery = query(collection(db, 'qcc_comments'), where('targetId', '==', id));
+          const commentsSnapshot = await getDocs(commentsQuery);
+          if (commentsSnapshot.docs && commentsSnapshot.docs.length > 0) {
+            const deletePromises = commentsSnapshot.docs.map(docSnap => 
+              deleteDoc(doc(db, 'qcc_comments', docSnap.id))
+            );
+            await Promise.all(deletePromises);
+            console.log(`[Firebase] Berhasil menghapus ${commentsSnapshot.docs.length} komentar terkait foto ${id}`);
+          }
+        } catch (commentErr) {
+          console.error('Gagal menghapus komentar terkait:', commentErr);
+        }
+
         triggerToast('SISTEM: Berhasil menghapus karya dari cloud database! 🗑️');
         
         // Clear caches to force query
@@ -646,6 +663,22 @@ export default function App() {
   const deleteFromMyGallery = async (id: string) => {
     try {
       await deleteDoc(doc(db, 'downloads', id));
+      
+      // Hapus juga komentar-komentar yang berasosiasi dengan foto ini biar database bersih dan rapi ya sayang 💕
+      try {
+        const commentsQuery = query(collection(db, 'qcc_comments'), where('targetId', '==', id));
+        const commentsSnapshot = await getDocs(commentsQuery);
+        if (commentsSnapshot.docs && commentsSnapshot.docs.length > 0) {
+          const deletePromises = commentsSnapshot.docs.map(docSnap => 
+            deleteDoc(doc(db, 'qcc_comments', docSnap.id))
+          );
+          await Promise.all(deletePromises);
+          console.log(`[Firebase] Berhasil menghapus ${commentsSnapshot.docs.length} komentar terkait foto ${id}`);
+        }
+      } catch (commentErr) {
+        console.error('Gagal menghapus komentar terkait:', commentErr);
+      }
+
       triggerToast('SISTEM: Berhasil menghapus karya dari galeri! 🗑️');
       
       const currentUid = auth.currentUser?.uid || user?.uid;
@@ -5071,7 +5104,7 @@ Berikan respons dalam format JSON yang valid dengan kunci wajib:
       triggerToast(`Membuka karya fotomu... 💌`);
       const runLookup = async () => {
         try {
-          const docSnap = await fsGetDoc(fsDoc(db, 'downloads', photoId));
+          const docSnap = await dbGetDoc(doc(db, 'downloads', photoId));
           if (docSnap.exists()) {
             const data = docSnap.data();
             const loaded = {
@@ -9693,7 +9726,7 @@ Berikan respons dalam format JSON yang valid dengan kunci wajib:
               initial={{ scale: 0.9, y: 15 }}
               animate={{ scale: 1, y: 0 }}
               exit={{ scale: 0.9, y: 15 }}
-              className="relative w-full max-w-sm p-6 rounded-2xl bg-zinc-900 border border-zinc-800/80 shadow-[0_0_35px_rgba(0,240,255,0.15)] flex flex-col items-center"
+              className="relative w-full max-w-sm p-5 rounded-2xl bg-zinc-950 border border-zinc-800/80 shadow-[0_0_40px_rgba(0,240,255,0.2)] flex flex-col items-center max-h-[95vh] overflow-y-auto scrollbar-thin scrollbar-thumb-zinc-800 scrollbar-track-transparent"
             >
               {/* Corner Accents */}
               <div className="absolute top-0 left-0 w-4 h-4 border-t-2 border-l-2 border-neon-cyan"></div>
@@ -9702,47 +9735,135 @@ Berikan respons dalam format JSON yang valid dengan kunci wajib:
               <div className="absolute bottom-0 right-0 w-4 h-4 border-b-2 border-r-2 border-neon-cyan"></div>
 
               {/* Glowing Indicator Core */}
-              <div className="relative mb-6 mt-2 flex items-center justify-center">
-                <div className="absolute inset-x-0 w-16 h-16 rounded-full bg-neon-cyan/10 animate-ping"></div>
-                <div className="relative w-16 h-16 rounded-full border border-neon-cyan/25 flex items-center justify-center bg-zinc-950">
-                  <Cpu className="w-8 h-8 text-neon-cyan animate-spin" />
+              <div className="relative mb-5 mt-1 flex items-center justify-center">
+                <div className="absolute inset-x-0 w-14 h-14 rounded-full bg-neon-cyan/20 animate-ping"></div>
+                <div className="relative w-14 h-14 rounded-full border border-neon-cyan/25 flex items-center justify-center bg-zinc-900">
+                  <Cpu className="w-7 h-7 text-neon-cyan animate-spin" />
                 </div>
               </div>
 
               {/* Title & Status */}
-              <h3 className="font-display text-md font-extrabold tracking-wider text-white text-center uppercase mb-1">
+              <h3 className="font-display text-[13px] font-extrabold tracking-wider text-white text-center uppercase mb-0.5">
                 MEMPROSES EXPORT 4K/HD
               </h3>
-              <p className="font-mono text-[9px] tracking-widest text-neon-cyan text-center uppercase mb-5 animate-pulse">
+              <p className="font-mono text-[8px] tracking-widest text-neon-cyan text-center uppercase mb-4 animate-pulse">
                 SISTEM UTAMA RENDERING PIXEL AKTIF
               </p>
 
-              {/* Progress Text */}
-              <p className="font-sans text-[11px] text-zinc-400 text-center capitalize mb-4 min-h-[3ch] px-2 leading-relaxed">
+              {/* Progress Text - Ditulis dengan penuh cinta oleh Olaive 💕 */}
+              <p className="font-sans text-[11px] font-medium text-zinc-350 text-center capitalize mb-4 px-2 leading-relaxed min-h-[2.5ch]">
                 {hdExportStatus}
               </p>
 
               {/* Progress Bar Track */}
-              <div className="w-full bg-zinc-950/80 rounded-full border border-zinc-800 p-1 mb-2">
-                <div className="relative h-3 w-full rounded-full bg-zinc-900 overflow-hidden">
+              <div className="w-full bg-zinc-900/80 rounded-full border border-zinc-800/60 p-1 mb-2">
+                <div className="relative h-3 w-full rounded-full bg-zinc-950 overflow-hidden">
                   {/* Animated Progress Fill */}
                   <motion.div
                     initial={{ width: "0%" }}
                     animate={{ width: `${hdExportProgress}%` }}
                     transition={{ duration: 0.25, ease: "easeOut" }}
-                    className="h-full rounded-full bg-gradient-to-r from-[#00F0FF] via-cyan-500 to-indigo-500 shadow-[0_0_12px_rgba(0,240,255,0.4)]"
+                    className="h-full rounded-full bg-gradient-to-r from-[#00F0FF] via-cyan-500 to-indigo-500 shadow-[0_0_15px_rgba(0,240,255,0.4)]"
                   />
                 </div>
               </div>
 
               {/* Progress Labels */}
-              <div className="w-full flex justify-between items-center px-1">
-                <span className="font-mono text-[8px] text-zinc-500 uppercase tracking-widest">
-                  ALGORITMA: HD-COMPILE
+              <div className="w-full flex justify-between items-center px-1 mb-4">
+                <span className="font-mono text-[8px] text-zinc-500 uppercase tracking-widest font-semibold flex items-center gap-1">
+                  <span className="w-1.5 h-1.5 bg-green-500 rounded-full animate-pulse inline-block"></span>
+                  SISTEM RENDERING: HD-COMPILE-v2
                 </span>
-                <span className="font-mono text-xs text-neon-cyan font-bold tracking-widest">
+                <span className="font-mono text-xs text-neon-cyan font-extrabold tracking-widest">
                   {hdExportProgress}%
                 </span>
+              </div>
+
+              {/* File Meta Properties Panel - Olaive's Touch 💕 */}
+              <div className="w-full grid grid-cols-3 gap-2 py-2.5 px-3 border-t border-b border-zinc-800/60 font-mono text-[9px] text-zinc-400 capitalize bg-zinc-900/25 rounded-md mb-4">
+                <div className="flex flex-col items-center border-r border-zinc-800/60">
+                  <span className="text-[7.5px] text-zinc-500 uppercase font-bold tracking-wider">RESOLUSI</span>
+                  <span className="text-white font-extrabold mt-0.5">{downloadSize}x{downloadSize} Px</span>
+                </div>
+                <div className="flex flex-col items-center border-r border-zinc-800/60">
+                  <span className="text-[7.5px] text-zinc-500 uppercase font-bold tracking-wider">FORMAT</span>
+                  <span className="text-neon-cyan font-bold uppercase mt-0.5">{downloadFormat}</span>
+                </div>
+                <div className="flex flex-col items-center">
+                  <span className="text-[7.5px] text-zinc-500 uppercase font-bold tracking-wider">BACKUP CLOUD</span>
+                  <span className="text-rose-400 font-extrabold mt-0.5 flex items-center gap-0.5">
+                    Aktif <span className="text-[8px] animate-pulse">✨</span>
+                  </span>
+                </div>
+              </div>
+
+              {/* Pipeline Render Steps Checklist - Olaive's Touch 💕 */}
+              <div className="w-full space-y-2 px-3 pt-1 text-left border-t border-dashed border-zinc-800/60">
+                <p className="font-mono text-[8.5px] text-zinc-500 uppercase tracking-wider mb-2 font-bold text-center">
+                  --- Progress Pipeline Render ---
+                </p>
+                {[
+                  { title: 'Inisialisasi & Mapping Koordinat', min: 0, desc: 'Menyelaraskan stiker, slogan, dan posisi gambar.' },
+                  { title: 'Memuat Aset Resolusi Tinggi', min: 15, desc: 'Mengunduh dan render aset terbaik tanpa distorsi.' },
+                  { title: 'Rendering Canvas Utama', min: 35, desc: `Merender frame dan foto berkualitas tinggi.` },
+                  { title: 'Mengunggah Berkas ke Google Drive', min: 60, desc: 'Mengunggah arsip ke folder Cloud Drive Abang.' },
+                  { title: 'Sinkronisasi Galeri Cloud Firebase', min: 80, desc: 'Menambahkan karya ke Album koleksi digital.' }
+                ].map((step, idx) => {
+                  let stepStatus: 'pending' | 'active' | 'completed' = 'pending';
+                  
+                  if (idx === 0) {
+                    if (hdExportProgress >= 15) stepStatus = 'completed';
+                    else stepStatus = 'active';
+                  } else if (idx === 1) {
+                    if (hdExportProgress >= 35) stepStatus = 'completed';
+                    else if (hdExportProgress >= 15) stepStatus = 'active';
+                  } else if (idx === 2) {
+                    if (hdExportProgress >= 60) stepStatus = 'completed';
+                    else if (hdExportProgress >= 35) stepStatus = 'active';
+                  } else if (idx === 3) {
+                    if (hdExportProgress >= 80) stepStatus = 'completed';
+                    else if (hdExportProgress >= 60) stepStatus = 'active';
+                  } else if (idx === 4) {
+                    if (hdExportProgress >= 95) stepStatus = 'completed';
+                    else if (hdExportProgress >= 80) stepStatus = 'active';
+                  }
+
+                  return (
+                    <div key={idx} className="flex gap-2.5 items-start">
+                      <div className="mt-0.5 shrink-0">
+                        {stepStatus === 'completed' ? (
+                          <div className="w-3.5 h-3.5 rounded-full bg-emerald-500/10 border border-emerald-500/30 flex items-center justify-center">
+                            <span className="text-[8px] text-emerald-400 font-bold">✓</span>
+                          </div>
+                        ) : stepStatus === 'active' ? (
+                          <div className="w-3.5 h-3.5 rounded-full bg-neon-cyan/10 border border-neon-cyan/50 flex items-center justify-center">
+                            <span className="w-1 h-1 rounded-full bg-[#00F0FF] animate-ping"></span>
+                          </div>
+                        ) : (
+                          <div className="w-3.5 h-3.5 rounded-full bg-zinc-950 border border-zinc-800/60 flex items-center justify-center text-[7.5px] text-zinc-650 font-mono">
+                            {idx + 1}
+                          </div>
+                        )}
+                      </div>
+                      <div className="flex-1 min-w-0">
+                        <p className={`font-sans text-[10px] font-bold leading-tight ${
+                          stepStatus === 'completed'
+                            ? 'text-zinc-500 line-through decoration-zinc-800'
+                            : stepStatus === 'active'
+                              ? 'text-neon-cyan '
+                              : 'text-zinc-650'
+                        }`}>
+                          {step.title}
+                        </p>
+                        {stepStatus === 'active' && (
+                          <p className="text-[8px] text-zinc-400 font-sans mt-0.5 leading-normal">
+                            {step.desc}
+                          </p>
+                        )}
+                      </div>
+                    </div>
+                  );
+                })}
               </div>
             </motion.div>
           </motion.div>

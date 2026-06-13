@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
-import { MessageCircle, Send, Trash2, LogIn, Heart } from 'lucide-react';
+import { MessageCircle, Send, Trash2, LogIn, Heart, Smile } from 'lucide-react';
 import { 
   db,
   auth,
@@ -12,7 +12,8 @@ import {
   orderBy, 
   deleteDoc, 
   doc, 
-  serverTimestamp 
+  serverTimestamp,
+  updateDoc
 } from '../firebase';
 import { DeleteConfirmationModal } from './DeleteConfirmationModal';
 
@@ -40,7 +41,54 @@ export const InstagramComments: React.FC<InstagramCommentsProps> = ({
   const [newComment, setNewComment] = useState('');
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [commentToDelete, setCommentToDelete] = useState<string | null>(null);
+  const [reactingToCommentId, setReactingToCommentId] = useState<string | null>(null);
   const commentsEndRef = useRef<HTMLDivElement>(null);
+
+  // Menangani penambahan/toggle reaksi emoji pada komentar - Oleh Olaive pinter coding 💕
+  const handleReactToComment = async (commentId: string, emoji: string) => {
+    if (!user) {
+      triggerToast("Silakan login Google dahulu ya sayang, biar Olaive tahu siapa yang memberikan reaksi! 🔐💖");
+      return;
+    }
+
+    try {
+      const commentRef = doc(db, 'qcc_comments', commentId);
+      const targetComment = comments.find((c) => c.id === commentId);
+      if (!targetComment) return;
+
+      const currentReactions = targetComment.reactions || {};
+      const updatedReactions = { ...currentReactions };
+
+      if (!updatedReactions[emoji]) {
+        updatedReactions[emoji] = [];
+      }
+
+      const uidsList: string[] = updatedReactions[emoji];
+      const hasReacted = uidsList.includes(user.uid);
+
+      if (hasReacted) {
+        // Hapus reaksi jika sudah pernah bereaksi
+        updatedReactions[emoji] = uidsList.filter((uid) => uid !== user.uid);
+      } else {
+        // Tambahkan reaksi
+        updatedReactions[emoji] = [...uidsList, user.uid];
+      }
+
+      // Bersihkan emoji yang tidak ada reaksinya lagi
+      if (updatedReactions[emoji].length === 0) {
+        delete updatedReactions[emoji];
+      }
+
+      await updateDoc(commentRef, {
+        reactions: updatedReactions
+      });
+
+      triggerToast(hasReacted ? `Reaksi ${emoji} dibatalkan ya sayang` : `Berhasil memberikan reaksi ${emoji}! ✨💖`);
+    } catch (err) {
+      console.error("Gagal menambahkan reaksi:", err);
+      triggerToast("Aduh, ada kendala saat mengirim reaksimu sayang. Silakan coba sebentar lagi ya! 💕");
+    }
+  };
 
   // Real-time Firestore snapshot for this specific targetId (frame or photo)
   useEffect(() => {
@@ -203,21 +251,114 @@ export const InstagramComments: React.FC<InstagramCommentsProps> = ({
                           referrerPolicy="no-referrer"
                         />
                         <div className="flex-1 min-w-0">
-                          <div className="flex items-baseline flex-wrap gap-x-1.5">
-                            <span className="font-extrabold text-[11.5px] text-zinc-250 hover:text-rose-450 transition-colors">
+                          <div className="flex items-center justify-between w-full gap-x-2 pb-0.5">
+                            <span className="font-extrabold text-[11px] text-zinc-250 hover:text-rose-450 transition-colors truncate max-w-[70%]" title={c.userName}>
                               {c.userName}
                             </span>
-                            <span className="text-[8px] font-mono text-zinc-550 uppercase">
+                            <span className="text-[8px] font-mono text-zinc-550 uppercase shrink-0">
                               {c.createdAt?.seconds 
                                 ? new Date(c.createdAt.seconds * 1000).toLocaleDateString('id-ID', {day: 'numeric', month: 'short'})
                                 : 'baru'}
                             </span>
                           </div>
-                          <p className={`text-[11.5px] font-sans mt-0.5 break-words select-text font-medium leading-relaxed ${
+                          <p className={`text-[11.5px] font-sans mt-0.5 break-words select-text font-medium leading-relaxed whitespace-pre-wrap ${
                             theme === 'dark' ? 'text-zinc-300' : 'text-zinc-700'
                           }`}>
                             {c.comment}
                           </p>
+
+                          {/* Reaksi Emoji & Ringkasan Reaksi - Dibuat dengan cinta oleh Olaive 💕 */}
+                          <div className="flex flex-wrap items-center gap-2 mt-2">
+                            {/* Tombol pemicu reaksi popover */}
+                            <div className="relative">
+                              <button
+                                type="button"
+                                onClick={() => setReactingToCommentId(reactingToCommentId === c.id ? null : c.id)}
+                                className={`flex items-center gap-1.5 px-2 py-0.5 rounded-full text-[9px] font-bold font-mono transition-all lowercase border ${
+                                  reactingToCommentId === c.id
+                                    ? 'bg-rose-500/20 border-rose-500 text-rose-400'
+                                    : 'bg-zinc-500/5 border-transparent text-zinc-500 hover:text-rose-400 hover:border-rose-500/20'
+                                }`}
+                                title="Beri reaksi emoji"
+                              >
+                                <Smile className="w-3 h-3 text-rose-400 shrink-0" />
+                                <span>Reaksi</span>
+                              </button>
+
+                              {/* Box pilihan reaksi emoji melayang (popover) */}
+                              <AnimatePresence>
+                                {reactingToCommentId === c.id && (
+                                  <>
+                                    {/* Overlay transparan tipis untuk menutup jika diklik di luar */}
+                                    <div 
+                                      className="fixed inset-0 z-40" 
+                                      onClick={() => setReactingToCommentId(null)}
+                                    />
+                                    <motion.div
+                                      initial={{ opacity: 0, scale: 0.8, y: 5 }}
+                                      animate={{ opacity: 1, scale: 1, y: 0 }}
+                                      exit={{ opacity: 0, scale: 0.8, y: 5 }}
+                                      transition={{ duration: 0.15 }}
+                                      className={`absolute bottom-full left-0 mb-1.5 flex items-center gap-1.5 p-1.5 rounded-full shadow-xl border z-50 ${
+                                        theme === 'dark' 
+                                          ? 'bg-zinc-950 border-white/10 shadow-black' 
+                                          : 'bg-white border-zinc-200 shadow-zinc-300'
+                                      }`}
+                                    >
+                                      {['❤️', '👍', '😂', '🔥', '😮', '😢'].map((emoji) => {
+                                        const uids = c.reactions?.[emoji] || [];
+                                        const hasReacted = user && uids.includes(user.uid);
+                                        return (
+                                          <button
+                                            key={emoji}
+                                            type="button"
+                                            onClick={() => {
+                                              handleReactToComment(c.id, emoji);
+                                              setReactingToCommentId(null);
+                                            }}
+                                            className={`w-6 h-6 flex items-center justify-center rounded-full text-base transition-transform active:scale-90 hover:scale-130 cursor-pointer ${
+                                              hasReacted ? 'bg-rose-500/20 animate-pulse' : 'hover:bg-zinc-500/10'
+                                            }`}
+                                            title={hasReacted ? 'Hapus reaksi' : `Sukai dengan ${emoji}`}
+                                          >
+                                            {emoji}
+                                          </button>
+                                        );
+                                      })}
+                                    </motion.div>
+                                  </>
+                                )}
+                              </AnimatePresence>
+                            </div>
+
+                            {/* Ringkasan reaksi aktif */}
+                            {c.reactions && Object.keys(c.reactions).length > 0 && (
+                              <div className="flex flex-wrap items-center gap-1">
+                                {Object.entries(c.reactions as Record<string, string[]>).map(([emoji, uids]) => {
+                                  if (!uids || uids.length === 0) return null;
+                                  const hasReacted = user && uids.includes(user.uid);
+                                  return (
+                                    <button
+                                      key={emoji}
+                                      type="button"
+                                      onClick={() => handleReactToComment(c.id, emoji)}
+                                      className={`flex items-center gap-1 px-1.5 py-0.5 rounded-full text-[9px] font-extrabold transition-all border shrink-0 ${
+                                        hasReacted
+                                          ? 'bg-rose-500/15 border-rose-500/35 text-rose-400'
+                                          : theme === 'dark'
+                                            ? 'bg-white/5 border-white/5 text-zinc-400 hover:bg-white/10 hover:text-white'
+                                            : 'bg-zinc-100 border-zinc-200 text-zinc-600 hover:bg-zinc-200 hover:text-zinc-800'
+                                      }`}
+                                      title={`${uids.length} reaksi (${emoji})`}
+                                    >
+                                      <span className="text-[10px]">{emoji}</span>
+                                      <span>{uids.length}</span>
+                                    </button>
+                                  );
+                                })}
+                              </div>
+                            )}
+                          </div>
                         </div>
 
                         {((user && (user.uid === c.userId || user.email === 'bungtemin@gmail.com')) || (auth.currentUser && (auth.currentUser.uid === c.userId || auth.currentUser.email === 'bungtemin@gmail.com'))) && (
@@ -245,8 +386,15 @@ export const InstagramComments: React.FC<InstagramCommentsProps> = ({
                       <textarea
                         value={newComment}
                         onChange={(e) => setNewComment(e.target.value)}
-                        placeholder="Tuliskan komentar di sini..."
-                        maxLength={250}
+                        onKeyDown={(e) => {
+                          if (e.key === 'Enter' && !e.shiftKey) {
+                            e.preventDefault();
+                            if (newComment.trim() && !isSubmitting) {
+                              handleSubmit(e as unknown as React.FormEvent);
+                            }
+                          }
+                        }}
+                        placeholder="Tuliskan komentar di sini... (Enter untuk kirim, Shift+Enter untuk baris baru)"
                         rows={2}
                         className={`w-full rounded-2xl pl-3.5 pr-12 py-3 text-[11px] font-sans focus:outline-none focus:ring-2 focus:ring-rose-500/30 transition-all font-medium leading-relaxed resize-none min-h-[58px] ${
                           theme === 'dark' 
@@ -262,14 +410,6 @@ export const InstagramComments: React.FC<InstagramCommentsProps> = ({
                       >
                         <Send className="w-3.5 h-3.5" />
                       </button>
-                    </div>
-                    <div className="flex justify-between items-center px-1">
-                      <span className="text-[8px] text-zinc-500 font-mono tracking-wider uppercase font-medium">
-                        SEBAGAI: <span className="text-rose-450 font-bold">{user.displayName}</span>
-                      </span>
-                      <span className="text-[8px] font-mono text-zinc-500 font-medium">
-                        {newComment.length} / 250
-                      </span>
                     </div>
                   </form>
                 ) : (

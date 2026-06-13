@@ -278,6 +278,13 @@ export async function getDocs(target: FirestoreCompatRef | FirestoreCompatQuery)
   return new FirestoreCompatQuerySnapshot(docs);
 }
 
+export async function getDoc(refObj: FirestoreCompatRef) {
+  const rtdbPath = refObj.path;
+  const snapshot = await rtdbGet(rtdbRef(db, rtdbPath));
+  const val = snapshot.exists() ? cleanDataFromRTDB(snapshot.val()) : null;
+  return new FirestoreCompatDocSnap(rtdbPath.split('/').pop() || '', val);
+}
+
 export function onSnapshot(
   target: FirestoreCompatRef | FirestoreCompatQuery | any,
   callback: (snapshot: any) => void,
