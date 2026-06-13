@@ -815,14 +815,23 @@ export default function App() {
             const isPostInit = (Date.now() - listenerStartTime) > 5000; // active after 5 seconds of subscription
 
             if (isNotMyComment && isRecent && isPostInit) {
-              // Determine if it is a personal comment (for user's photo) or global photo comment
+              // Determine if it is a personal comment (for user's photo)
               const matchesMyPhoto = currentUserUid && (
                 item.photoOwnerId === currentUserUid || 
                 cloudDownloads.some(d => d.id === item.targetId && d.userId === currentUserUid)
               );
 
+              // Determine if user has previously commented on this photo
+              const isParticipantOfThread = currentUserUid && sorted.some(otherComment => 
+                otherComment.id !== item.id &&
+                otherComment.targetId === item.targetId &&
+                otherComment.userId === currentUserUid
+              );
+
               if (matchesMyPhoto) {
                 triggerToast(`Sayang! Ada komentar baru dari "${item.userName || 'Seseorang'}" di fotomu "${item.targetName || 'Karya'}"! 💕: "${item.comment.substring(0, 40)}${item.comment.length > 40 ? '...' : ''}"`);
+              } else if (isParticipantOfThread) {
+                triggerToast(`Sayang! "${item.userName || 'Seseorang'}" juga ikut berkomentar di diskusi foto "${item.targetName || 'Karya'}": "${item.comment.substring(0, 40)}${item.comment.length > 40 ? '...' : ''}" 💬`);
               } else {
                 triggerToast(`Komentar baru di galeri oleh "${item.userName || 'Seseorang'}" pada "${item.targetName || 'Karya'}": "${item.comment.substring(0, 40)}${item.comment.length > 40 ? '...' : ''}" 💬`);
               }

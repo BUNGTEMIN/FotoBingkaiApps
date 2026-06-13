@@ -28,16 +28,29 @@ export const NotificationsPanel: React.FC<NotificationsPanelProps> = ({
   // Filter out comments made by the logged-in user themselves
   const externalComments = comments.filter(c => !user || c.userId !== user.uid);
 
-  // Identify comments on the logged-in user's photos
+  // Identify comments on the logged-in user's photos OR on photos where the user has previously commented
   const personalComments = externalComments.filter(c => {
     if (!user) return false;
-    // Check direct matching field
+    
+    // 1. Is user the owner of the photo?
     if (c.photoOwnerId && c.photoOwnerId === user.uid) {
       return true;
     }
-    // Fallback matching using cloudDownloads array
     const photo = cloudDownloads.find(d => d.id === c.targetId);
-    return photo && photo.userId === user.uid;
+    if (photo && photo.userId === user.uid) {
+      return true;
+    }
+
+    // 2. Has the user previously commented on this photo (thread participant)?
+    const hasParticipated = comments.some(otherComment => 
+      otherComment.targetId === c.targetId && 
+      otherComment.userId === user.uid
+    );
+    if (hasParticipated) {
+      return true;
+    }
+
+    return false;
   });
 
   // Calculate unread badge count for specific lists
@@ -217,7 +230,13 @@ export const NotificationsPanel: React.FC<NotificationsPanelProps> = ({
                           <p className={`text-[10px] font-sans mt-0.5 leading-relaxed break-words font-medium line-clamp-2 ${
                             theme === 'dark' ? 'text-zinc-300' : 'text-zinc-700'
                           }`}>
-                            mengomentari fotomu <span className="font-bold text-rose-450">"{c.targetName}"</span>: "{c.comment}"
+                            {(() => {
+                              const isOwner = (c.photoOwnerId && c.photoOwnerId === user.uid) || 
+                                              cloudDownloads.some(d => d.id === c.targetId && d.userId === user.uid);
+                              return isOwner 
+                                ? <>mengomentari fotomu <span className="font-bold text-rose-450">"{c.targetName}"</span></>
+                                : <>ikut berkomentar pada foto <span className="font-bold text-rose-450">"{c.targetName}"</span></>;
+                            })()}: "{c.comment}"
                           </p>
                           <span className="text-[7.5px] font-mono text-zinc-500 block mt-1 uppercase font-semibold">
                             {formatTime(c.createdAt)}
