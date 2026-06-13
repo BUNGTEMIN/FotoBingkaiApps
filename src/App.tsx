@@ -5104,6 +5104,7 @@ Berikan respons dalam format JSON yang valid dengan kunci wajib:
 
   // Listen to custom desktop notification click events to view photo by Olaive 💕
   useEffect(() => {
+    // 1. Tangani event kustom lokal
     const handleSelectNotif = (e: Event) => {
       const customEvent = e as CustomEvent;
       if (customEvent.detail && customEvent.detail.id) {
@@ -5111,7 +5112,37 @@ Berikan respons dalam format JSON yang valid dengan kunci wajib:
       }
     };
     window.addEventListener('select_photo_notif', handleSelectNotif);
-    return () => window.removeEventListener('select_photo_notif', handleSelectNotif);
+
+    // 2. Tangani postMessage dari Service Worker (ketika aplikasi di latar belakang tapi tab terfokus lagi)
+    const handleServiceWorkerMessage = (event: MessageEvent) => {
+      if (event.data && event.data.type === 'SELECT_PHOTO' && event.data.photoId) {
+        handleSelectPhotoNotification(event.data.photoId);
+      }
+    };
+    if ('serviceWorker' in navigator) {
+      navigator.serviceWorker.addEventListener('message', handleServiceWorkerMessage);
+    }
+
+    // 3. Tangani query parameter jika aplikasi dibuka via tab baru lewat URL /?select_photo=xxx
+    const params = new URLSearchParams(window.location.search);
+    const queryPhotoId = params.get('select_photo');
+    if (queryPhotoId) {
+      handleSelectPhotoNotification(queryPhotoId);
+      // Bersihkan search parameter dari URL agar tidak terpicu ulang saat reload biasa
+      try {
+        const cleanUrl = window.location.protocol + "//" + window.location.host + window.location.pathname;
+        window.history.replaceState({ path: cleanUrl }, '', cleanUrl);
+      } catch (e) {
+        console.warn("Gagal membersihkan URL search parameter:", e);
+      }
+    }
+
+    return () => {
+      window.removeEventListener('select_photo_notif', handleSelectNotif);
+      if ('serviceWorker' in navigator) {
+        navigator.serviceWorker.removeEventListener('message', handleServiceWorkerMessage);
+      }
+    };
   }, [cloudDownloads]);
 
   // Combine hover tilt and page scroll tilt for 3D parallax

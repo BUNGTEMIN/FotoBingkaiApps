@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
-import { ArrowLeft, Heart, MessageCircle, Trash2, LogIn, Send } from 'lucide-react';
+import { ArrowLeft, Heart, MessageCircle, Trash2, LogIn, Send, Share2, Check } from 'lucide-react';
 import { 
   db,
   auth,
@@ -44,6 +44,37 @@ export const PhotoDetailPage: React.FC<PhotoDetailPageProps> = ({
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [hearts, setHearts] = useState<{ id: number }[]>([]);
   const [commentToDelete, setCommentToDelete] = useState<string | null>(null);
+  const [copied, setCopied] = useState(false);
+
+  const handleShareClick = () => {
+    const shareUrl = `${window.location.origin}/?select_photo=${item.id}`;
+    if (navigator.clipboard && navigator.clipboard.writeText) {
+      navigator.clipboard.writeText(shareUrl)
+        .then(() => {
+          setCopied(true);
+          triggerToast("Tautan karya berhasil disalin ke clipboard! Bagikan kreasi indah ini ya sayang ✨💕");
+          setTimeout(() => setCopied(false), 3000);
+        })
+        .catch((err) => {
+          console.error("Gagal menyalin tautan:", err);
+          triggerToast("Gagal menyalin tautan.");
+        });
+    } else {
+      try {
+        const tempInput = document.createElement("input");
+        tempInput.value = shareUrl;
+        document.body.appendChild(tempInput);
+        tempInput.select();
+        document.execCommand("copy");
+        document.body.removeChild(tempInput);
+        setCopied(true);
+        triggerToast("Tautan karya berhasil disalin! ✨💕");
+        setTimeout(() => setCopied(false), 3000);
+      } catch (e) {
+        triggerToast("Gagal menyalin tautan.");
+      }
+    }
+  };
 
   // Real-time Firestore snapshot for this specific photo ID
   useEffect(() => {
@@ -232,17 +263,35 @@ export const PhotoDetailPage: React.FC<PhotoDetailPageProps> = ({
               </div>
             </div>
 
-            <button
-              type="button"
-              onClick={handleLikeClick}
-              className="flex items-center gap-1.5 px-3 py-1.5 rounded-full border border-rose-500/25 bg-rose-500/5 text-rose-500 hover:bg-rose-500/10 font-bold active:scale-95 transition-all cursor-pointer shadow-md shadow-rose-950/10 shrink-0"
-              title="Ketuk untuk menyukai! ❤"
-            >
-              <Heart className="w-3.5 h-3.5 fill-rose-500 text-rose-500 animate-pulse" />
-              <span className={`font-mono text-[11px] ${theme === 'dark' ? 'text-zinc-300' : 'text-zinc-700'}`}>
-                {item.likes || 0} Suka
-              </span>
-            </button>
+            <div className="flex items-center gap-2 shrink-0">
+              <button
+                type="button"
+                onClick={handleShareClick}
+                className={`flex items-center gap-1.2 sm:gap-1.5 px-2.5 py-1.5 sm:px-3 sm:py-1.5 rounded-full border text-[10.5px] sm:text-[11px] font-bold active:scale-95 transition-all cursor-pointer shadow-md shrink-0 ${
+                  copied 
+                    ? 'border-green-500/30 bg-green-500/10 text-green-500 hover:bg-green-500/15'
+                    : 'border-rose-500/25 bg-rose-500/5 text-rose-500 hover:bg-rose-500/10'
+                }`}
+                title="Salin Tautan Langsung Karya"
+              >
+                {copied ? <Check className="w-3.5 h-3.5 animate-pulse" /> : <Share2 className="w-3.5 h-3.5" />}
+                <span className="font-mono">
+                  {copied ? 'Tersalin' : 'Salin Tautan'}
+                </span>
+              </button>
+
+              <button
+                type="button"
+                onClick={handleLikeClick}
+                className="flex items-center gap-1.5 px-2.5 py-1.5 sm:px-3 sm:py-1.5 rounded-full border border-rose-500/25 bg-rose-500/5 text-rose-500 hover:bg-rose-500/10 font-bold active:scale-95 transition-all cursor-pointer shadow-md shadow-rose-950/10 shrink-0"
+                title="Ketuk untuk menyukai! ❤"
+              >
+                <Heart className="w-3.5 h-3.5 fill-rose-500 text-rose-500 animate-pulse" />
+                <span className={`font-mono text-[10.5px] sm:text-[11px] ${theme === 'dark' ? 'text-zinc-300' : 'text-zinc-700'}`}>
+                  {item.likes || 0} Suka
+                </span>
+              </button>
+            </div>
           </div>
 
 
